@@ -1,106 +1,106 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
-from src.config import (
-    BitnessExperimentConfig,
-    bitness_weights_path,
-    is_model_trained,
-    load_bitness_config,
-    load_or_create_bitness_snapshot,
-    record_model_trained,
-)
+from src.config import Config, load_bitness_config
 from src.dataloader import BitnessTrainingSampler
 from src.generator_proxy import GeneratorProxy
 from src.model import DeepSetPredictor
 
 
-def run_training(
-        generator: GeneratorProxy,
-) -> None:
+@dataclass
+class IterationProgress:
+    iteration: int
+    bitness: int
+    epoch: int = 0
+    last_rmse: float = float("inf")
+
+    def record_epoch(self, epoch: int, rmse: float) -> None:
+        self.epoch = epoch
+        self.last_rmse = rmse
+
+    def print_epoch(self) -> None:
+        assert self.epoch > 0, self
+        print(
+            f"bitness iteration={self.iteration:03d} "
+            f"bitness={self.bitness:02d} "
+            f"epoch={self.epoch:03d} "
+            f"rmse={self.last_rmse:.6f}"
+        )
+
+    def checkpoint_model(
+            self,
+            model: nn.Module,
+            config: Config,
+    ) -> Path:
+        assert self.epoch > 0, self
+        torch.save(model.state_dict(), config.weights_path(self.bitness))
+        config.record_model_trained(
+            self.bitness,
+            self.iteration,
+            self.epoch,
+            self.last_rmse,
+        )
+        print(
+            f"saved: iteration={self.iteration:03d} "
+            f"bitness={self.bitness:02d} rmse={self.last_rmse:.6f}"
+        )
+
+
+def run_training(generator: GeneratorProxy) -> None:
     config = load_bitness_config()
-    snapshot = load_or_create_bitness_snapshot(config)
-    if snapshot["progress"]["stage"] == "done":
-        print("bitness training already complete")
-        return
-
-    training_config = config.training
     sampler = BitnessTrainingSampler(config, generator)
-    models = build_models(config)
-    optimizers = {
-        bitness: torch.optim.Adam(model.parameters(), lr=training_config.lr)
-        for bitness, model in models.items()
-    }
+    models: dict[int, nn.Module] = {}
+    optimizers: dict[int, torch.optim.Optimizer] = {}
 
-    for iteration in range(
-        training_config.iterations_from,
-        training_config.iterations_to + 1,
-    ):
+    for iteration in config.iterations_range():
         previous_model = None
-        for bitness in range(config.bitness_from, config.bitness_to + 1):
-            if is_model_trained(snapshot, bitness, iteration):
-                load_saved_model(models[bitness], config, bitness, iteration)
-                previous_model = models[bitness]
-                continue
+        for bitness in config.bitness_range():
+            progress = IterationProgress(iteration, bitness)
+            model, optimizer = get_or_create_model(
+                models,
+                optimizers,
+                config,
+                bitness,
+            )
 
-            model = models[bitness]
-            optimizer = optimizers[bitness]
-
-            last_rmse = float("inf")
-            trained_epochs = 0
-            for epoch in range(1, training_config.epochs + 1):
+            for epoch in config.epochs_range():
                 loader = sampler.train_loader(
                     bitness,
                     iteration,
                     previous_model,
                     epoch,
                 )
-                last_rmse = train_epoch(model, optimizer, loader)
-                trained_epochs = epoch
-                print(
-                    f"bitness iteration={iteration:03d} "
-                    f"bitness={bitness:02d} "
-                    f"epoch={epoch:03d} "
-                    f"rmse={last_rmse:.6f}"
-                )
-                if last_rmse < training_config.rmse_threshold:
+                progress.record_epoch(epoch, train_epoch(model, optimizer, loader))
+
+                if progress.last_rmse < config.rmse_threshold():
+                    progress.print_epoch()
                     break
 
-            weights_path = save_model_weights(
-                model,
-                config,
-                bitness,
-                iteration,
-            )
-            record_model_trained(
-                snapshot,
-                config,
-                bitness,
-                iteration,
-                trained_epochs,
-                last_rmse,
-                weights_path,
-            )
-            print(
-                f"saved bitness weights: iteration={iteration:03d} "
-                f"bitness={bitness:02d} rmse={last_rmse:.6f} "
-                f"path={weights_path}"
-            )
+                if epoch % 10 == 0:
+                    progress.print_epoch()
+
+            progress.checkpoint_model(model, config)
             previous_model = model
 
+        config.record_iteration_trained(iteration)
 
-def build_models(config: BitnessExperimentConfig) -> dict[int, nn.Module]:
-    model_config = config.model
-    assert model_config.name == "deepset", model_config.name
-    models = {}
-    bitnesses = range(config.bitness_from, config.bitness_to + 1)
-    for bitness in tqdm(bitnesses, desc="models"):
-        models[bitness] = DeepSetPredictor(
+
+def get_or_create_model(
+        models: dict[int, nn.Module],
+        optimizers: dict[int, torch.optim.Optimizer],
+        config: Config,
+        bitness: int,
+) -> tuple[nn.Module, torch.optim.Optimizer]:
+    if bitness not in models:
+        model_config = config.model
+        assert model_config.name == "deepset", model_config.name
+        model = DeepSetPredictor(
             point_dim=config.training.input_dim,
             n_points=model_config.n_points,
             phi_hidden=model_config.phi_hidden,
@@ -108,7 +108,13 @@ def build_models(config: BitnessExperimentConfig) -> dict[int, nn.Module]:
             rho_hidden=model_config.rho_hidden,
             dropout=model_config.dropout,
         )
-    return models
+        load_saved_model(model, config, bitness)
+        models[bitness] = model
+        optimizers[bitness] = torch.optim.Adam(
+            model.parameters(),
+            lr=config.training.lr,
+        )
+    return models[bitness], optimizers[bitness]
 
 
 def train_epoch(
@@ -135,22 +141,12 @@ def train_epoch(
     return float((squared_error_sum / count) ** 0.5)
 
 
-def save_model_weights(
-        model: nn.Module,
-        config: BitnessExperimentConfig,
-        bitness: int,
-        iteration: int,
-) -> Path:
-    weights_path = bitness_weights_path(config, bitness, iteration)
-    torch.save(model.state_dict(), weights_path)
-    return weights_path
-
-
 def load_saved_model(
         model: nn.Module,
-        config: BitnessExperimentConfig,
+        config: Config,
         bitness: int,
-        iteration: int,
 ) -> None:
-    weights_path = bitness_weights_path(config, bitness, iteration)
+    weights_path = config.weights_path(bitness)
+    if not weights_path.exists():
+        return
     model.load_state_dict(torch.load(weights_path, weights_only=True))

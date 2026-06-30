@@ -4,14 +4,14 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.config import BitnessExperimentConfig
+from src.config import Config
 from src.generator_proxy import GeneratorProxy
 
 
 class BitnessTrainingSampler:
     def __init__(
             self,
-            config: BitnessExperimentConfig,
+            config: Config,
             generator: GeneratorProxy,
     ):
         self.config = config

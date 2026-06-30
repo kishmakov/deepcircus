@@ -19,6 +19,8 @@ This is a research project to study ML approach to handle decision trees.
 - `bool-bench/small_bitness.{h,cpp}` owns exact small-bitness solving and cache read/write
 - `bool-bench/bool_bench.{h,cpp}` owns the public C API and main generation dispatch
 - `bool-bench/bool_bench.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
+- `src/bitness.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
+- `src/config.py` owns bitness config parsing plus snapshot/state/resume details; bitness training should use config methods instead of reading snapshot internals
 - `src/experiment_*.py` should contain experiment logic only; do not put ctypes or shared-library details there
 - `scripts/*.py` should stay thin entrypoints over experiment/generator helpers
 
@@ -29,6 +31,8 @@ This is a research project to study ML approach to handle decision trees.
    this is where generator is supposed to be stored
 
 # Running
+
+Verify by running:
 
 ```bash
 uv run scripts/run.py
