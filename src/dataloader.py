@@ -8,7 +8,7 @@ from src.config import Config
 from src.generator_proxy import GeneratorProxy
 
 
-class BitnessTrainingSampler:
+class Sampler:
     def __init__(
             self,
             config: Config,

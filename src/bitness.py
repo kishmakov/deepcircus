@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.config import Config, load_bitness_config
-from src.dataloader import BitnessTrainingSampler
+from src.dataloader import Sampler
 from src.generator_proxy import GeneratorProxy
 from src.model import DeepSetPredictor
 
@@ -54,7 +54,7 @@ class IterationProgress:
 
 def run_training(generator: GeneratorProxy) -> None:
     config = load_bitness_config()
-    sampler = BitnessTrainingSampler(config, generator)
+    sampler = Sampler(config, generator)
     models: dict[int, nn.Module] = {}
     optimizers: dict[int, torch.optim.Optimizer] = {}
 
