@@ -6,10 +6,11 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from src.config import Config, load_bitness_config
 from src.generator_proxy import GeneratorProxy
-from src.model import DeepSetPredictor
+from src.model import DEVICE, DeepSetPredictor
 from src.sampler import Sampler, sample_point_dim
 
 
@@ -23,15 +24,6 @@ class IterationProgress:
     def record_epoch(self, epoch: int, rmse: float) -> None:
         self.epoch = epoch
         self.last_rmse = rmse
-
-    def print_epoch(self) -> None:
-        assert self.epoch > 0, self
-        print(
-            f"bitness iteration={self.iteration:03d} "
-            f"bitness={self.bitness:02d} "
-            f"epoch={self.epoch:03d} "
-            f"rmse={self.last_rmse:.6f}"
-        )
 
     def checkpoint_model(
             self,
@@ -56,34 +48,37 @@ def run_training(generator: GeneratorProxy) -> None:
     config = load_bitness_config()
     sampler = Sampler(config, generator)
     models: dict[int, nn.Module] = {}
-    optimizers: dict[int, torch.optim.Optimizer] = {}
 
     for iteration in config.iterations_range():
         previous_model = None
         for bitness in config.bitness_range():
             progress = IterationProgress(iteration, bitness)
-            model, optimizer = get_or_create_model(
+            model = get_or_create_model(
                 models,
-                optimizers,
                 config,
                 bitness,
             )
+            optimizer = create_optimizer(model, config)
+            scheduler = create_scheduler(optimizer, config)
 
-            for epoch in config.epochs_range():
+            epoch_progress = tqdm(
+                config.epochs_range(),
+                desc=f"iteration={iteration:03d} bitness={bitness:02d}",
+                unit="epoch",
+            )
+            for epoch in epoch_progress:
                 loader = sampler.train_loader(
                     bitness,
                     iteration,
                     previous_model,
                     epoch,
                 )
-                progress.record_epoch(epoch, train_epoch(model, optimizer, loader))
+                rmse = train_epoch(model, optimizer, scheduler, loader)
+                progress.record_epoch(epoch, rmse)
+                epoch_progress.set_postfix(rmse=f"{progress.last_rmse:.6f}")
 
                 if progress.last_rmse < config.rmse_threshold():
-                    progress.print_epoch()
                     break
-
-                if epoch % 10 == 0:
-                    progress.print_epoch()
 
             progress.checkpoint_model(model, config)
             previous_model = model
@@ -93,33 +88,50 @@ def run_training(generator: GeneratorProxy) -> None:
 
 def get_or_create_model(
         models: dict[int, nn.Module],
-        optimizers: dict[int, torch.optim.Optimizer],
         config: Config,
         bitness: int,
-) -> tuple[nn.Module, torch.optim.Optimizer]:
+) -> nn.Module:
     if bitness not in models:
         model_config = config.model
         assert model_config.name == "deepset", model_config.name
         model = DeepSetPredictor(
             point_dim=sample_point_dim(bitness),
-            n_points=model_config.n_points,
             phi_hidden=model_config.phi_hidden,
             phi_out=model_config.phi_out,
             rho_hidden=model_config.rho_hidden,
             dropout=model_config.dropout,
         )
         load_saved_model(model, config, bitness)
+        model.to(DEVICE)
         models[bitness] = model
-        optimizers[bitness] = torch.optim.Adam(
-            model.parameters(),
-            lr=config.training.lr,
-        )
-    return models[bitness], optimizers[bitness]
+    return models[bitness]
+
+
+def create_optimizer(
+        model: nn.Module,
+        config: Config,
+) -> torch.optim.Optimizer:
+    return torch.optim.Adam(
+        model.parameters(),
+        lr=config.training.lr,
+    )
+
+
+def create_scheduler(
+        optimizer: torch.optim.Optimizer,
+        config: Config,
+) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
+    return torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        patience=config.training.scheduler_patience,
+        factor=config.training.scheduler_factor,
+    )
 
 
 def train_epoch(
         model: nn.Module,
         optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler.ReduceLROnPlateau,
         loader: DataLoader,
 ) -> float:
     criterion = nn.MSELoss()
@@ -128,6 +140,8 @@ def train_epoch(
     count = 0
 
     for xb, yb in loader:
+        xb = torch.as_tensor(xb, dtype=torch.float32, device=DEVICE)
+        yb = torch.as_tensor(yb, dtype=torch.float32, device=DEVICE)
         optimizer.zero_grad()
         prediction = model(xb)
         loss = criterion(prediction, yb)
@@ -138,7 +152,9 @@ def train_epoch(
         squared_error_sum += float(torch.sum(errors.square()).item())
         count += len(xb)
 
-    return float((squared_error_sum / count) ** 0.5)
+    rmse = float((squared_error_sum / count) ** 0.5)
+    scheduler.step(rmse)
+    return rmse
 
 
 def load_saved_model(

@@ -140,7 +140,7 @@ class Sampler:
         x = np.empty(
             (
                 len(case_ids),
-                self.config.model.n_points,
+                self.training.samples_per_case,
                 sample_point_dim(bitness),
             ),
             dtype=np.float32,
@@ -191,19 +191,28 @@ class Sampler:
             iteration: int,
             case_ids: list[int],
     ) -> list[list[str]]:
+        assert self.training.samples_per_case % 2 == 0, self.training.samples_per_case
         return [
-            random_input_bits(
-                bitness,
-                self.config.model.n_points,
-                random.Random(
-                    self.training.seed
-                    + iteration * 10_000
-                    + bitness * 1_000_000
-                    + case_id
-                ),
-            )
+            self._mixed_input_bits(bitness, iteration, case_id)
             for case_id in case_ids
         ]
+
+    def _mixed_input_bits(
+            self,
+            bitness: int,
+            iteration: int,
+            case_id: int,
+    ) -> list[str]:
+        half = self.training.samples_per_case // 2
+        rng = random.Random(
+            self.training.seed
+            + iteration * 10_000
+            + bitness * 1_000_000
+            + case_id
+        )
+        block = block_inversion_input_bits(bitness, half, rng)
+        random_bits = random_input_bits(bitness, half, rng)
+        return block + random_bits
 
     def _approximate_random_depths(
             self,
@@ -221,7 +230,7 @@ class Sampler:
             x_restricted = self.generator.generate_restriction_tensors_rnd(
                 bitness,
                 batch_ids,
-                self.config.model.n_points,
+                self.training.samples_per_case,
             )
             predictions = predict_values(
                 previous_model,
@@ -277,7 +286,6 @@ class DepthSampler:
     def model_params(self) -> dict[str, int]:
         return {
             "point_dim": sample_point_dim(self.bitness),
-            "n_points": self.reps,
         }
 
     def train_loader(self) -> torch.utils.data.DataLoader:

@@ -10,7 +10,6 @@ class DeepSetPredictor(nn.Module):
     def __init__(
         self,
         point_dim: int,
-        n_points: int,
         phi_hidden: int,
         phi_out: int,
         rho_hidden: int,

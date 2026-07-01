@@ -19,7 +19,6 @@ SNAPSHOT_NAME = "bitness_snapshot.json"
 @dataclass(frozen=True)
 class ModelConfig:
     name: str
-    n_points: int
     phi_hidden: int
     phi_out: int
     rho_hidden: int
@@ -34,10 +33,12 @@ class TrainingConfig:
     batch_size: int
     rmse_threshold: float
     samples_per_model: int
+    samples_per_case: int
     bitness_from: int
     bitness_to: int
-    input_dim: int
     lr: float
+    scheduler_patience: int
+    scheduler_factor: float
     seed: int
     model_dir: Path
 
@@ -122,7 +123,6 @@ class Config:
         )
         global_step = int(snapshot["progress"]["global_step"]) + len(metrics)
         snapshot["metrics"] = metrics
-        snapshot["completed_iteration"] = {"iteration": iteration, "metrics": metrics}
         snapshot["progress"] = {
             "stage": "done" if iteration >= self.training.iterations_to else "train",
             "global_step": global_step,
@@ -166,6 +166,8 @@ def load_bitness_config() -> Config:
 def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
     training = raw["training"]
     optimizer = raw["optimizer"]
+    scheduler = optimizer["scheduler"]
+    assert scheduler["name"] == "reduce_lr_on_plateau", scheduler["name"]
     return TrainingConfig(
         iterations_from=int(training["iterations_from"]),
         iterations_to=int(training["iterations_to"]),
@@ -173,10 +175,12 @@ def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
         batch_size=int(training["batch_size"]),
         rmse_threshold=float(training["rmse_threshold"]),
         samples_per_model=int(training["samples_per_model"]),
+        samples_per_case=int(training["samples_per_case"]),
         bitness_from=int(training["bitness_from"]),
         bitness_to=int(training["bitness_to"]),
-        input_dim=int(training["input_dim"]),
         lr=float(optimizer["lr"]),
+        scheduler_patience=int(scheduler["patience"]),
+        scheduler_factor=float(scheduler["factor"]),
         seed=int(training["seed"]),
         model_dir=Path(str(training["model_dir"])),
     )
@@ -186,7 +190,6 @@ def build_model_config(raw: dict[str, Any]) -> ModelConfig:
     model = raw["model"]
     return ModelConfig(
         name=str(model["name"]),
-        n_points=int(model["n_points"]),
         phi_hidden=int(model["phi_hidden"]),
         phi_out=int(model["phi_out"]),
         rho_hidden=int(model["rho_hidden"]),
@@ -219,7 +222,6 @@ def load_or_create_snapshot(config: Config) -> dict[str, Any]:
             "global_step": 0,
             "last_completed_iteration": initial_last_completed_iteration(config),
         },
-        "completed_iteration": None,
         "metrics": [],
     }
     save_bitness_snapshot(snapshot, path)
@@ -232,7 +234,8 @@ def normalize_bitness_snapshot(
     progress = snapshot["progress"]
     if "last_completed_iteration" in progress:
         last_completed_iteration = int(progress["last_completed_iteration"])
-        metrics = list(snapshot.get("metrics", []))
+        completed_iteration = snapshot.get("completed_iteration") or {}
+        metrics = list(snapshot.get("metrics") or completed_iteration.get("metrics", []))
     elif "completed" in snapshot:
         last_completed_iteration = last_complete_legacy_iteration(snapshot, config)
         metrics = legacy_iteration_metrics(snapshot, config, last_completed_iteration)
@@ -254,13 +257,6 @@ def normalize_bitness_snapshot(
         initial_last_completed_iteration(config),
     )
 
-    completed_iteration = None
-    if last_completed_iteration >= config.training.iterations_from:
-        completed_iteration = {
-            "iteration": last_completed_iteration,
-            "metrics": metrics,
-        }
-
     global_step = int(progress.get("global_step", 0))
     return {
         "config": snapshot["config"],
@@ -271,7 +267,6 @@ def normalize_bitness_snapshot(
             "global_step": global_step,
             "last_completed_iteration": last_completed_iteration,
         },
-        "completed_iteration": completed_iteration,
         "metrics": metrics,
     }
 

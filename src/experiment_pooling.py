@@ -300,7 +300,7 @@ def build_model(point_dim: int, config: dict) -> DeepSetPredictor:
     model_name = model_config.pop("name")
     model_config.pop("predict_batch_size", None)
     assert model_name == "deepset", model_name
-    return DeepSetPredictor(point_dim=point_dim, n_points=REPS, **model_config)
+    return DeepSetPredictor(point_dim=point_dim, **model_config)
 
 
 def create_validation_config() -> dict[str, dict[str, list[int]]]:
