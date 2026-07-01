@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from src.config import Config, load_bitness_config
 from src.generator_proxy import GeneratorProxy
 from src.model import DeepSetPredictor
-from src.sampler import Sampler
+from src.sampler import Sampler, sample_point_dim
 
 
 @dataclass
@@ -101,7 +101,7 @@ def get_or_create_model(
         model_config = config.model
         assert model_config.name == "deepset", model_config.name
         model = DeepSetPredictor(
-            point_dim=config.training.input_dim,
+            point_dim=sample_point_dim(bitness),
             n_points=model_config.n_points,
             phi_hidden=model_config.phi_hidden,
             phi_out=model_config.phi_out,

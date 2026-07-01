@@ -19,6 +19,7 @@ from bool_bench import (
 
 from src.config import Config
 from src.generator_proxy import GeneratorProxy
+from src.model import predict_values
 
 torch.multiprocessing.set_sharing_strategy("file_system")
 
@@ -26,6 +27,7 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 _SAMPLE_TENSOR_CACHE = {}
 _RESTRICTION_TENSOR_CACHE = {}
 _SAMPLE_TARGET_CACHE = {}
+TARGET_CASE_BATCH_SIZE = 512
 
 
 class Sampler:
@@ -38,6 +40,9 @@ class Sampler:
         self.training = config.training
         self.generator = generator
         self._inputs: dict[tuple[int, int], torch.Tensor] = {}
+        self._targets: dict[tuple[int, int], torch.Tensor] = {}
+        self._case_ids: dict[tuple[int, int], list[int]] = {}
+        self._random_case_mask: dict[tuple[int, int], list[bool]] = {}
 
     def train_loader(
             self,
@@ -46,8 +51,7 @@ class Sampler:
             previous_model: nn.Module | None,
             epoch: int,
     ) -> torch.utils.data.DataLoader:
-        inputs = self.inputs(bitness, iteration)
-        targets = self.targets(inputs, bitness, iteration, previous_model)
+        inputs, targets = self.samples(bitness, iteration, previous_model)
         generator = torch.Generator()
         generator.manual_seed(
             self.training.seed + iteration * 10_000 + bitness * 100 + epoch,
@@ -59,52 +63,177 @@ class Sampler:
             generator=generator,
         )
 
-    def inputs(
+    def samples(
             self,
-            bitness: int,
-            iteration: int,
-    ) -> torch.Tensor:
-        key = (bitness, iteration)
-        if key not in self._inputs:
-            self._inputs[key] = self._sample_inputs(bitness, iteration)
-        return self._inputs[key]
-
-    def targets(
-            self,
-            inputs: torch.Tensor,
             bitness: int,
             iteration: int,
             previous_model: nn.Module | None,
-    ) -> torch.Tensor:
-        flat_inputs = inputs.reshape(inputs.shape[0], -1)
-        mean_signal = flat_inputs.mean(dim=1)
-        variance_signal = flat_inputs.square().mean(dim=1)
-        target = bitness * mean_signal + iteration * variance_signal
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        key = (bitness, iteration)
+        if key not in self._inputs:
+            self._sample_cases(bitness, iteration, previous_model)
+        assert key in self._targets, key
+        return self._inputs[key], self._targets[key]
 
-        if previous_model is not None:
-            was_training = previous_model.training
-            previous_model.eval()
-            with torch.no_grad():
-                previous_prediction = previous_model(inputs).reshape(-1)
-            previous_model.train(was_training)
-            target = target + 0.1 * previous_prediction
-
-        return target.reshape(-1, 1)
-
-    def _sample_inputs(
+    def case_ids(
             self,
             bitness: int,
             iteration: int,
-    ) -> torch.Tensor:
-        generator = torch.Generator()
-        generator.manual_seed(self.training.seed + iteration * 10_000 + bitness)
-        return torch.randn(
-            self.training.samples_per_model,
-            self.config.model.n_points,
-            self.training.input_dim,
-            generator=generator,
-            dtype=torch.float32,
+    ) -> list[int]:
+        key = (bitness, iteration)
+        if key not in self._case_ids:
+            rng = random.Random(self.training.seed + iteration * 10_000 + bitness)
+            cases_number = self.generator.cases_number(bitness)
+            if bitness > self.generator.solvable_bitness():
+                cases_number = min(
+                    cases_number,
+                    max(
+                        self.training.samples_per_model + 1,
+                        self.training.samples_per_model * 4,
+                    ),
+                )
+            self._case_ids[key] = rng.sample(
+                range(cases_number),
+                self.training.samples_per_model,
+            )
+        return self._case_ids[key]
+
+    def random_case_mask(
+            self,
+            bitness: int,
+            iteration: int,
+            previous_model: nn.Module | None,
+    ) -> list[bool]:
+        key = (bitness, iteration)
+        if key in self._random_case_mask:
+            return self._random_case_mask[key]
+
+        case_ids = self.case_ids(bitness, iteration)
+        if previous_model is None:
+            assert bitness == self.training.bitness_from, bitness
+            mask = [False] * len(case_ids)
+        elif bitness <= self.generator.solvable_bitness():
+            mask = [False] * len(case_ids)
+        else:
+            indices = list(range(len(case_ids)))
+            rng = random.Random(
+                self.training.seed + iteration * 10_000 + bitness * 1_000,
+            )
+            rng.shuffle(indices)
+            random_indices = set(indices[len(indices) // 2 :])
+            mask = [row_id in random_indices for row_id in range(len(case_ids))]
+
+        self._random_case_mask[key] = mask
+        return mask
+
+    def _sample_cases(
+            self,
+            bitness: int,
+            iteration: int,
+            previous_model: nn.Module | None,
+    ) -> None:
+        key = (bitness, iteration)
+        case_ids = self.case_ids(bitness, iteration)
+        random_mask = self.random_case_mask(bitness, iteration, previous_model)
+        input_bits = self._input_bits(bitness, iteration, case_ids)
+
+        x = np.empty(
+            (
+                len(case_ids),
+                self.config.model.n_points,
+                sample_point_dim(bitness),
+            ),
+            dtype=np.float32,
         )
+        y = np.empty(len(case_ids), dtype=np.float32)
+
+        solvable_rows = [
+            row_id for row_id, is_random in enumerate(random_mask) if not is_random
+        ]
+        random_rows = [
+            row_id for row_id, is_random in enumerate(random_mask) if is_random
+        ]
+
+        if solvable_rows:
+            solvable_ids = [case_ids[row_id] for row_id in solvable_rows]
+            solvable_inputs = [input_bits[row_id] for row_id in solvable_rows]
+            x[solvable_rows] = self.generator.generate_value_tensors(
+                bitness,
+                solvable_ids,
+                solvable_inputs,
+            )
+            y[solvable_rows] = self.generator.generate_depths_tensors(
+                bitness,
+                solvable_ids,
+            )
+
+        if random_rows:
+            assert previous_model is not None, (bitness, iteration)
+            random_ids = [case_ids[row_id] for row_id in random_rows]
+            random_inputs = [input_bits[row_id] for row_id in random_rows]
+            x[random_rows] = self.generator.generate_value_tensors_rnd(
+                bitness,
+                random_ids,
+                random_inputs,
+            )
+            y[random_rows] = self._approximate_random_depths(
+                previous_model,
+                bitness,
+                random_ids,
+            )
+
+        self._inputs[key] = torch.from_numpy(x)
+        self._targets[key] = torch.from_numpy(y.reshape(-1, 1))
+
+    def _input_bits(
+            self,
+            bitness: int,
+            iteration: int,
+            case_ids: list[int],
+    ) -> list[list[str]]:
+        return [
+            random_input_bits(
+                bitness,
+                self.config.model.n_points,
+                random.Random(
+                    self.training.seed
+                    + iteration * 10_000
+                    + bitness * 1_000_000
+                    + case_id
+                ),
+            )
+            for case_id in case_ids
+        ]
+
+    def _approximate_random_depths(
+            self,
+            previous_model: nn.Module,
+            bitness: int,
+            case_ids: list[int],
+    ) -> np.ndarray:
+        target_parts = []
+        ranges = range(0, len(case_ids), TARGET_CASE_BATCH_SIZE)
+        total_batches = (
+            len(case_ids) + TARGET_CASE_BATCH_SIZE - 1
+        ) // TARGET_CASE_BATCH_SIZE
+        for start in tqdm(ranges, total=total_batches, desc=f"targets_rnd b={bitness}"):
+            batch_ids = case_ids[start : start + TARGET_CASE_BATCH_SIZE]
+            x_restricted = self.generator.generate_restriction_tensors_rnd(
+                bitness,
+                batch_ids,
+                self.config.model.n_points,
+            )
+            predictions = predict_values(
+                previous_model,
+                x_restricted,
+                self.training.batch_size,
+            )
+            predictions = predictions.reshape(len(batch_ids), bitness, 2)
+            predictions = np.clip(predictions, 0.0, float(bitness - 1))
+            split_depths = 1.0 + predictions.max(axis=2)
+            target_parts.append(split_depths.min(axis=1))
+
+        return np.concatenate(target_parts).astype(np.float32)
 
 
 class DepthSampler:

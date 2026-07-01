@@ -47,12 +47,20 @@ def _worker(task):
         assert _route(bitness, case_id, processes) == worker_id
         if op == "values":
             samples = _WORKER_GENERATOR.case_values(bitness, case_id, payload)
+        elif op == "values_rnd":
+            samples = _WORKER_GENERATOR.case_values_rnd(bitness, case_id, payload)
         elif op == "depths":
             samples = np.float32(_WORKER_GENERATOR.case_depth(bitness, case_id))
         elif op == "nodes":
             samples = np.float32(_WORKER_GENERATOR.case_nodes(bitness, case_id))
-        elif op == "restrictions":
-            samples = _sample_restrictions(_WORKER_GENERATOR, bitness, case_id, payload)
+        elif op == "restrictions" or op == "restrictions_rnd":
+            samples = _sample_restrictions(
+                _WORKER_GENERATOR,
+                bitness,
+                case_id,
+                payload,
+                op == "restrictions_rnd",
+            )
         else:
             assert False, op
         results.append((row_id, samples))
@@ -64,11 +72,15 @@ def _sample_restrictions(
         bitness: int,
         case_id: int,
         reps: int,
+        random_values: bool,
 ) -> np.ndarray:
     point_dim = restriction_point_dim(bitness)
     samples = np.empty((bitness * 2, reps, point_dim), dtype=np.float32)
     for rep in range(reps):
-        samples[:, rep, :] = generator.case_restrictions(bitness, case_id, rep)
+        if random_values:
+            samples[:, rep, :] = generator.case_restrictions_rnd(bitness, case_id, rep)
+        else:
+            samples[:, rep, :] = generator.case_restrictions(bitness, case_id, rep)
     return samples
 
 
@@ -98,6 +110,9 @@ class GeneratorProxy:
 
     def cases_number(self, bitness: int) -> int:
         return self._generator.cases_number(bitness)
+
+    def solvable_bitness(self) -> int:
+        return self._generator.solvable_bitness()
 
     def case_nodes(self, bitness: int, case_id: int) -> int:
         return self._generator.case_nodes(bitness, case_id)
@@ -134,6 +149,31 @@ class GeneratorProxy:
             results,
             total=len(case_ids),
             desc=f"values b={bitness}",
+        ):
+            x[row_id] = samples
+        return x
+
+    def generate_value_tensors_rnd(
+            self,
+            bitness: int,
+            case_ids: list[int],
+            input_bits: Sequence[Sequence[str]],
+    ) -> np.ndarray:
+        case_ids = list(case_ids)
+        assert len(case_ids) == len(input_bits)
+        assert input_bits, "empty input"
+        reps = len(input_bits[0])
+        assert all(len(case_input_bits) == reps for case_input_bits in input_bits)
+
+        x = np.empty(
+            (len(case_ids), reps, sample_point_dim(bitness)),
+            dtype=np.float32,
+        )
+        results = self._dispatch("values_rnd", bitness, case_ids, input_bits)
+        for row_id, samples in tqdm(
+            results,
+            total=len(case_ids),
+            desc=f"values_rnd b={bitness}",
         ):
             x[row_id] = samples
         return x
@@ -193,6 +233,29 @@ class GeneratorProxy:
             x[start : start + restrictions_per_case] = samples
         return x
 
+    def generate_restriction_tensors_rnd(
+            self,
+            bitness: int,
+            case_ids: list[int],
+            reps: int,
+    ) -> np.ndarray:
+        case_ids = list(case_ids)
+        point_dim = restriction_point_dim(bitness)
+        restrictions_per_case = bitness * 2
+        x = np.empty(
+            (len(case_ids) * restrictions_per_case, reps, point_dim),
+            dtype=np.float32,
+        )
+        results = self._dispatch("restrictions_rnd", bitness, case_ids, [reps] * len(case_ids))
+        for row_id, samples in tqdm(
+            results,
+            total=len(case_ids),
+            desc=f"restrictions_rnd b={bitness}",
+        ):
+            start = row_id * restrictions_per_case
+            x[start : start + restrictions_per_case] = samples
+        return x
+
     def _dispatch(
             self,
             op: str,
@@ -204,7 +267,6 @@ class GeneratorProxy:
         buckets = [[] for _ in range(self.processes)]
         for row_id, (case_id, payload) in enumerate(zip(case_ids, payloads)):
             worker_id = _route(bitness, case_id, self.processes)
-            print(f"dispatching b={bitness} case={case_id} to worker {worker_id}")
             buckets[worker_id].append((row_id, case_id, payload))
 
         pending = []
