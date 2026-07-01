@@ -24,6 +24,15 @@ from bool_bench import (  # noqa: E402
 _WORKER_GENERATOR: Generator | None = None
 
 
+def _route(bitness: int, case_id: int, processes: int) -> int:
+    """Map a ``(bitness, case_id)`` pair to a fixed worker.
+
+    Routing is deterministic so each pair is only ever processed by a single
+    worker, keeping its libbb.so cache free of cross-process duplication.
+    """
+    return (bitness * 1_000_003 + case_id) % processes
+
+
 def _init_worker() -> None:
     global _WORKER_GENERATOR
     _WORKER_GENERATOR = load_generator()
@@ -35,7 +44,7 @@ def _worker(task):
     assert _WORKER_GENERATOR is not None
     results = []
     for row_id, case_id, payload in indexed_payloads:
-        assert case_id % processes == worker_id
+        assert _route(bitness, case_id, processes) == worker_id
         if op == "values":
             samples = _WORKER_GENERATOR.case_values(bitness, case_id, payload)
         elif op == "depths":
@@ -194,7 +203,9 @@ class GeneratorProxy:
         assert len(case_ids) == len(payloads)
         buckets = [[] for _ in range(self.processes)]
         for row_id, (case_id, payload) in enumerate(zip(case_ids, payloads)):
-            buckets[case_id % self.processes].append((row_id, case_id, payload))
+            worker_id = _route(bitness, case_id, self.processes)
+            print(f"dispatching b={bitness} case={case_id} to worker {worker_id}")
+            buckets[worker_id].append((row_id, case_id, payload))
 
         pending = []
         for worker_id, indexed_payloads in enumerate(buckets):

@@ -8,9 +8,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.config import Config, load_bitness_config
-from src.dataloader import Sampler
 from src.generator_proxy import GeneratorProxy
 from src.model import DeepSetPredictor
+from src.sampler import Sampler
 
 
 @dataclass
