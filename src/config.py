@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import urllib.request
 from dataclasses import dataclass, field
 from json import dump, load
 from os import replace
@@ -130,6 +132,7 @@ class Config:
         snapshot.pop("pending_iteration", None)
         save_bitness_snapshot(snapshot, snapshot_path(self))
         prune_bitness_weights(self, iteration)
+        notify_iteration_trained(iteration, metrics)
 
     def weights_path(self, bitness: int) -> Path:
         return self.training.model_dir / f"bitness_b{bitness:02d}.pt"
@@ -316,6 +319,29 @@ def save_bitness_snapshot(snapshot: dict[str, Any], path: Path) -> None:
         f.write("\n")
         tmp_path = f.name
     replace(tmp_path, path)
+
+
+def notify_iteration_trained(iteration: int, metrics: list[dict[str, Any]]) -> None:
+    lines = [f"bitness iteration={iteration:03d} trained"]
+    for metric in sorted(metrics, key=lambda item: int(item["bitness"])):
+        lines.append(
+            f"bitness={int(metric['bitness']):02d} "
+            f"last epoch={int(metric['epoch']):03d} "
+            f"rmse={float(metric['rmse']):.6f}"
+        )
+
+    url = f"http://{os.environ['GC_VM_IP']}:{os.environ['HEREYOUGOBOT_PORT']}/notify"
+    request = urllib.request.Request(
+        url,
+        data="\n".join(lines).encode("utf-8"),
+        headers={"Content-Type": "text/plain"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=10) as response:
+            response.read()
+    except OSError as error:
+        print(f"telegram notification failed: {error}")
 
 
 def initial_last_completed_iteration(config: Config) -> int:
