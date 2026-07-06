@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import atexit
 import multiprocessing as mp
 from collections.abc import Iterator, Sequence
 from pathlib import Path
@@ -22,6 +23,8 @@ from bool_bench import (  # noqa: E402
 
 
 _WORKER_GENERATOR: Generator | None = None
+_FLEET = None
+_FLEET_KEY = None
 
 
 def _route(bitness: int, case_id: int, processes: int) -> int:
@@ -33,10 +36,45 @@ def _route(bitness: int, case_id: int, processes: int) -> int:
     return (bitness * 1_000_003 + case_id) % processes
 
 
-def _init_worker() -> None:
+def _init_worker(library_path: str) -> None:
     global _WORKER_GENERATOR
-    _WORKER_GENERATOR = load_generator()
+    _WORKER_GENERATOR = Generator(Path(library_path))
     _ = _WORKER_GENERATOR.library
+
+
+def _get_fleet(generator: Generator, processes: int) -> list:
+    # A persistent fleet of single-worker pools, one per route bucket. A given
+    # (bitness, case_id) pair always runs on the same worker, keeping libbb.so
+    # and its C++ tree caches warm for the whole run.
+    global _FLEET, _FLEET_KEY
+    key = (generator.library_path, processes)
+    if _FLEET_KEY != key:
+        close_fleet()
+        context = mp.get_context("fork")
+        _FLEET = [
+            context.Pool(
+                processes=1,
+                initializer=_init_worker,
+                initargs=(generator.library_path,),
+            )
+            for _ in range(processes)
+        ]
+        _FLEET_KEY = key
+    return _FLEET
+
+
+def close_fleet() -> None:
+    global _FLEET, _FLEET_KEY
+    if _FLEET is not None:
+        for pool in _FLEET:
+            pool.close()
+        for pool in _FLEET:
+            pool.join()
+    _FLEET = None
+    _FLEET_KEY = None
+
+
+atexit.register(close_fleet)
 
 
 def _worker(task):
@@ -45,14 +83,18 @@ def _worker(task):
     results = []
     for row_id, case_id, payload in indexed_payloads:
         assert _route(bitness, case_id, processes) == worker_id
-        if op == "values":
-            samples = _WORKER_GENERATOR.case_values(bitness, case_id, payload)
-        elif op == "values_rnd":
-            samples = _WORKER_GENERATOR.case_values_rnd(bitness, case_id, payload)
-        elif op == "depths":
-            samples = np.float32(_WORKER_GENERATOR.case_depth(bitness, case_id))
-        elif op == "nodes":
-            samples = np.float32(_WORKER_GENERATOR.case_nodes(bitness, case_id))
+        if op == "tree_values":
+            samples = _WORKER_GENERATOR.tree_values(bitness, case_id, payload)
+        elif op == "table_values":
+            samples = _WORKER_GENERATOR.table_values(bitness, case_id, payload)
+        elif op == "tree_depths":
+            samples = np.float32(_WORKER_GENERATOR.tree_depth(bitness, case_id))
+        elif op == "table_depths":
+            samples = np.float32(_WORKER_GENERATOR.table_depth(bitness, case_id))
+        elif op == "tree_nodes":
+            samples = np.float32(_WORKER_GENERATOR.tree_nodes(bitness, case_id))
+        elif op == "table_nodes":
+            samples = np.float32(_WORKER_GENERATOR.table_nodes(bitness, case_id))
         elif op == "restrictions" or op == "restrictions_rnd":
             samples = _sample_restrictions(
                 _WORKER_GENERATOR,
@@ -78,9 +120,11 @@ def _sample_restrictions(
     samples = np.empty((bitness * 2, reps, point_dim), dtype=np.float32)
     for rep in range(reps):
         if random_values:
-            samples[:, rep, :] = generator.case_restrictions_rnd(bitness, case_id, rep)
+            samples[:, rep, :] = generator.table_restrictions(bitness, case_id, rep)
+        elif bitness <= generator.table_solvable_bitness():
+            samples[:, rep, :] = generator.table_restrictions(bitness, case_id, rep)
         else:
-            samples[:, rep, :] = generator.case_restrictions(bitness, case_id, rep)
+            samples[:, rep, :] = generator.tree_restrictions(bitness, case_id, rep)
     return samples
 
 
@@ -89,18 +133,15 @@ class GeneratorProxy:
         assert processes > 0, processes
         self.processes = processes
         self._generator = load_generator()
-        self._context = mp.get_context("fork")
-        self._pools = [
-            self._context.Pool(processes=1, initializer=_init_worker)
-            for _ in range(processes)
-        ]
+        self._pools = _get_fleet(self._generator, processes)
+        self._closed = False
 
     def close(self) -> None:
-        for pool in self._pools:
-            pool.terminate()
-        for pool in self._pools:
-            pool.join()
+        if self._closed:
+            return
+        close_fleet()
         self._pools = []
+        self._closed = True
 
     def __enter__(self) -> GeneratorProxy:
         return self
@@ -108,28 +149,49 @@ class GeneratorProxy:
     def __exit__(self, exc_type, exc, tb) -> None:
         self.close()
 
-    def cases_number(self, bitness: int) -> int:
-        return self._generator.cases_number(bitness)
+    def tree_cases_number(self, bitness: int) -> int:
+        return self._generator.tree_cases_number(bitness)
+
+    def table_cases_number(self, bitness: int) -> int:
+        return self._generator.table_cases_number(bitness)
 
     def solvable_bitness(self) -> int:
-        return self._generator.solvable_bitness()
+        return self._generator.table_solvable_bitness()
 
-    def case_nodes(self, bitness: int, case_id: int) -> int:
-        return self._generator.case_nodes(bitness, case_id)
+    def tree_nodes(self, bitness: int, case_id: int) -> int:
+        return self._generator.tree_nodes(bitness, case_id)
 
-    def case_depth(self, bitness: int, case_id: int) -> int:
-        return self._generator.case_depth(bitness, case_id)
+    def tree_depth(self, bitness: int, case_id: int) -> int:
+        return self._generator.tree_depth(bitness, case_id)
 
-    def case_values(
+    def tree_values(
             self,
             bitness: int,
             case_id: int,
             input_bits: Sequence[str],
     ) -> np.ndarray:
-        return self._generator.case_values(bitness, case_id, input_bits)
+        return self._generator.tree_values(bitness, case_id, input_bits)
 
-    def generate_value_tensors(
+    def tree_value_tensors(
             self,
+            bitness: int,
+            case_ids: list[int],
+            input_bits: Sequence[Sequence[str]],
+    ) -> np.ndarray:
+        return self._value_tensors("tree_values", bitness, case_ids, input_bits)
+
+    def table_value_tensors(
+            self,
+            bitness: int,
+            case_ids: list[int],
+            input_bits: Sequence[Sequence[str]],
+    ) -> np.ndarray:
+        return self._value_tensors("table_values", bitness, case_ids, input_bits)
+
+    # Result shape: cases x reps x (2 * bitness + 1).
+    def _value_tensors(
+            self,
+            op: str,
             bitness: int,
             case_ids: list[int],
             input_bits: Sequence[Sequence[str]],
@@ -144,36 +206,11 @@ class GeneratorProxy:
             (len(case_ids), reps, sample_point_dim(bitness)),
             dtype=np.float32,
         )
-        results = self._dispatch("values", bitness, case_ids, input_bits)
+        results = self._dispatch(op, bitness, case_ids, input_bits)
         for row_id, samples in tqdm(
             results,
             total=len(case_ids),
-            desc=f"values b={bitness}",
-        ):
-            x[row_id] = samples
-        return x
-
-    def generate_value_tensors_rnd(
-            self,
-            bitness: int,
-            case_ids: list[int],
-            input_bits: Sequence[Sequence[str]],
-    ) -> np.ndarray:
-        case_ids = list(case_ids)
-        assert len(case_ids) == len(input_bits)
-        assert input_bits, "empty input"
-        reps = len(input_bits[0])
-        assert all(len(case_input_bits) == reps for case_input_bits in input_bits)
-
-        x = np.empty(
-            (len(case_ids), reps, sample_point_dim(bitness)),
-            dtype=np.float32,
-        )
-        results = self._dispatch("values_rnd", bitness, case_ids, input_bits)
-        for row_id, samples in tqdm(
-            results,
-            total=len(case_ids),
-            desc=f"values_rnd b={bitness}",
+            desc=f"{op} b={bitness}",
         ):
             x[row_id] = samples
         return x
@@ -185,11 +222,12 @@ class GeneratorProxy:
     ) -> np.ndarray:
         case_ids = list(case_ids)
         y = np.empty(len(case_ids), dtype=np.float32)
-        results = self._dispatch("depths", bitness, case_ids, [None] * len(case_ids))
+        op = "table_depths" if bitness <= self.solvable_bitness() else "tree_depths"
+        results = self._dispatch(op, bitness, case_ids, [None] * len(case_ids))
         for row_id, depth in tqdm(
             results,
             total=len(case_ids),
-            desc=f"depths b={bitness}",
+            desc=f"{op} b={bitness}",
         ):
             y[row_id] = depth
         return y
@@ -201,11 +239,12 @@ class GeneratorProxy:
     ) -> np.ndarray:
         case_ids = list(case_ids)
         y = np.empty(len(case_ids), dtype=np.float32)
-        results = self._dispatch("nodes", bitness, case_ids, [None] * len(case_ids))
+        op = "table_nodes" if bitness <= self.solvable_bitness() else "tree_nodes"
+        results = self._dispatch(op, bitness, case_ids, [None] * len(case_ids))
         for row_id, nodes in tqdm(
             results,
             total=len(case_ids),
-            desc=f"nodes b={bitness}",
+            desc=f"{op} b={bitness}",
         ):
             y[row_id] = nodes
         return y
@@ -263,6 +302,7 @@ class GeneratorProxy:
             case_ids: list[int],
             payloads: Sequence,
     ) -> Iterator[tuple[int, np.ndarray]]:
+        assert not self._closed
         assert len(case_ids) == len(payloads)
         buckets = [[] for _ in range(self.processes)]
         for row_id, (case_id, payload) in enumerate(zip(case_ids, payloads)):

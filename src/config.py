@@ -32,8 +32,9 @@ class TrainingConfig:
     epochs: int
     batch_size: int
     rmse_threshold: float
-    samples_per_model: int
-    samples_per_case: int
+    train_samples: int
+    validation_samples: int
+    points_per_sample: int
     bitness_from: int
     bitness_to: int
     lr: float
@@ -174,8 +175,9 @@ def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
         epochs=int(training["epochs"]),
         batch_size=int(training["batch_size"]),
         rmse_threshold=float(training["rmse_threshold"]),
-        samples_per_model=int(training["samples_per_model"]),
-        samples_per_case=int(training["samples_per_case"]),
+        train_samples=int(training["train_samples"]),
+        validation_samples=int(training["validation_samples"]),
+        points_per_sample=int(training["points_per_sample"]),
         bitness_from=int(training["bitness_from"]),
         bitness_to=int(training["bitness_to"]),
         lr=float(optimizer["lr"]),
@@ -236,9 +238,6 @@ def normalize_bitness_snapshot(
         last_completed_iteration = int(progress["last_completed_iteration"])
         completed_iteration = snapshot.get("completed_iteration") or {}
         metrics = list(snapshot.get("metrics") or completed_iteration.get("metrics", []))
-    elif "completed" in snapshot:
-        last_completed_iteration = last_complete_legacy_iteration(snapshot, config)
-        metrics = legacy_iteration_metrics(snapshot, config, last_completed_iteration)
     else:
         completed_iteration = snapshot.get("completed_iteration")
         if completed_iteration is None:
@@ -269,35 +268,6 @@ def normalize_bitness_snapshot(
         },
         "metrics": metrics,
     }
-
-
-def last_complete_legacy_iteration(
-        snapshot: dict[str, Any], config: Config
-) -> int:
-    completed = snapshot["completed"]
-    last_completed_iteration = initial_last_completed_iteration(config)
-    for iteration in range(
-        config.training.iterations_from, config.training.iterations_to + 1
-    ):
-        if not all(
-            model_key(bitness, iteration) in completed
-            for bitness in config.bitness_range()
-        ):
-            break
-        last_completed_iteration = iteration
-    return last_completed_iteration
-
-
-def legacy_iteration_metrics(
-        snapshot: dict[str, Any], config: Config, iteration: int
-) -> list[dict[str, Any]]:
-    if iteration < config.training.iterations_from:
-        return []
-    completed = snapshot["completed"]
-    return [
-        completed[model_key(bitness, iteration)]
-        for bitness in config.bitness_range()
-    ]
 
 
 def save_bitness_snapshot(snapshot: dict[str, Any], path: Path) -> None:
