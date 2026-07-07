@@ -294,7 +294,8 @@ def notify_iteration_trained(iteration: int, metrics: list[dict[str, Any]]) -> N
         lines.append(
             f"bitness={int(metric['bitness']):02d} "
             f"last epoch={int(metric['epoch']):03d} "
-            f"rmse={float(metric['rmse']):.6f}"
+            f"train_rmse={float(metric['train_rmse']):.6f} "
+            f"val_rmse={float(metric['val_rmse']):.6f}"
         )
 
     url = f"http://{os.environ['GC_VM_IP']}:{os.environ['HEREYOUGOBOT_PORT']}/notify"

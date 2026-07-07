@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import random
 import sys
+from collections.abc import Callable
 
 import numpy as np
 import torch
@@ -27,36 +28,34 @@ torch.multiprocessing.set_sharing_strategy("file_system")
 _SAMPLE_TENSOR_CACHE = {}
 _RESTRICTION_TENSOR_CACHE = {}
 _SAMPLE_TARGET_CACHE = {}
-TARGET_CASE_BATCH_SIZE = 512
 
 
 class Sampler:
-    def __init__(
-            self,
-            config: Config,
-            generator: GeneratorProxy,
-    ):
+    def __init__(self, config: Config, generator: GeneratorProxy):
         self.config = config
         self.training = config.training
         self.generator = generator
 
+        self._val_tree_ids: dict[int, list[int]] = {}
+        self._val_table_ids: dict[int, list[int]] = {}
         self._val_x: dict[int, torch.Tensor] = {}
         self._val_y: dict[int, torch.Tensor] = {}
 
+        self._train_tree_ids: dict[int, list[int]] = {}
+        self._train_table_solvable_ids: dict[int, list[int]] = {}
+        self._train_table_recursive_ids: dict[int, list[int]] = {}
         self._train_x: dict[int, torch.Tensor] = {}
         self._train_y: dict[int, torch.Tensor] = {}
 
 
-    def val_loader(
-            self,
-            bitness: int
-    ) -> torch.utils.data.DataLoader:
+    def val_loader(self, bitness: int) -> torch.utils.data.DataLoader:
         self._ensure_val(bitness)
         return torch.utils.data.DataLoader(
             torch.utils.data.TensorDataset(self._val_x[bitness], self._val_y[bitness]),
             batch_size=self.training.batch_size,
             shuffle=False
         )
+
 
     def reset_train(
             self,
@@ -66,7 +65,7 @@ class Sampler:
     ) -> None:
         self._train_x.pop(bitness, None)
         self._train_y.pop(bitness, None)
-        self._ensure_train(bitness, iteration, previous_model)
+        self._set_train(bitness, iteration, previous_model)
 
 
     def train_loader(
@@ -75,10 +74,9 @@ class Sampler:
             iteration: int,
             epoch: int,
     ) -> torch.utils.data.DataLoader:
+        seed = self.training.seed + bitness * 10_000 + iteration * 100 + epoch
         generator = torch.Generator()
-        generator.manual_seed(
-            self.training.seed + bitness * 10_000 + iteration * 100 + epoch * 10,
-        )
+        generator.manual_seed(seed)
         return torch.utils.data.DataLoader(
             torch.utils.data.TensorDataset(self._train_x[bitness], self._train_y[bitness]),
             batch_size=self.training.batch_size,
@@ -92,34 +90,199 @@ class Sampler:
             return
 
         rng = random.Random(self.training.seed + bitness * 10_000)
+        loaders = self._ensure_val_ids(bitness, rng)
+
+        x_parts = []
+        y_parts = []
+        for ids, value_tensors, depth_tensors in loaders:
+            inputs = self._input_bits(bitness, ids, rng)
+            x_parts.append(
+                torch.as_tensor(
+                    value_tensors(bitness, ids, inputs),
+                    dtype=torch.float32,
+                )
+            )
+            y_parts.append(
+                torch.as_tensor(
+                    [bitness - depth for depth in depth_tensors(bitness, ids)],
+                    dtype=torch.float32,
+                )
+            )
+
+        assert x_parts, bitness
+        self._val_x[bitness] = torch.cat(x_parts)
+        self._val_y[bitness] = torch.cat(y_parts).reshape(-1, 1)
+
+
+    def _ensure_val_ids(self, bitness: int, rng: random.Random) -> list[
+        tuple[
+            list[int],
+            Callable[[int, list[int], list[list[str]]], np.ndarray],
+            Callable[[int, list[int]], np.ndarray],
+        ]
+    ]:
+        self._val_tree_ids[bitness] = []
+        self._val_table_ids[bitness] = []
+
         needed = self.training.validation_samples
 
-        is_tree = bitness > self.generator.solvable_bitness()
+        min_tree_bitness = self.generator.min_tree_bitness()
+        table_solvable_bitness = self.generator.solvable_bitness()
+        assert min_tree_bitness <= table_solvable_bitness, (
+            min_tree_bitness,
+            table_solvable_bitness,
+        )
 
-        if is_tree:
-            provided = self.generator.tree_cases_number(bitness)
-            assert provided >= needed, f"Not enough tree cases for validation, bitness={bitness}"
+        if bitness < min_tree_bitness:
+            table_needed = needed
+            tree_needed = 0
+        elif bitness <= table_solvable_bitness:
+            assert needed % 2 == 0, needed
+            table_needed = needed // 2
+            tree_needed = needed // 2
         else:
+            table_needed = 0
+            tree_needed = needed
+
+        loaders = []
+        if table_needed > 0:
             provided = self.generator.table_cases_number(bitness)
-            assert provided >= needed, f"Not enough table cases for validation, bitness={bitness}"
+            assert provided >= table_needed, (bitness, provided, table_needed)
+            self._val_table_ids[bitness] = rng.sample(range(provided), table_needed)
+            loaders.append(
+                (
+                    self._val_table_ids[bitness],
+                    self.generator.table_value_tensors,
+                    self.generator.table_depth_tensors,
+                )
+            )
+        if tree_needed > 0:
+            provided = self.generator.tree_cases_number(bitness)
+            assert provided >= tree_needed, (bitness, provided, tree_needed)
+            self._val_tree_ids[bitness] = rng.sample(range(provided), tree_needed)
+            loaders.append(
+                (
+                    self._val_tree_ids[bitness],
+                    self.generator.tree_value_tensors,
+                    self.generator.tree_depth_tensors,
+                )
+            )
+        return loaders
 
-        ids = rng.sample(range(provided), needed)
-        dummy = 1_000_000
-        inputs = self._input_bits(bitness, dummy, ids)
 
-        if is_tree:
-            value_func = self.generator.tree_value_tensors
-            depth_func = self.generator.tree_depth_tensors
+    def _set_train(self, bitness: int, iteration: int, previous_model: nn.Module | None) -> None:
+        seed = self.training.seed + bitness * 10_000 + iteration * 100
+        rng = random.Random(seed)
+        self._set_train_ids(bitness, rng)
+
+        x_parts = []
+        y_parts = []
+
+        table_solvable_ids = self._train_table_solvable_ids[bitness]
+        if table_solvable_ids:
+            inputs = self._input_bits(bitness, table_solvable_ids, rng)
+            x_parts.append(
+                torch.as_tensor(
+                    self.generator.table_value_tensors(
+                        bitness,
+                        table_solvable_ids,
+                        inputs,
+                    ),
+                    dtype=torch.float32,
+                )
+            )
+            depths = self.generator.table_depth_tensors(bitness, table_solvable_ids)
+            y_parts.append(torch.as_tensor(bitness - depths, dtype=torch.float32))
+
+        table_recursive_ids = self._train_table_recursive_ids[bitness]
+        if table_recursive_ids:
+            assert previous_model is not None, bitness
+            inputs = self._input_bits(bitness, table_recursive_ids, rng)
+            x_parts.append(
+                torch.as_tensor(
+                    self.generator.table_value_tensors(
+                        bitness,
+                        table_recursive_ids,
+                        inputs,
+                    ),
+                    dtype=torch.float32,
+                )
+            )
+            y_parts.append(
+                torch.as_tensor(
+                    self._approximate_recursive_targets(
+                        previous_model,
+                        bitness,
+                        table_recursive_ids,
+                    ),
+                    dtype=torch.float32,
+                )
+            )
+
+        tree_ids = self._train_tree_ids[bitness]
+        if tree_ids:
+            inputs = self._input_bits(bitness, tree_ids, rng)
+            x_parts.append(
+                torch.as_tensor(
+                    self.generator.tree_value_tensors(
+                        bitness,
+                        tree_ids,
+                        inputs,
+                    ),
+                    dtype=torch.float32,
+                )
+            )
+            depths = self.generator.tree_depth_tensors(bitness, tree_ids)
+            y_parts.append(torch.as_tensor(bitness - depths, dtype=torch.float32))
+
+        assert x_parts, bitness
+        self._train_x[bitness] = torch.cat(x_parts)
+        self._train_y[bitness] = torch.cat(y_parts).reshape(-1, 1)
+
+
+    def _set_train_ids(self, bitness: int, rng: random.Random) -> None:
+        self._train_tree_ids[bitness] = []
+        self._train_table_solvable_ids[bitness] = []
+        self._train_table_recursive_ids[bitness] = []
+
+        needed = self.training.train_samples
+
+        min_tree_bitness = self.generator.min_tree_bitness()
+        table_solvable_bitness = self.generator.solvable_bitness()
+        assert min_tree_bitness <= table_solvable_bitness, (
+            min_tree_bitness,
+            table_solvable_bitness,
+        )
+
+        if bitness < min_tree_bitness:
+            table_solvable = needed
+            table_recursive = 0
+            tree = 0
+        elif bitness <= table_solvable_bitness:
+            assert needed % 2 == 0, needed
+            table_solvable = needed // 2
+            table_recursive = 0
+            tree = needed // 2
         else:
-            value_func = self.generator.table_value_tensors
-            depth_func = self.generator.table_depth_tensors
+            assert needed % 2 == 0, needed
+            table_solvable = 0
+            table_recursive = needed // 2
+            tree = needed // 2
 
-        self._val_x[bitness] = value_func(bitness, ids, inputs)
-        self._val_y[bitness] = [bitness - depth for depth in depth_func(bitness, ids)]
+        if table_solvable > 0:
+            provided = self.generator.table_cases_number(bitness)
+            assert provided >= table_solvable, (bitness, provided, table_solvable)
+            self._train_table_solvable_ids[bitness] = rng.sample(range(provided), table_solvable)
 
+        if table_recursive > 0:
+            provided = self.generator.table_cases_number(bitness)
+            assert provided >= table_recursive, (bitness, provided, table_recursive)
+            self._train_table_recursive_ids[bitness] = rng.sample(range(provided), table_recursive)
 
-    def _ensure_train(self, bitness: int, iteration: int) -> None:
-        pass
+        if tree > 0:
+            provided = self.generator.tree_cases_number(bitness)
+            assert provided >= tree, (bitness, provided, tree)
+            self._train_tree_ids[bitness] = rng.sample(range(provided), tree)
 
     def _case_ids(
             self,
@@ -143,6 +306,7 @@ class Sampler:
                 self.training.samples_per_model,
             )
         return self._case_id_cache[key]
+
 
     def _split_case_ids(
             self,
@@ -177,52 +341,42 @@ class Sampler:
         ]
         return tree_cases, random_cases
 
+
     def _input_bits(
             self,
             bitness: int,
-            iteration: int,
             case_ids: list[int],
+            rng: random.Random,
     ) -> list[list[str]]:
         assert self.training.points_per_sample % 2 == 0, self.training.points_per_sample
-        return [
-            self._mixed_input_bits(bitness, iteration, case_id)
-            for case_id in case_ids
-        ]
-
-    def _mixed_input_bits(
-            self,
-            bitness: int,
-            iteration: int,
-            case_id: int,
-    ) -> list[str]:
         half = self.training.points_per_sample // 2
-        rng = random.Random(
-            self.training.seed
-            + iteration * 10_000
-            + bitness * 1_000_000
-            + case_id
-        )
-        block = block_inversion_input_bits(bitness, half, rng)
-        random_bits = random_input_bits(bitness, half, rng)
-        return block + random_bits
+        result = []
+        for _ in case_ids:
+            block = block_inversion_input_bits(bitness, half, rng)
+            random_bits = random_input_bits(bitness, half, rng)
+            result.append(block + random_bits)
+        return result
 
-    def _approximate_random_depths(
+
+    def _approximate_recursive_targets(
             self,
             previous_model: nn.Module,
             bitness: int,
             case_ids: list[int],
     ) -> np.ndarray:
         target_parts = []
-        ranges = range(0, len(case_ids), TARGET_CASE_BATCH_SIZE)
-        total_batches = (
-            len(case_ids) + TARGET_CASE_BATCH_SIZE - 1
-        ) // TARGET_CASE_BATCH_SIZE
-        for start in tqdm(ranges, total=total_batches, desc=f"targets_rnd b={bitness}"):
-            batch_ids = case_ids[start : start + TARGET_CASE_BATCH_SIZE]
-            x_restricted = self.generator.generate_restriction_tensors_rnd(
+        batch_size = self.training.batch_size
+        ranges = range(0, len(case_ids), batch_size)
+        assert len(case_ids) % batch_size == 0, (len(case_ids), batch_size)
+        total_batches = len(case_ids) // batch_size
+
+        for start in tqdm(ranges, total=total_batches, desc=f"targets_apr b={bitness}"):
+            batch_ids = case_ids[start : start + batch_size]
+            x_restricted = self.generator.restrictions_tensors(
+                "table",
                 bitness,
                 batch_ids,
-                self.training.samples_per_case,
+                self.training.points_per_sample,
             )
             predictions = predict_values(
                 previous_model,
@@ -231,8 +385,8 @@ class Sampler:
             )
             predictions = predictions.reshape(len(batch_ids), bitness, 2)
             predictions = np.clip(predictions, 0.0, float(bitness - 1))
-            split_depths = 1.0 + predictions.max(axis=2)
-            target_parts.append(split_depths.min(axis=1))
+            split_targets = predictions.min(axis=2)
+            target_parts.append(split_targets.max(axis=1))
 
         return np.concatenate(target_parts).astype(np.float32)
 
@@ -448,7 +602,7 @@ def generate_restriction_tensors(
     if cache_key in _RESTRICTION_TENSOR_CACHE:
         return _RESTRICTION_TENSOR_CACHE[cache_key]
 
-    x = generator.generate_restriction_tensors(bitness, case_ids, reps)
+    x = generator.restrictions_tensors("table", bitness, case_ids, reps)
     # _RESTRICTION_TENSOR_CACHE[cache_key] = x
     return x
 

@@ -95,13 +95,13 @@ def _worker(task):
             samples = np.float32(_WORKER_GENERATOR.tree_nodes(bitness, case_id))
         elif op == "table_nodes":
             samples = np.float32(_WORKER_GENERATOR.table_nodes(bitness, case_id))
-        elif op == "restrictions" or op == "restrictions_rnd":
+        elif op == "tree" or op == "table":
             samples = _sample_restrictions(
                 _WORKER_GENERATOR,
                 bitness,
                 case_id,
                 payload,
-                op == "restrictions_rnd",
+                op == "table",
             )
         else:
             assert False, op
@@ -114,17 +114,15 @@ def _sample_restrictions(
         bitness: int,
         case_id: int,
         reps: int,
-        random_values: bool,
+        is_table: bool,
 ) -> np.ndarray:
     point_dim = restriction_point_dim(bitness)
     samples = np.empty((bitness * 2, reps, point_dim), dtype=np.float32)
     for rep in range(reps):
-        if random_values:
-            samples[:, rep, :] = generator.table_restrictions(bitness, case_id, rep)
-        elif bitness <= generator.table_solvable_bitness():
-            samples[:, rep, :] = generator.table_restrictions(bitness, case_id, rep)
+        if is_table:
+            samples[:, rep, :] = generator.table_restrictions(bitness, case_id)
         else:
-            samples[:, rep, :] = generator.tree_restrictions(bitness, case_id, rep)
+            samples[:, rep, :] = generator.tree_restrictions(bitness, case_id)
     return samples
 
 
@@ -157,6 +155,9 @@ class GeneratorProxy:
 
     def solvable_bitness(self) -> int:
         return self._generator.table_solvable_bitness()
+
+    def min_tree_bitness(self) -> int:
+        return self._generator.min_tree_bitness()
 
     def tree_nodes(self, bitness: int, case_id: int) -> int:
         return self._generator.tree_nodes(bitness, case_id)
@@ -247,47 +248,25 @@ class GeneratorProxy:
             y[row_id] = depth
         return y
 
-    def generate_restriction_tensors(
+    def restrictions_tensors(
             self,
+            type: str, # "tree" or "table"
             bitness: int,
             case_ids: list[int],
             reps: int,
     ) -> np.ndarray:
-        case_ids = list(case_ids)
+        assert type in ("tree", "table"), type
         point_dim = restriction_point_dim(bitness)
         restrictions_per_case = bitness * 2
         x = np.empty(
             (len(case_ids) * restrictions_per_case, reps, point_dim),
             dtype=np.float32,
         )
-        results = self._dispatch("restrictions", bitness, case_ids, [reps] * len(case_ids))
+        results = self._dispatch(type, bitness, case_ids, [reps] * len(case_ids))
         for row_id, samples in tqdm(
             results,
             total=len(case_ids),
-            desc=f"restrictions b={bitness}",
-        ):
-            start = row_id * restrictions_per_case
-            x[start : start + restrictions_per_case] = samples
-        return x
-
-    def generate_restriction_tensors_rnd(
-            self,
-            bitness: int,
-            case_ids: list[int],
-            reps: int,
-    ) -> np.ndarray:
-        case_ids = list(case_ids)
-        point_dim = restriction_point_dim(bitness)
-        restrictions_per_case = bitness * 2
-        x = np.empty(
-            (len(case_ids) * restrictions_per_case, reps, point_dim),
-            dtype=np.float32,
-        )
-        results = self._dispatch("restrictions_rnd", bitness, case_ids, [reps] * len(case_ids))
-        for row_id, samples in tqdm(
-            results,
-            total=len(case_ids),
-            desc=f"restrictions_rnd b={bitness}",
+            desc=f"t={type} b={bitness}",
         ):
             start = row_id * restrictions_per_case
             x[start : start + restrictions_per_case] = samples
