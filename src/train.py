@@ -19,11 +19,13 @@ class IterationProgress:
     iteration: int
     bitness: int
     epoch: int = 0
-    last_rmse: float = float("inf")
+    last_train_rmse: float = float("inf")
+    last_val_rmse: float = float("inf")
 
-    def record_epoch(self, epoch: int, rmse: float) -> None:
+    def record_epoch(self, epoch: int, train_rmse: float, val_rmse: float) -> None:
         self.epoch = epoch
-        self.last_rmse = rmse
+        self.last_train_rmse = train_rmse
+        self.last_val_rmse = val_rmse
 
     def checkpoint_model(
             self,
@@ -36,11 +38,12 @@ class IterationProgress:
             self.bitness,
             self.iteration,
             self.epoch,
-            self.last_rmse,
+            self.last_train_rmse,
+            self.last_val_rmse,
         )
         print(
             f"saved: iteration={self.iteration:03d} "
-            f"bitness={self.bitness:02d} rmse={self.last_rmse:.6f}"
+            f"bitness={self.bitness:02d} rmse={self.last_train_rmse:.6f}"
         )
 
 
@@ -66,18 +69,18 @@ def run_training(generator: GeneratorProxy) -> None:
                 desc=f"iteration={iteration:03d} bitness={bitness:02d}",
                 unit="epoch",
             )
-            for epoch in epoch_progress:
-                loader = sampler.train_loader(
-                    bitness,
-                    iteration,
-                    previous_model,
-                    epoch,
-                )
-                rmse = train_epoch(model, optimizer, scheduler, loader)
-                progress.record_epoch(epoch, rmse)
-                epoch_progress.set_postfix(rmse=f"{progress.last_rmse:.6f}")
 
-                if progress.last_rmse < config.rmse_threshold():
+            val_loader = sampler.val_loader(bitness)
+            sampler.reset_train(bitness, iteration, previous_model)
+
+            for epoch in epoch_progress:
+                train_loader = sampler.train_loader(bitness, iteration, epoch)
+                train_rmse = train_epoch(model, optimizer, scheduler, train_loader)
+                val_rmse = evaluate_epoch(model, val_loader)
+                progress.record_epoch(epoch, train_rmse, val_rmse)
+                epoch_progress.set_postfix(rmse=f"{progress.last_train_rmse:.6f}")
+
+                if progress.last_train_rmse < config.rmse_threshold():
                     break
 
             progress.checkpoint_model(model, config)
@@ -155,6 +158,25 @@ def train_epoch(
     rmse = float((squared_error_sum / count) ** 0.5)
     scheduler.step(rmse)
     return rmse
+
+def evaluate_epoch(
+        model: nn.Module,
+        loader: DataLoader,
+) -> float:
+    model.eval()
+    squared_error_sum = 0.0
+    count = 0
+
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb = torch.as_tensor(xb, dtype=torch.float32, device=DEVICE)
+            yb = torch.as_tensor(yb, dtype=torch.float32, device=DEVICE)
+            prediction = model(xb)
+            errors = prediction - yb
+            squared_error_sum += float(torch.sum(errors.square()).item())
+            count += len(xb)
+
+    return float((squared_error_sum / count) ** 0.5)
 
 
 def load_saved_model(

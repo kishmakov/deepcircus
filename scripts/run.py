@@ -10,8 +10,8 @@ sys.path.insert(0, str(DEEPCIRCUS_DIR))
 
 
 def main() -> None:
-    from src.bitness import run_training
     from src.generator_proxy import GeneratorProxy
+    from src.train import run_training
 
     generator = GeneratorProxy(16)
     try:

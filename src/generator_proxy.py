@@ -215,14 +215,29 @@ class GeneratorProxy:
             x[row_id] = samples
         return x
 
-    def generate_depths_tensors(
+    def tree_depth_tensors(
             self,
+            bitness: int,
+            case_ids: list[int],
+    ) -> np.ndarray:
+        return self._depth_tensors("tree_depths", bitness, case_ids)
+
+    def table_depth_tensors(
+            self,
+            bitness: int,
+            case_ids: list[int],
+    ) -> np.ndarray:
+        assert bitness <= self.solvable_bitness(), bitness
+        return self._depth_tensors("table_depths", bitness, case_ids)
+
+    def _depth_tensors(
+            self,
+            op: str,
             bitness: int,
             case_ids: list[int],
     ) -> np.ndarray:
         case_ids = list(case_ids)
         y = np.empty(len(case_ids), dtype=np.float32)
-        op = "table_depths" if bitness <= self.solvable_bitness() else "tree_depths"
         results = self._dispatch(op, bitness, case_ids, [None] * len(case_ids))
         for row_id, depth in tqdm(
             results,
@@ -230,23 +245,6 @@ class GeneratorProxy:
             desc=f"{op} b={bitness}",
         ):
             y[row_id] = depth
-        return y
-
-    def generate_node_tensors(
-            self,
-            bitness: int,
-            case_ids: list[int],
-    ) -> np.ndarray:
-        case_ids = list(case_ids)
-        y = np.empty(len(case_ids), dtype=np.float32)
-        op = "table_nodes" if bitness <= self.solvable_bitness() else "tree_nodes"
-        results = self._dispatch(op, bitness, case_ids, [None] * len(case_ids))
-        for row_id, nodes in tqdm(
-            results,
-            total=len(case_ids),
-            desc=f"{op} b={bitness}",
-        ):
-            y[row_id] = nodes
         return y
 
     def generate_restriction_tensors(

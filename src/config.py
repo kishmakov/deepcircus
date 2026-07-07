@@ -91,7 +91,8 @@ class Config:
             bitness: int,
             iteration: int,
             epoch: int,
-            rmse: float,
+            train_rmse: float,
+            val_rmse: float,
     ) -> None:
         snapshot = self.snapshot()
         metrics = self._pending_iteration_metrics.setdefault(iteration, [])
@@ -105,7 +106,8 @@ class Config:
                 "iteration": iteration,
                 "bitness": bitness,
                 "epoch": epoch,
-                "rmse": float(rmse),
+                "train_rmse": float(train_rmse),
+                "val_rmse": float(val_rmse),
             }
         )
         snapshot["pending_iteration"] = {
