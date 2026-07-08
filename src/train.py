@@ -187,4 +187,8 @@ def load_saved_model(
     weights_path = config.weights_path(bitness)
     if not weights_path.exists():
         return
-    model.load_state_dict(torch.load(weights_path, weights_only=True))
+    model.load_state_dict(torch.load(
+        weights_path,
+        map_location=DEVICE,
+        weights_only=True,
+    ))

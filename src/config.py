@@ -156,6 +156,11 @@ def load_bitness_config() -> Config:
         training.iterations_from,
         training.iterations_to,
     )
+    assert training.train_samples % 2 == 0, training.train_samples
+    assert (training.train_samples // 2) % training.batch_size == 0, (
+        training.train_samples,
+        training.batch_size,
+    )
 
     return Config(
         raw=raw,

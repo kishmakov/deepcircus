@@ -95,7 +95,12 @@ class Sampler:
         x_parts = []
         y_parts = []
         for ids, value_tensors, depth_tensors in loaders:
-            inputs = self._input_bits(bitness, ids, rng)
+            inputs = self._input_bits(
+                bitness,
+                ids,
+                self.training.points_per_sample,
+                rng,
+            )
             x_parts.append(
                 torch.as_tensor(
                     value_tensors(bitness, ids, inputs),
@@ -180,7 +185,12 @@ class Sampler:
 
         table_solvable_ids = self._train_table_solvable_ids[bitness]
         if table_solvable_ids:
-            inputs = self._input_bits(bitness, table_solvable_ids, rng)
+            inputs = self._input_bits(
+                bitness,
+                table_solvable_ids,
+                self.training.points_per_sample,
+                rng,
+            )
             x_parts.append(
                 torch.as_tensor(
                     self.generator.table_value_tensors(
@@ -197,7 +207,12 @@ class Sampler:
         table_recursive_ids = self._train_table_recursive_ids[bitness]
         if table_recursive_ids:
             assert previous_model is not None, bitness
-            inputs = self._input_bits(bitness, table_recursive_ids, rng)
+            inputs = self._input_bits(
+                bitness,
+                table_recursive_ids,
+                self.training.points_per_sample,
+                rng,
+            )
             x_parts.append(
                 torch.as_tensor(
                     self.generator.table_value_tensors(
@@ -214,6 +229,8 @@ class Sampler:
                         previous_model,
                         bitness,
                         table_recursive_ids,
+                        self.training.train_samples,
+                        rng,
                     ),
                     dtype=torch.float32,
                 )
@@ -221,7 +238,12 @@ class Sampler:
 
         tree_ids = self._train_tree_ids[bitness]
         if tree_ids:
-            inputs = self._input_bits(bitness, tree_ids, rng)
+            inputs = self._input_bits(
+                bitness,
+                tree_ids,
+                self.training.points_per_sample,
+                rng,
+            )
             x_parts.append(
                 torch.as_tensor(
                     self.generator.tree_value_tensors(
@@ -283,6 +305,7 @@ class Sampler:
             provided = self.generator.tree_cases_number(bitness)
             assert provided >= tree, (bitness, provided, tree)
             self._train_tree_ids[bitness] = rng.sample(range(provided), tree)
+
 
     def _case_ids(
             self,
@@ -346,15 +369,19 @@ class Sampler:
             self,
             bitness: int,
             case_ids: list[int],
+            reps: int,
             rng: random.Random,
     ) -> list[list[str]]:
-        assert self.training.points_per_sample % 2 == 0, self.training.points_per_sample
-        half = self.training.points_per_sample // 2
+        assert reps % 2 == 0, reps
+        half = reps // 2
         result = []
         for _ in case_ids:
             block = block_inversion_input_bits(bitness, half, rng)
             random_bits = random_input_bits(bitness, half, rng)
             result.append(block + random_bits)
+
+        assert len(result) == len(case_ids), (len(result), len(case_ids))
+        assert len(result[0]) == reps, (len(result[0]), reps)
         return result
 
 
@@ -363,6 +390,8 @@ class Sampler:
             previous_model: nn.Module,
             bitness: int,
             case_ids: list[int],
+            reps: int,
+            rng: random.Random,
     ) -> np.ndarray:
         target_parts = []
         batch_size = self.training.batch_size
@@ -372,11 +401,18 @@ class Sampler:
 
         for start in tqdm(ranges, total=total_batches, desc=f"targets_apr b={bitness}"):
             batch_ids = case_ids[start : start + batch_size]
-            x_restricted = self.generator.restrictions_tensors(
-                "table",
+            restriction_inputs = self._restriction_input_bits(
                 bitness,
                 batch_ids,
-                self.training.points_per_sample,
+                reps,
+                rng,
+            )
+            assert len(restriction_inputs) == len(batch_ids) * bitness * 2
+            x_restricted = self.generator.restrictions_tensors(
+                "table_restrictions",
+                bitness,
+                batch_ids,
+                restriction_inputs,
             )
             predictions = predict_values(
                 previous_model,
@@ -389,6 +425,18 @@ class Sampler:
             target_parts.append(split_targets.max(axis=1))
 
         return np.concatenate(target_parts).astype(np.float32)
+
+
+    def _restriction_input_bits(
+            self,
+            bitness: int,
+            case_ids: list[int],
+            reps: int,
+            rng: random.Random,
+    ) -> list[list[str]]:
+        restrictions_per_case = bitness * 2
+        restriction_ids = [0] * (len(case_ids) * restrictions_per_case)
+        return self._input_bits(bitness - 1, restriction_ids, reps, rng)
 
 
 class DepthSampler:
@@ -602,7 +650,21 @@ def generate_restriction_tensors(
     if cache_key in _RESTRICTION_TENSOR_CACHE:
         return _RESTRICTION_TENSOR_CACHE[cache_key]
 
-    x = generator.restrictions_tensors("table", bitness, case_ids, reps)
+    assert reps % 2 == 0, reps
+    rng = random.Random(bitness * 1_000_003 + sum(case_ids))
+    half = reps // 2
+    input_bits = []
+    for _ in range(len(case_ids) * bitness * 2):
+        block = block_inversion_input_bits(bitness - 1, half, rng)
+        random_bits = random_input_bits(bitness - 1, half, rng)
+        input_bits.append(block + random_bits)
+
+    x = generator.restrictions_tensors(
+        "table_restrictions",
+        bitness,
+        case_ids,
+        input_bits,
+    )
     # _RESTRICTION_TENSOR_CACHE[cache_key] = x
     return x
 
