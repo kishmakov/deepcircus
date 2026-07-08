@@ -27,8 +27,7 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class TrainingConfig:
-    iterations_from: int
-    iterations_to: int
+    iterations: int
     epochs: int
     batch_size: int
     rmse_threshold: float
@@ -65,11 +64,11 @@ class Config:
         return self._snapshot
 
     def is_done(self) -> bool:
-        return self.last_completed_iteration() >= self.training.iterations_to
+        return self.last_completed_iteration() >= self.training.iterations
 
     def iterations_range(self) -> range:
-        first = max(self.training.iterations_from, self.last_completed_iteration() + 1)
-        return range(first, self.training.iterations_to + 1)
+        first = self.last_completed_iteration() + 1
+        return range(first, self.training.iterations + 1)
 
     def bitness_range(self) -> range:
         return range(self.bitness_from, self.bitness_to + 1)
@@ -79,9 +78,6 @@ class Config:
 
     def rmse_threshold(self) -> float:
         return self.training.rmse_threshold
-
-    def has_completed_iteration(self) -> bool:
-        return self.last_completed_iteration() >= self.training.iterations_from
 
     def last_completed_iteration(self) -> int:
         return int(self.snapshot()["progress"]["last_completed_iteration"])
@@ -127,7 +123,7 @@ class Config:
         global_step = int(snapshot["progress"]["global_step"]) + len(metrics)
         snapshot["metrics"] = metrics
         snapshot["progress"] = {
-            "stage": "done" if iteration >= self.training.iterations_to else "train",
+            "stage": "done" if iteration >= self.training.iterations else "train",
             "global_step": global_step,
             "last_completed_iteration": iteration,
             "iteration": iteration,
@@ -152,10 +148,7 @@ def load_bitness_config() -> Config:
         training.bitness_from,
         training.bitness_to,
     )
-    assert training.iterations_from <= training.iterations_to, (
-        training.iterations_from,
-        training.iterations_to,
-    )
+    assert training.iterations > 0, training.iterations
     assert training.train_samples % 2 == 0, training.train_samples
     assert (training.train_samples // 2) % training.batch_size == 0, (
         training.train_samples,
@@ -177,8 +170,7 @@ def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
     scheduler = optimizer["scheduler"]
     assert scheduler["name"] == "reduce_lr_on_plateau", scheduler["name"]
     return TrainingConfig(
-        iterations_from=int(training["iterations_from"]),
-        iterations_to=int(training["iterations_to"]),
+        iterations=int(training["iterations"]),
         epochs=int(training["epochs"]),
         batch_size=int(training["batch_size"]),
         rmse_threshold=float(training["rmse_threshold"]),
@@ -212,10 +204,11 @@ def load_or_create_snapshot(config: Config) -> dict[str, Any]:
     if path.exists():
         with open(path, encoding="utf-8") as f:
             snapshot = normalize_bitness_snapshot(load(f), config)
-        assert snapshot["config"] == config.raw, (
+        assert normalize_snapshot_config(snapshot["config"]) == config.raw, (
             "Cannot resume bitness training with changed config",
             path,
         )
+        snapshot["config"] = config.raw
         save_bitness_snapshot(snapshot, path)
         prune_bitness_weights(
             config,
@@ -254,9 +247,9 @@ def normalize_bitness_snapshot(
             last_completed_iteration = int(completed_iteration["iteration"])
             metrics = list(completed_iteration["metrics"])
 
-    assert last_completed_iteration <= config.training.iterations_to, (
+    assert last_completed_iteration <= config.training.iterations, (
         last_completed_iteration,
-        config.training.iterations_to,
+        config.training.iterations,
     )
     assert last_completed_iteration >= initial_last_completed_iteration(config), (
         last_completed_iteration,
@@ -268,7 +261,7 @@ def normalize_bitness_snapshot(
         "config": snapshot["config"],
         "progress": {
             "stage": "done"
-            if last_completed_iteration >= config.training.iterations_to
+            if last_completed_iteration >= config.training.iterations
             else "train",
             "global_step": global_step,
             "last_completed_iteration": last_completed_iteration,
@@ -318,11 +311,11 @@ def notify_iteration_trained(iteration: int, metrics: list[dict[str, Any]]) -> N
 
 
 def initial_last_completed_iteration(config: Config) -> int:
-    return config.training.iterations_from - 1
+    return 0
 
 
 def prune_bitness_weights(config: Config, keep_iteration: int) -> None:
-    if keep_iteration < config.training.iterations_from:
+    if keep_iteration < 1:
         return
     keep_suffix = f"_i{keep_iteration:03d}.pt"
     for weights_path in config.training.model_dir.glob("bitness_b*_i*.pt"):
@@ -337,3 +330,14 @@ def snapshot_path(config: Config) -> Path:
 
 def model_key(bitness: int, iteration: int) -> str:
     return f"i{iteration:03d}_b{bitness:02d}"
+
+
+def normalize_snapshot_config(raw: dict[str, Any]) -> dict[str, Any]:
+    result = dict(raw)
+    training = dict(result["training"])
+    if "iterations" not in training:
+        assert int(training["iterations_from"]) == 1, training
+        training["iterations"] = int(training.pop("iterations_to"))
+        training.pop("iterations_from")
+    result["training"] = training
+    return result

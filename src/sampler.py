@@ -1,22 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 import random
-import sys
 from collections.abc import Callable
 
 import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import tqdm
-
-BOOL_BENCH_DIR = Path(__file__).resolve().parents[1] / "bool-bench"
-if str(BOOL_BENCH_DIR) not in sys.path:
-    sys.path.insert(0, str(BOOL_BENCH_DIR))
-
-from bool_bench import (
-    sample_point_dim,
-)
 
 from src.config import Config
 from src.generator_proxy import GeneratorProxy

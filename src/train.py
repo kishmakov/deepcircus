@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 
 import torch
 import torch.nn as nn
@@ -11,7 +12,16 @@ from tqdm import tqdm
 from src.config import Config, load_bitness_config
 from src.generator_proxy import GeneratorProxy
 from src.model import DEVICE, DeepSetPredictor
-from src.sampler import Sampler, sample_point_dim
+from src.sampler import Sampler
+
+
+BOOL_BENCH_DIR = Path(__file__).resolve().parents[1] / "bool-bench"
+if str(BOOL_BENCH_DIR) not in sys.path:
+    sys.path.insert(0, str(BOOL_BENCH_DIR))
+
+from bool_bench import (
+    sample_point_dim,
+)
 
 
 @dataclass
