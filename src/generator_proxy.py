@@ -263,11 +263,11 @@ class GeneratorProxy:
 
     def restrictions_tensors(
             self,
-            hint: str,
             type: str,
             bitness: int,
             case_ids: list[int],
             input_bits: Sequence[Sequence[str]],
+            progress,
     ) -> np.ndarray:
         assert type in ("tree_restrictions", "table_restrictions"), type
         case_ids = list(case_ids)
@@ -287,13 +287,10 @@ class GeneratorProxy:
             for start in range(0, len(input_bits), restrictions_per_case)
         ]
         results = self._dispatch(type, bitness, case_ids, payloads)
-        for row_id, samples in tqdm(
-            results,
-            total=len(case_ids),
-            desc=f"{hint}:{type} b={bitness}",
-        ):
+        for row_id, samples in results:
             start = row_id * restrictions_per_case
             x[start : start + restrictions_per_case] = samples
+            progress.update(1)
         return x
 
     def _dispatch(

@@ -216,7 +216,7 @@ class Sampler:
                         previous_model,
                         bitness,
                         table_recursive_ids,
-                        self.training.train_samples,
+                        self.training.points_per_sample,
                         rng,
                     ),
                     dtype=torch.float32,
@@ -327,33 +327,36 @@ class Sampler:
         batch_size = self.training.batch_size
         ranges = range(0, len(case_ids), batch_size)
         assert len(case_ids) % batch_size == 0, (len(case_ids), batch_size)
-        total_batches = len(case_ids) // batch_size
 
-        for start in tqdm(ranges, total=total_batches, desc=f"targets_apr b={bitness}"):
-            batch_ids = case_ids[start : start + batch_size]
-            restriction_inputs = self._restriction_input_bits(
-                bitness,
-                batch_ids,
-                reps,
-                rng,
-            )
-            assert len(restriction_inputs) == len(batch_ids) * bitness * 2
-            x_restricted = self.generator.restrictions_tensors(
-                "train",
-                "table_restrictions",
-                bitness,
-                batch_ids,
-                restriction_inputs,
-            )
-            predictions = predict_values(
-                previous_model,
-                x_restricted,
-                self.training.batch_size,
-            )
-            predictions = predictions.reshape(len(batch_ids), bitness, 2)
-            predictions = np.clip(predictions, 0.0, float(bitness - 1))
-            split_targets = predictions.min(axis=2)
-            target_parts.append(split_targets.max(axis=1))
+        with tqdm(
+                total=len(case_ids),
+                desc=f"train:table_restrictions b={bitness}",
+        ) as restriction_progress:
+            for start in ranges:
+                batch_ids = case_ids[start : start + batch_size]
+                restriction_inputs = self._restriction_input_bits(
+                    bitness,
+                    batch_ids,
+                    reps,
+                    rng,
+                )
+                assert len(restriction_inputs) == len(batch_ids) * bitness * 2
+                x_restricted = self.generator.restrictions_tensors(
+                    "table_restrictions",
+                    bitness,
+                    batch_ids,
+                    restriction_inputs,
+                    restriction_progress,
+                )
+                predictions = predict_values(
+                    previous_model,
+                    x_restricted,
+                    self.training.batch_size,
+                )
+                predictions = predictions.reshape(len(batch_ids), bitness, 2)
+                predictions = np.clip(predictions, 0.0, float(bitness - 1))
+                split_targets = predictions.min(axis=2)
+                target_parts.append(split_targets.max(axis=1))
 
         return np.concatenate(target_parts).astype(np.float32)
 
