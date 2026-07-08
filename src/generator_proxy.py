@@ -181,23 +181,26 @@ class GeneratorProxy:
 
     def tree_value_tensors(
             self,
+            hint: str,
             bitness: int,
             case_ids: list[int],
             input_bits: Sequence[Sequence[str]],
     ) -> np.ndarray:
-        return self._value_tensors("tree_values", bitness, case_ids, input_bits)
+        return self._value_tensors(hint, "tree_values", bitness, case_ids, input_bits)
 
     def table_value_tensors(
             self,
+            hint: str,
             bitness: int,
             case_ids: list[int],
             input_bits: Sequence[Sequence[str]],
     ) -> np.ndarray:
-        return self._value_tensors("table_values", bitness, case_ids, input_bits)
+        return self._value_tensors(hint, "table_values", bitness, case_ids, input_bits)
 
     # Result shape: cases x reps x (2 * bitness + 1).
     def _value_tensors(
             self,
+            hint: str,
             type: str,
             bitness: int,
             case_ids: list[int],
@@ -218,28 +221,31 @@ class GeneratorProxy:
         for row_id, samples in tqdm(
             results,
             total=len(case_ids),
-            desc=f"{type} b={bitness}",
+            desc=f"{hint}:{type} b={bitness}",
         ):
             x[row_id] = samples
         return x
 
     def tree_depth_tensors(
             self,
+            hint: str,
             bitness: int,
             case_ids: list[int],
     ) -> np.ndarray:
-        return self._depth_tensors("tree_depths", bitness, case_ids)
+        return self._depth_tensors(hint, "tree_depths", bitness, case_ids)
 
     def table_depth_tensors(
             self,
+            hint: str,
             bitness: int,
             case_ids: list[int],
     ) -> np.ndarray:
         assert bitness <= self.solvable_bitness(), bitness
-        return self._depth_tensors("table_depths", bitness, case_ids)
+        return self._depth_tensors(hint, "table_depths", bitness, case_ids)
 
     def _depth_tensors(
             self,
+            hint: str,
             op: str,
             bitness: int,
             case_ids: list[int],
@@ -250,13 +256,14 @@ class GeneratorProxy:
         for row_id, depth in tqdm(
             results,
             total=len(case_ids),
-            desc=f"{op} b={bitness}",
+            desc=f"{hint}:{op} b={bitness}",
         ):
             y[row_id] = depth
         return y
 
     def restrictions_tensors(
             self,
+            hint: str,
             type: str,
             bitness: int,
             case_ids: list[int],
@@ -283,7 +290,7 @@ class GeneratorProxy:
         for row_id, samples in tqdm(
             results,
             total=len(case_ids),
-            desc=f"t={type} b={bitness}",
+            desc=f"{hint}:{type} b={bitness}",
         ):
             start = row_id * restrictions_per_case
             x[start : start + restrictions_per_case] = samples
