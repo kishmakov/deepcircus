@@ -80,14 +80,27 @@ atexit.register(close_fleet)
 def _worker(task):
     worker_id, processes, op, bitness, indexed_payloads = task
     assert _WORKER_GENERATOR is not None
+    if op == "tree_values" or op == "table_values":
+        row_ids = [row_id for row_id, _, _ in indexed_payloads]
+        case_ids = [case_id for _, case_id, _ in indexed_payloads]
+        payloads = [payload for _, _, payload in indexed_payloads]
+        assert all(
+            _route(bitness, case_id, processes) == worker_id
+            for case_id in case_ids
+        )
+        if op == "tree_values":
+            samples = _WORKER_GENERATOR.tree_value_tensor(bitness, case_ids, payloads)
+        else:
+            samples = _WORKER_GENERATOR.table_value_tensor(bitness, case_ids, payloads)
+        return [
+            (row_id, samples[result_id])
+            for result_id, row_id in enumerate(row_ids)
+        ]
+
     results = []
     for row_id, case_id, payload in indexed_payloads:
         assert _route(bitness, case_id, processes) == worker_id
-        if op == "tree_values":
-            samples = _WORKER_GENERATOR.tree_values(bitness, case_id, payload)
-        elif op == "table_values":
-            samples = _WORKER_GENERATOR.table_values(bitness, case_id, payload)
-        elif op == "tree_depths":
+        if op == "tree_depths":
             samples = np.float32(_WORKER_GENERATOR.tree_depth(bitness, case_id))
         elif op == "table_depths":
             samples = np.float32(_WORKER_GENERATOR.table_depth(bitness, case_id))
