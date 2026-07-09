@@ -34,7 +34,7 @@ Use `py-spy` first because it can observe Python without modifying code.
 
 ```bash
 py-spy top --subprocesses -- uv run scripts/run.py
-py-spy record --subprocesses -o tmp/profile.svg -- uv run scripts/run.py
+py-spy record --rate 20 --subprocesses -o tmp/profile.svg -- uv run scripts/run.py
 ```
 
 Use `--subprocesses` because `src/generator_proxy.py` creates worker processes.
