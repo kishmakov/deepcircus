@@ -136,22 +136,28 @@ def _worker(task):
             for result_id, row_id in enumerate(row_ids)
         ]
 
-    assert shared_payload is None
-    results = []
-    for row_id, case_id in indexed_cases:
-        assert _route(bitness, case_id, processes) == worker_id
+    if op in ("tree_depths", "table_depths", "tree_nodes", "table_nodes"):
+        assert shared_payload is None
+        row_ids = [row_id for row_id, _ in indexed_cases]
+        case_ids = [case_id for _, case_id in indexed_cases]
+        assert all(
+            _route(bitness, case_id, processes) == worker_id
+            for case_id in case_ids
+        )
         if op == "tree_depths":
-            samples = np.float32(_WORKER_GENERATOR.tree_depth(bitness, case_id))
+            samples = _WORKER_GENERATOR.tree_depth_tensor(bitness, case_ids)
         elif op == "table_depths":
-            samples = np.float32(_WORKER_GENERATOR.table_depth(bitness, case_id))
+            samples = _WORKER_GENERATOR.table_depth_tensor(bitness, case_ids)
         elif op == "tree_nodes":
-            samples = np.float32(_WORKER_GENERATOR.tree_nodes(bitness, case_id))
-        elif op == "table_nodes":
-            samples = np.float32(_WORKER_GENERATOR.table_nodes(bitness, case_id))
+            samples = _WORKER_GENERATOR.tree_nodes_tensor(bitness, case_ids)
         else:
-            assert False, op
-        results.append((row_id, samples))
-    return results
+            samples = _WORKER_GENERATOR.table_nodes_tensor(bitness, case_ids)
+        return [
+            (row_id, samples[result_id])
+            for result_id, row_id in enumerate(row_ids)
+        ]
+
+    assert False, op
 
 class GeneratorProxy:
     def __init__(self, processes: int):
@@ -185,12 +191,6 @@ class GeneratorProxy:
 
     def min_tree_bitness(self) -> int:
         return self._generator.min_tree_bitness()
-
-    def tree_nodes(self, bitness: int, case_id: int) -> int:
-        return self._generator.tree_nodes(bitness, case_id)
-
-    def tree_depth(self, bitness: int, case_id: int) -> int:
-        return self._generator.tree_depth(bitness, case_id)
 
     def tree_values(
             self,
@@ -274,7 +274,15 @@ class GeneratorProxy:
             bitness: int,
             case_ids: list[int],
     ) -> np.ndarray:
-        return self._depth_tensors(hint, "tree_depths", bitness, case_ids)
+        return self._metric_tensors(hint, "tree_depths", bitness, case_ids)
+
+    def tree_nodes_tensors(
+            self,
+            hint: str,
+            bitness: int,
+            case_ids: list[int],
+    ) -> np.ndarray:
+        return self._metric_tensors(hint, "tree_nodes", bitness, case_ids)
 
     def table_depth_tensors(
             self,
@@ -283,9 +291,18 @@ class GeneratorProxy:
             case_ids: list[int],
     ) -> np.ndarray:
         assert bitness <= self.solvable_bitness(), bitness
-        return self._depth_tensors(hint, "table_depths", bitness, case_ids)
+        return self._metric_tensors(hint, "table_depths", bitness, case_ids)
 
-    def _depth_tensors(
+    def table_nodes_tensors(
+            self,
+            hint: str,
+            bitness: int,
+            case_ids: list[int],
+    ) -> np.ndarray:
+        assert bitness <= self.solvable_bitness(), bitness
+        return self._metric_tensors(hint, "table_nodes", bitness, case_ids)
+
+    def _metric_tensors(
             self,
             hint: str,
             op: str,
@@ -295,12 +312,12 @@ class GeneratorProxy:
         case_ids = list(case_ids)
         y = np.empty(len(case_ids), dtype=np.float32)
         results = self._dispatch(op, bitness, case_ids)
-        for row_id, depth in tqdm(
+        for row_id, value in tqdm(
             results,
             total=len(case_ids),
             desc=f"{hint}:{op} b={bitness}",
         ):
-            y[row_id] = depth
+            y[row_id] = value
         return y
 
     def restrictions_tensors(

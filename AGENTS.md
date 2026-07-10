@@ -23,6 +23,7 @@ This is a research project to study ML approach to handle decision trees.
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `bool-bench/bool_bench.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
 - Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
+- Multi-case value, restriction, depth, and node queries use batch C APIs; do not loop over scalar ctypes calls in Python workers
 - `src/train.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
 - `src/config.py` owns bitness config parsing plus snapshot/state/resume details; bitness training should use config methods instead of reading snapshot internals
 - `src/experiment_*.py` should contain experiment logic only; do not put ctypes or shared-library details there
