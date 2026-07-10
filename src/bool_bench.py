@@ -17,12 +17,13 @@ def _find_library() -> Path:
     if override:
         return Path(override)
     here = Path(__file__).resolve().parent
-    for base in (here, *here.parents):
+    root = here.parent
+    for base in (root / "cpp", root, here):
         for build_dir in ("build", "cmake-build-debug"):
             candidate = base / build_dir / _LIBRARY_NAME
             if candidate.exists():
                 return candidate
-    return here / "build" / _LIBRARY_NAME
+    return root / "cpp" / "build" / _LIBRARY_NAME
 
 
 LIBRARY = _find_library()

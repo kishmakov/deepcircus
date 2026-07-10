@@ -2,8 +2,8 @@ import ctypes
 from pathlib import Path
 
 
-LIBRARY = Path(__file__).resolve().parent / "build" / "libbb.so"
-CIRCUITS = Path(__file__).resolve().parent / "circuits"
+LIBRARY = Path(__file__).resolve().parents[1] / "cpp" / "build" / "libbb.so"
+CIRCUITS = Path(__file__).resolve().parents[1] / "data" / "circuits"
 
 TABLE_SOLVABLE_CASES = [
     (4, 0, "0101", "010100000", 0, 0),

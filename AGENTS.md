@@ -17,12 +17,15 @@ This is a research project to study ML approach to handle decision trees.
 # Code Layout
 
 - `tmp` is the directory not indexed by git
-- `bool-bench/src/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
-- `bool-bench/src/bool_bench.h` declares the public C API; `tree.cpp`, `table.cpp`, and `bool_bench.cpp` implement the tree, table, and circuit portions
-- `bool-bench/src/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
-- `bool-bench/src/dataset.cpp` owns deterministic case-ID sampling, the persistent C++ worker pool, and the lifetime of generated data/restriction handles
+- `cpp/` holds the C++ generator sources plus `CMakeLists.txt` and `.clang-format`
+- `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
+- `cpp/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
+- `cpp/bool_bench.h` declares the public C API; `tree.cpp`, `table.cpp`, and `bool_bench.cpp` implement the tree, table, and circuit portions
+- `cpp/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
+- `cpp/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
+- `cpp/dataset.cpp` owns deterministic case-ID sampling, the persistent C++ worker pool, and the lifetime of generated data/restriction handles
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
-- `bool-bench/bool_bench.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
+- `src/bool_bench.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
 - Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
 - Generated buffers transfer from C++ to NumPy at acquire time and are freed automatically when their NumPy/PyTorch views die; only recursive table source handles remain until restriction generation finishes
 - `src/sampler.py` owns the thin generator wrapper and pipelined dataset orchestration; do not restore Python multiprocessing or case routing
@@ -35,8 +38,8 @@ This is a research project to study ML approach to handle decision trees.
 
 # Building
 
-- `bool-bench/build.sh` builds bool-bench in `build` directory;
-   this is where generator is supposed to be stored
+- `scripts/build.sh` builds the C++ generator into `cpp/build`;
+   this is where the generator (`libbb.so`) is supposed to be stored
 
 # Running
 
@@ -68,3 +71,12 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=10) as response:
     response.read()
 ```
+
+# Bool Bench Notes
+
+- Keep the C++ generator (`cpp/`) small and dependency-light; it is used as a C/C++ generator with a thin Python helper (`src/bool_bench.py`).
+- Preserve the public C ABI in `cpp/bool_bench.h`: keep exported functions `extern "C"` compatible and avoid C++-only types there.
+- Prefer straightforward implementations over new abstractions unless they remove real duplication.
+- Keep common functionality (such as RNG preparation or random bit sampling) in `cpp/utils.{h,cpp}`.
+- When changing behavior, update nearby C++ and Python entry points together if they expose the same generator concept.
+- Check builds through the local `cpp/CMakeLists.txt` path when edits touch compiled code.

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-CIRCUITS = Path(__file__).resolve().parent / "circuits"
+CIRCUITS = Path(__file__).resolve().parents[1] / "data" / "circuits"
 
 
 def aig_sizes(path):

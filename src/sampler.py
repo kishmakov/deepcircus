@@ -1,23 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
-import sys
 
 import numpy as np
 import torch
 import torch.nn as nn
 from tqdm import tqdm
 
+from src.bool_bench import GeneratedData, Generator, load_generator
 from src.config import Config
 from src.model import predict_values
-
-
-BOOL_BENCH_DIR = Path(__file__).resolve().parents[1] / "bool-bench"
-if str(BOOL_BENCH_DIR) not in sys.path:
-    sys.path.insert(0, str(BOOL_BENCH_DIR))
-
-from bool_bench import GeneratedData, Generator, load_generator  # noqa: E402
 
 
 class GeneratorProxy:

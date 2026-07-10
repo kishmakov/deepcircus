@@ -28,20 +28,20 @@ add_library(aiger STATIC "${aiger_SOURCE_DIR}/aiger.c")
 target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
 
 add_library(bb
-    src/aig.cpp
-    src/aig.h
-    src/decision_tree.cpp
-    src/decision_tree.h
-    src/dataset.cpp
-    src/bool_bench.cpp
-    src/bool_bench.h
-    src/table.h
-    src/table.cpp
-    src/tree.cpp
-    src/tree.h
-    src/utils.cpp
-    src/utils.h
+    aig.cpp
+    aig.h
+    decision_tree.cpp
+    decision_tree.h
+    dataset.cpp
+    bool_bench.cpp
+    bool_bench.h
+    table.h
+    table.cpp
+    tree.cpp
+    tree.h
+    utils.cpp
+    utils.h
 )
 
-target_include_directories(bb PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(bb PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(bb PRIVATE aiger Threads::Threads)

@@ -99,13 +99,13 @@ std::string JoinNames(const std::vector<std::string>& names) {
 }
 
 std::filesystem::path CircuitRoot() {
-    const std::filesystem::path source_root = std::filesystem::path(__FILE__).parent_path().parent_path() / "circuits";
+    const std::filesystem::path source_root = std::filesystem::path(__FILE__).parent_path().parent_path() / "data" / "circuits";
     if (std::filesystem::exists(source_root)) {
         return source_root;
     }
 
     for (std::filesystem::path dir = std::filesystem::current_path(); !dir.empty(); dir = dir.parent_path()) {
-        const std::filesystem::path candidate = dir / "circuits";
+        const std::filesystem::path candidate = dir / "data" / "circuits";
         if (std::filesystem::exists(candidate)) {
             return candidate;
         }
