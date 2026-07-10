@@ -78,27 +78,67 @@ atexit.register(close_fleet)
 
 
 def _worker(task):
-    worker_id, processes, op, bitness, indexed_payloads = task
+    worker_id, processes, op, bitness, shared_payload, indexed_cases = task
     assert _WORKER_GENERATOR is not None
     if op == "tree_values" or op == "table_values":
-        row_ids = [row_id for row_id, _, _ in indexed_payloads]
-        case_ids = [case_id for _, case_id, _ in indexed_payloads]
-        payloads = [payload for _, _, payload in indexed_payloads]
+        assert shared_payload is not None
+        row_ids = [row_id for row_id, _ in indexed_cases]
+        case_ids = [case_id for _, case_id in indexed_cases]
+        reps, seed = shared_payload
         assert all(
             _route(bitness, case_id, processes) == worker_id
             for case_id in case_ids
         )
         if op == "tree_values":
-            samples = _WORKER_GENERATOR.tree_value_tensor(bitness, case_ids, payloads)
+            samples = _WORKER_GENERATOR.tree_value_tensor(
+                bitness,
+                case_ids,
+                reps,
+                seed,
+            )
         else:
-            samples = _WORKER_GENERATOR.table_value_tensor(bitness, case_ids, payloads)
+            samples = _WORKER_GENERATOR.table_value_tensor(
+                bitness,
+                case_ids,
+                reps,
+                seed,
+            )
         return [
             (row_id, samples[result_id])
             for result_id, row_id in enumerate(row_ids)
         ]
 
+    if op == "tree_restrictions" or op == "table_restrictions":
+        assert shared_payload is not None
+        row_ids = [row_id for row_id, _ in indexed_cases]
+        case_ids = [case_id for _, case_id in indexed_cases]
+        reps, seed = shared_payload
+        assert all(
+            _route(bitness, case_id, processes) == worker_id
+            for case_id in case_ids
+        )
+        if op == "tree_restrictions":
+            samples = _WORKER_GENERATOR.tree_restrictions_tensor(
+                bitness,
+                case_ids,
+                reps,
+                seed,
+            )
+        else:
+            samples = _WORKER_GENERATOR.table_restrictions_tensor(
+                bitness,
+                case_ids,
+                reps,
+                seed,
+            )
+        return [
+            (row_id, samples[result_id])
+            for result_id, row_id in enumerate(row_ids)
+        ]
+
+    assert shared_payload is None
     results = []
-    for row_id, case_id, payload in indexed_payloads:
+    for row_id, case_id in indexed_cases:
         assert _route(bitness, case_id, processes) == worker_id
         if op == "tree_depths":
             samples = np.float32(_WORKER_GENERATOR.tree_depth(bitness, case_id))
@@ -108,42 +148,10 @@ def _worker(task):
             samples = np.float32(_WORKER_GENERATOR.tree_nodes(bitness, case_id))
         elif op == "table_nodes":
             samples = np.float32(_WORKER_GENERATOR.table_nodes(bitness, case_id))
-        elif op == "tree_restrictions" or op == "table_restrictions":
-            samples = _restriction_samples(
-                _WORKER_GENERATOR,
-                bitness,
-                case_id,
-                payload,
-                op == "table_restrictions",
-            )
         else:
             assert False, op
         results.append((row_id, samples))
     return results
-
-
-def _restriction_samples(
-        generator: Generator,
-        bitness: int,
-        case_id: int,
-        input_bits: Sequence[Sequence[str]],
-        is_table: bool,
-) -> np.ndarray:
-    restrictions_per_case = bitness * 2
-    assert len(input_bits) == restrictions_per_case, len(input_bits)
-    assert input_bits, "empty input"
-    reps = len(input_bits[0])
-    assert all(len(restriction_input_bits) == reps for restriction_input_bits in input_bits)
-
-    packed_input = "".join(
-        "".join(restriction_input_bits)
-        for restriction_input_bits in input_bits
-    )
-    assert len(packed_input) == restrictions_per_case * reps * (bitness - 1)
-    if is_table:
-        return generator.table_restrictions(bitness, case_id, packed_input)
-    return generator.tree_restrictions(bitness, case_id, packed_input)
-
 
 class GeneratorProxy:
     def __init__(self, processes: int):
@@ -197,18 +205,34 @@ class GeneratorProxy:
             hint: str,
             bitness: int,
             case_ids: list[int],
-            input_bits: Sequence[Sequence[str]],
+            reps: int,
+            seed: int,
     ) -> np.ndarray:
-        return self._value_tensors(hint, "tree_values", bitness, case_ids, input_bits)
+        return self._value_tensors(
+            hint,
+            "tree_values",
+            bitness,
+            case_ids,
+            reps,
+            seed,
+        )
 
     def table_value_tensors(
             self,
             hint: str,
             bitness: int,
             case_ids: list[int],
-            input_bits: Sequence[Sequence[str]],
+            reps: int,
+            seed: int,
     ) -> np.ndarray:
-        return self._value_tensors(hint, "table_values", bitness, case_ids, input_bits)
+        return self._value_tensors(
+            hint,
+            "table_values",
+            bitness,
+            case_ids,
+            reps,
+            seed,
+        )
 
     # Result shape: cases x reps x (2 * bitness + 1).
     def _value_tensors(
@@ -217,20 +241,25 @@ class GeneratorProxy:
             type: str,
             bitness: int,
             case_ids: list[int],
-            input_bits: Sequence[Sequence[str]],
+            reps: int,
+            seed: int,
     ) -> np.ndarray:
         case_ids = list(case_ids)
-        assert len(case_ids) == len(input_bits)
-        assert input_bits, "empty input"
+        assert case_ids, "empty cases"
         assert type in ("tree_values", "table_values"), type
-        reps = len(input_bits[0])
-        assert all(len(case_input_bits) == reps for case_input_bits in input_bits)
+        assert reps > 0, reps
+        assert reps % 2 == 0, reps
 
         x = np.empty(
             (len(case_ids), reps, sample_point_dim(bitness)),
             dtype=np.float32,
         )
-        results = self._dispatch(type, bitness, case_ids, input_bits)
+        results = self._dispatch(
+            type,
+            bitness,
+            case_ids,
+            shared_payload=(reps, seed),
+        )
         for row_id, samples in tqdm(
             results,
             total=len(case_ids),
@@ -265,7 +294,7 @@ class GeneratorProxy:
     ) -> np.ndarray:
         case_ids = list(case_ids)
         y = np.empty(len(case_ids), dtype=np.float32)
-        results = self._dispatch(op, bitness, case_ids, [None] * len(case_ids))
+        results = self._dispatch(op, bitness, case_ids)
         for row_id, depth in tqdm(
             results,
             total=len(case_ids),
@@ -279,27 +308,27 @@ class GeneratorProxy:
             type: str,
             bitness: int,
             case_ids: list[int],
-            input_bits: Sequence[Sequence[str]],
+            reps: int,
+            seed: int,
             progress,
     ) -> np.ndarray:
         assert type in ("tree_restrictions", "table_restrictions"), type
         case_ids = list(case_ids)
         point_dim = restriction_point_dim(bitness)
         restrictions_per_case = bitness * 2
-        input_bits = list(input_bits)
-        assert len(input_bits) == len(case_ids) * restrictions_per_case
-        assert input_bits, "empty input"
-        reps = len(input_bits[0])
-        assert all(len(restriction_input_bits) == reps for restriction_input_bits in input_bits)
+        assert case_ids, "empty cases"
+        assert reps > 0, reps
+        assert reps % 2 == 0, reps
         x = np.empty(
             (len(case_ids) * restrictions_per_case, reps, point_dim),
             dtype=np.float32,
         )
-        payloads = [
-            input_bits[start : start + restrictions_per_case]
-            for start in range(0, len(input_bits), restrictions_per_case)
-        ]
-        results = self._dispatch(type, bitness, case_ids, payloads)
+        results = self._dispatch(
+            type,
+            bitness,
+            case_ids,
+            shared_payload=(reps, seed),
+        )
         for row_id, samples in results:
             start = row_id * restrictions_per_case
             x[start : start + restrictions_per_case] = samples
@@ -311,19 +340,25 @@ class GeneratorProxy:
             op: str,
             bitness: int,
             case_ids: list[int],
-            payloads: Sequence,
+            shared_payload: tuple[int, int] | None = None,
     ) -> Iterator[tuple[int, np.ndarray]]:
         assert not self._closed
-        assert len(case_ids) == len(payloads)
         buckets = [[] for _ in range(self.processes)]
-        for row_id, (case_id, payload) in enumerate(zip(case_ids, payloads)):
+        for row_id, case_id in enumerate(case_ids):
             worker_id = _route(bitness, case_id, self.processes)
-            buckets[worker_id].append((row_id, case_id, payload))
+            buckets[worker_id].append((row_id, case_id))
 
         pending = []
-        for worker_id, indexed_payloads in enumerate(buckets):
-            if indexed_payloads:
-                task = (worker_id, self.processes, op, bitness, indexed_payloads)
+        for worker_id, indexed_cases in enumerate(buckets):
+            if indexed_cases:
+                task = (
+                    worker_id,
+                    self.processes,
+                    op,
+                    bitness,
+                    shared_payload,
+                    indexed_cases,
+                )
                 pending.append(self._pools[worker_id].apply_async(_worker, (task,)))
 
         for async_result in pending:

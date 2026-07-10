@@ -80,15 +80,15 @@ class Sampler:
         x_parts = []
         y_parts = []
         for ids, value_tensors, depth_tensors in loaders:
-            inputs = self._input_bits(
-                bitness,
-                ids,
-                self.training.points_per_sample,
-                rng,
-            )
             x_parts.append(
                 torch.as_tensor(
-                    value_tensors("val", bitness, ids, inputs),
+                    value_tensors(
+                        "val",
+                        bitness,
+                        ids,
+                        self.training.points_per_sample,
+                        rng.getrandbits(64),
+                    ),
                     dtype=torch.float32,
                 )
             )
@@ -107,7 +107,7 @@ class Sampler:
     def _ensure_val_ids(self, bitness: int, rng: random.Random) -> list[
         tuple[
             list[int],
-            Callable[[str, int, list[int], list[list[str]]], np.ndarray],
+            Callable[[str, int, list[int], int, int], np.ndarray],
             Callable[[str, int, list[int]], np.ndarray],
         ]
     ]:
@@ -170,19 +170,14 @@ class Sampler:
 
         table_solvable_ids = self._train_table_solvable_ids[bitness]
         if table_solvable_ids:
-            inputs = self._input_bits(
-                bitness,
-                table_solvable_ids,
-                self.training.points_per_sample,
-                rng,
-            )
             x_parts.append(
                 torch.as_tensor(
                     self.generator.table_value_tensors(
                         "train",
                         bitness,
                         table_solvable_ids,
-                        inputs,
+                        self.training.points_per_sample,
+                        rng.getrandbits(64),
                     ),
                     dtype=torch.float32,
                 )
@@ -193,19 +188,14 @@ class Sampler:
         table_recursive_ids = self._train_table_recursive_ids[bitness]
         if table_recursive_ids:
             assert previous_model is not None, bitness
-            inputs = self._input_bits(
-                bitness,
-                table_recursive_ids,
-                self.training.points_per_sample,
-                rng,
-            )
             x_parts.append(
                 torch.as_tensor(
                     self.generator.table_value_tensors(
                         "train",
                         bitness,
                         table_recursive_ids,
-                        inputs,
+                        self.training.points_per_sample,
+                        rng.getrandbits(64),
                     ),
                     dtype=torch.float32,
                 )
@@ -225,19 +215,14 @@ class Sampler:
 
         tree_ids = self._train_tree_ids[bitness]
         if tree_ids:
-            inputs = self._input_bits(
-                bitness,
-                tree_ids,
-                self.training.points_per_sample,
-                rng,
-            )
             x_parts.append(
                 torch.as_tensor(
                     self.generator.tree_value_tensors(
                         "train",
                         bitness,
                         tree_ids,
-                        inputs,
+                        self.training.points_per_sample,
+                        rng.getrandbits(64),
                     ),
                     dtype=torch.float32,
                 )
@@ -295,26 +280,6 @@ class Sampler:
             self._train_tree_ids[bitness] = rng.sample(range(provided), tree)
 
 
-    def _input_bits(
-            self,
-            bitness: int,
-            case_ids: list[int],
-            reps: int,
-            rng: random.Random,
-    ) -> list[list[str]]:
-        assert reps % 2 == 0, reps
-        half = reps // 2
-        result = []
-        for _ in case_ids:
-            block = block_inversion_input_bits(bitness, half, rng)
-            random_bits = random_input_bits(bitness, half, rng)
-            result.append(block + random_bits)
-
-        assert len(result) == len(case_ids), (len(result), len(case_ids))
-        assert len(result[0]) == reps, (len(result[0]), reps)
-        return result
-
-
     def _approximate_recursive_targets(
             self,
             previous_model: nn.Module,
@@ -334,18 +299,12 @@ class Sampler:
         ) as restriction_progress:
             for start in ranges:
                 batch_ids = case_ids[start : start + batch_size]
-                restriction_inputs = self._restriction_input_bits(
-                    bitness,
-                    batch_ids,
-                    reps,
-                    rng,
-                )
-                assert len(restriction_inputs) == len(batch_ids) * bitness * 2
                 x_restricted = self.generator.restrictions_tensors(
                     "table_restrictions",
                     bitness,
                     batch_ids,
-                    restriction_inputs,
+                    reps,
+                    rng.getrandbits(64),
                     restriction_progress,
                 )
                 predictions = predict_values(
@@ -359,50 +318,3 @@ class Sampler:
                 target_parts.append(split_targets.max(axis=1))
 
         return np.concatenate(target_parts).astype(np.float32)
-
-
-    def _restriction_input_bits(
-            self,
-            bitness: int,
-            case_ids: list[int],
-            reps: int,
-            rng: random.Random,
-    ) -> list[list[str]]:
-        restrictions_per_case = bitness * 2
-        restriction_ids = [0] * (len(case_ids) * restrictions_per_case)
-        return self._input_bits(bitness - 1, restriction_ids, reps, rng)
-
-
-def random_input_bits(bitness: int, reps: int, rng: random.Random) -> list[str]:
-    return ["".join(rng.choice("01") for _ in range(bitness)) for _ in range(reps)]
-
-
-def block_inversion_input_bits(bitness: int, reps: int, rng: random.Random) -> list[str]:
-    assert reps > 0
-    blocks = (reps - 1).bit_length()
-    base_input = [rng.choice("01") for _ in range(bitness)]
-    bit_blocks = _split_bit_blocks(bitness, blocks) if blocks > 0 else []
-    samples = []
-
-    for mask in range(reps):
-        input_bits = base_input.copy()
-        for block_id, bit_ids in enumerate(bit_blocks):
-            if ((mask >> block_id) & 1) == 0:
-                continue
-            for bit_id in bit_ids:
-                input_bits[bit_id] = "0" if input_bits[bit_id] == "1" else "1"
-        samples.append("".join(input_bits))
-
-    return samples
-
-
-def _split_bit_blocks(bitness: int, blocks: int) -> list[range]:
-    base_size = bitness // blocks
-    remainder = bitness % blocks
-    result = []
-    start = 0
-    for block_id in range(blocks):
-        size = base_size + (1 if block_id < remainder else 0)
-        result.append(range(start, start + size))
-        start += size
-    return result

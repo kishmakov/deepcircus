@@ -7,6 +7,8 @@ This is a research project to study ML approach to handle decision trees.
 - Keep assertion checks simple `assert foo, bar`, don't use ifs
 - In C++ use plain asserts `assert(condition)`
 - Keep C++ generation deterministic from `(bitness, case_id)`
+- Keep value-tensor input generation deterministic from `(seed, bitness, case_id)`
+  and independent of case ordering or Python worker partitioning
 - Do not add package-presence guards (e.g. `assert torch is not None`)
 - Do not generalize code for running in other environments, it is only run on this machine
 - The generator API is bitness-based: use `uint16_t bitness`, not series ids or bit masks
@@ -15,10 +17,12 @@ This is a research project to study ML approach to handle decision trees.
 # Code Layout
 
 - `tmp` is the directory not indexed by git
-- `bool-bench/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, and tree evaluation/building
-- `bool-bench/small_bitness.{h,cpp}` owns exact small-bitness solving and cache read/write
-- `bool-bench/bool_bench.{h,cpp}` owns the public C API and main generation dispatch
+- `bool-bench/src/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
+- `bool-bench/src/bool_bench.h` declares the public C API; `tree.cpp`, `table.cpp`, and `bool_bench.cpp` implement the tree, table, and circuit portions
+- `bool-bench/src/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
+- Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `bool-bench/bool_bench.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
+- Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
 - `src/train.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
 - `src/config.py` owns bitness config parsing plus snapshot/state/resume details; bitness training should use config methods instead of reading snapshot internals
 - `src/experiment_*.py` should contain experiment logic only; do not put ctypes or shared-library details there

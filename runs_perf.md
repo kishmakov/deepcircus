@@ -56,7 +56,7 @@ Signals delivered: 0
 Page size (bytes): 4096
 Exit status: 0
 
-# 3. Pass NumPy output buffers to C++.
+# 3. Pass NumPy output buffers to C++
 
 ## Total time.
 
@@ -83,3 +83,32 @@ Socket messages received: 0
 Signals delivered: 0
 Page size (bytes): 4096
 Exit status: 0
+
+# 4. Pass 0/1 generation to C++
+
+## Total time.
+
+Command being timed: "uv run scripts/run.py"
+User time (seconds): 469.31
+System time (seconds): 26.55
+Percent of CPU this job got: 670%
+Elapsed (wall clock) time (h:mm:ss or m:ss): 1:13.97
+Average shared text size (kbytes): 0
+Average unshared data size (kbytes): 0
+Average stack size (kbytes): 0
+Average total size (kbytes): 0
+Maximum resident set size (kbytes): 4742148
+Average resident set size (kbytes): 0
+Major (requiring I/O) page faults: 0
+Minor (reclaiming a frame) page faults: 5643911
+Voluntary context switches: 781172
+Involuntary context switches: 3809
+Swaps: 0
+File system inputs: 0
+File system outputs: 0
+Socket messages sent: 0
+Socket messages received: 0
+Signals delivered: 0
+Page size (bytes): 4096
+Exit status: 0
+
