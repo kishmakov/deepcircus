@@ -1,3 +1,0 @@
-[submodule "bool-bench"]
-	path = bool-bench
-	url = ssh://GITHUB/kishmakov/bool-bench.git
