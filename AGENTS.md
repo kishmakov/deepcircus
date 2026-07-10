@@ -20,10 +20,13 @@ This is a research project to study ML approach to handle decision trees.
 - `bool-bench/src/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
 - `bool-bench/src/bool_bench.h` declares the public C API; `tree.cpp`, `table.cpp`, and `bool_bench.cpp` implement the tree, table, and circuit portions
 - `bool-bench/src/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
+- `bool-bench/src/dataset.cpp` owns deterministic case-ID sampling, the persistent C++ worker pool, and the lifetime of generated data/restriction handles
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `bool-bench/bool_bench.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
 - Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
-- Multi-case value, restriction, depth, and node queries use batch C APIs; do not loop over scalar ctypes calls in Python workers
+- Generated buffers transfer from C++ to NumPy at acquire time and are freed automatically when their NumPy/PyTorch views die; only recursive table source handles remain until restriction generation finishes
+- `src/sampler.py` owns the thin generator wrapper and pipelined dataset orchestration; do not restore Python multiprocessing or case routing
+- Python chooses table/tree batch counts from bitness, while C++ samples case IDs and generates each typed batch
 - `src/train.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
 - `src/config.py` owns bitness config parsing plus snapshot/state/resume details; bitness training should use config methods instead of reading snapshot internals
 - `src/experiment_*.py` should contain experiment logic only; do not put ctypes or shared-library details there

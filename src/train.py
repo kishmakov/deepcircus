@@ -10,9 +10,8 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.config import Config, load_bitness_config
-from src.generator_proxy import GeneratorProxy
 from src.model import DEVICE, DeepSetPredictor
-from src.sampler import Sampler
+from src.sampler import GeneratorProxy, Sampler
 
 
 BOOL_BENCH_DIR = Path(__file__).resolve().parents[1] / "bool-bench"
@@ -61,42 +60,61 @@ def run_training(generator: GeneratorProxy) -> None:
     config = load_bitness_config()
     sampler = Sampler(config, generator)
     models: dict[int, nn.Module] = {}
+    coordinates = [
+        (iteration, bitness)
+        for iteration in config.iterations_range()
+        for bitness in config.bitness_range()
+    ]
+    if not coordinates:
+        return
 
-    for iteration in config.iterations_range():
-        previous_model = None
-        for bitness in config.bitness_range():
-            progress = IterationProgress(iteration, bitness)
-            model = get_or_create_model(
-                models,
-                config,
-                bitness,
-            )
-            optimizer = create_optimizer(model, config)
-            scheduler = create_scheduler(optimizer, config)
+    current_stage = sampler.request_stage(*coordinates[0])
+    previous_model = None
+    previous_iteration = None
 
-            epoch_progress = tqdm(
-                config.epochs_range(),
-                desc=f"iteration={iteration:03d} bitness={bitness:02d}",
-                unit="epoch",
-            )
+    for coordinate_id, (iteration, bitness) in enumerate(coordinates):
+        if iteration != previous_iteration:
+            previous_model = None
+        stage = current_stage
+        assert (stage.iteration, stage.bitness) == (iteration, bitness)
+        sampler.acquire_stage(stage)
 
-            val_loader = sampler.val_loader(bitness)
-            sampler.reset_train(bitness, iteration, previous_model)
+        next_stage = None
+        if coordinate_id + 1 < len(coordinates):
+            next_stage = sampler.request_stage(*coordinates[coordinate_id + 1])
 
-            for epoch in epoch_progress:
-                train_loader = sampler.train_loader(bitness, iteration, epoch)
-                train_rmse = train_epoch(model, optimizer, scheduler, train_loader)
-                val_rmse = evaluate_epoch(model, val_loader)
-                progress.record_epoch(epoch, train_rmse, val_rmse)
-                epoch_progress.set_postfix(rmse=f"{progress.last_train_rmse:.6f}")
+        sampler.prepare_stage(stage, previous_model)
+        progress = IterationProgress(iteration, bitness)
+        model = get_or_create_model(models, config, bitness)
+        optimizer = create_optimizer(model, config)
+        scheduler = create_scheduler(optimizer, config)
+        epoch_progress = tqdm(
+            config.epochs_range(),
+            desc=f"iteration={iteration:03d} bitness={bitness:02d}",
+            unit="epoch",
+        )
+        validation_loader = sampler.validation_loader(stage)
 
-                if progress.last_train_rmse < config.rmse_threshold():
-                    break
+        for epoch in epoch_progress:
+            train_loader = sampler.train_loader(stage, epoch)
+            train_rmse = train_epoch(model, optimizer, scheduler, train_loader)
+            val_rmse = evaluate_epoch(model, validation_loader)
+            progress.record_epoch(epoch, train_rmse, val_rmse)
+            epoch_progress.set_postfix(rmse=f"{progress.last_train_rmse:.6f}")
 
-            progress.checkpoint_model(model, config)
-            previous_model = model
+            if progress.last_train_rmse < config.rmse_threshold():
+                break
 
-        config.record_iteration_trained(iteration)
+        progress.checkpoint_model(model, config)
+        del train_loader
+        del validation_loader
+        sampler.release_stage(stage)
+        current_stage = next_stage
+        previous_model = model
+        previous_iteration = iteration
+
+        if bitness == config.bitness_to:
+            config.record_iteration_trained(iteration)
 
 
 def get_or_create_model(
