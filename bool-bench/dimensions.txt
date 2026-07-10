@@ -1,0 +1,52 @@
+iscas85/c1355 : i=  41 o= 32
+iscas85/c17   : i=   5 o=  2
+iscas85/c1908 : i=  33 o= 25
+iscas85/c2670 : i= 233 o=140
+iscas85/c3540 : i=  50 o= 22
+iscas85/c432  : i=  36 o=  7
+iscas85/c499  : i=  41 o= 32
+iscas85/c5315 : i= 178 o=123
+iscas85/c6288 : i=  32 o= 32
+iscas85/c7552 : i= 207 o=108
+iscas85/c880  : i=  60 o= 26
+iscas87/c1196 : i=  32 o= 32
+iscas87/c1238 : i=  35 o= 32
+iscas87/s1196 : i=  32 o= 14
+iscas87/s1196a: i=  32 o= 14
+iscas87/s1196b: i=  32 o= 14
+iscas87/s1238 : i=  32 o= 14
+iscas87/s1238a: i=  35 o= 14
+iscas87/s13207: i= 700 o=152
+iscas87/s1423 : i=  91 o=  5
+iscas87/s1488 : i=  14 o= 19
+iscas87/s1494 : i=  14 o= 19
+iscas87/s15850: i= 611 o=150
+iscas87/s208  : i=  19 o=  2
+iscas87/s208a : i=  18 o=  1
+iscas87/s27   : i=   7 o=  1
+iscas87/s27a  : i=   7 o=  1
+iscas87/s298  : i=  17 o=  6
+iscas87/s344  : i=  24 o= 11
+iscas87/s349  : i=  24 o= 11
+iscas87/s35932: i=1763 o=320
+iscas87/s382  : i=  24 o=  6
+iscas87/s38417: i=1664 o=106
+iscas87/s38584: i=1464 o=304
+iscas87/s386  : i=  13 o=  7
+iscas87/s386a : i=  13 o=  7
+iscas87/s400  : i=  24 o=  6
+iscas87/s420  : i=  35 o=  2
+iscas87/s420a : i=  34 o=  1
+iscas87/s444  : i=  24 o=  6
+iscas87/s510  : i=  25 o=  7
+iscas87/s526  : i=  24 o=  6
+iscas87/s526a : i=  24 o=  6
+iscas87/s5378 : i= 214 o= 49
+iscas87/s641  : i=  54 o= 24
+iscas87/s713  : i=  54 o= 23
+iscas87/s820  : i=  23 o= 19
+iscas87/s832  : i=  23 o= 19
+iscas87/s838  : i=  67 o=  2
+iscas87/s838a : i=  66 o=  1
+iscas87/s9234 : i= 247 o= 39
+iscas87/s953  : i=  45 o= 23

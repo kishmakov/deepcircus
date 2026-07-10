@@ -1,0 +1,15 @@
+# Build artifacts
+build/
+cmake-build-*/
+
+# Execution artifacts
+tmp
+abc.history
+
+# Python
+__pycache__/
+*.py[cod]
+
+# IDE
+.idea/
+.vscode/
