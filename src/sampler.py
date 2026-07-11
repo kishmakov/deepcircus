@@ -8,7 +8,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from src.generator import GeneratedData, Generator, load_generator
-from src.config import Config
+from src.config import TrainConfig
 from src.model import predict_values
 
 
@@ -42,7 +42,7 @@ class GeneratedStage:
 
 
 class Sampler:
-    def __init__(self, config: Config, generator: GeneratorProxy):
+    def __init__(self, config: TrainConfig, generator: GeneratorProxy):
         self.config = config
         self.training = config.training
         self.generator = generator

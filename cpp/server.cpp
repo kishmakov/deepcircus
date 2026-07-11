@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
 
 namespace {
@@ -24,6 +26,17 @@ namespace {
         uint16_t bitness_to;
         uint64_t seed;
     };
+
+    // TODO: remove once finished
+    void AppendParams(const TrainingShape &shape) {
+        std::filesystem::create_directories("/tmp/circus");
+        std::ofstream output("/tmp/circus/params.txt", std::ios::app);
+        assert(output.is_open());
+        output << "first_iteration=" << shape.first_iteration << " last_iteration=" << shape.last_iteration
+               << " bitness_from=" << shape.bitness_from << " bitness_to=" << shape.bitness_to << " seed=" << shape.seed
+               << '\n';
+        assert(output.good());
+    }
 
     bool ReadExact(int socket, void *destination, size_t size) {
         char *output = static_cast<char *>(destination);
@@ -87,6 +100,7 @@ namespace {
         assert(shape.first_iteration <= shape.last_iteration);
         assert(shape.bitness_from > 0);
         assert(shape.bitness_from <= shape.bitness_to);
+        AppendParams(shape);
         return shape;
     }
 

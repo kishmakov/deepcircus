@@ -12,7 +12,8 @@ from typing import Any
 from omegaconf import OmegaConf
 
 
-BITNESS_CONFIG_PATH = Path(__file__).resolve().parents[1] / "conf" / "bitness.conf"
+ROOT = Path(__file__).resolve().parents[1]
+CONF_DIR = ROOT / "conf"
 SNAPSHOT_NAME = "bitness_snapshot.json"
 
 
@@ -26,6 +27,14 @@ class ModelConfig:
 
 
 @dataclass(frozen=True)
+class OptimizerConfig:
+    name: str
+    lr: float
+    scheduler_patience: int
+    scheduler_factor: float
+
+
+@dataclass(frozen=True)
 class TrainingConfig:
     iterations: int
     epochs: int
@@ -36,20 +45,18 @@ class TrainingConfig:
     points_per_sample: int
     bitness_from: int
     bitness_to: int
-    lr: float
-    scheduler_patience: int
-    scheduler_factor: float
     seed: int
     model_dir: Path
 
 
 @dataclass(frozen=True)
-class Config:
+class TrainConfig:
     raw: dict[str, Any]
     bitness_from: int
     bitness_to: int
     training: TrainingConfig
-    model: ModelConfig
+    model: ModelConfig | None
+    optimizer: OptimizerConfig | None
     _snapshot: dict[str, Any] | None = field(
         default=None, init=False, repr=False, compare=False
     )
@@ -137,12 +144,12 @@ class Config:
         return self.training.model_dir / f"bitness_b{bitness:02d}.pt"
 
 
-def load_bitness_config() -> Config:
-    raw = OmegaConf.to_container(OmegaConf.load(BITNESS_CONFIG_PATH), resolve=True)
-    assert isinstance(raw, dict), raw
+def load_train_config(name: str) -> TrainConfig:
+    raw = load_config_file(CONF_DIR / name)
 
     training = build_training_config(raw)
     model = build_model_config(raw)
+    optimizer = build_optimizer_config(raw)
 
     assert training.bitness_from <= training.bitness_to, (
         training.bitness_from,
@@ -155,20 +162,24 @@ def load_bitness_config() -> Config:
         training.batch_size,
     )
 
-    return Config(
+    return TrainConfig(
         raw=raw,
         bitness_from=training.bitness_from,
         bitness_to=training.bitness_to,
         training=training,
         model=model,
+        optimizer=optimizer,
     )
+
+
+def load_config_file(path: Path) -> dict[str, Any]:
+    raw = OmegaConf.to_container(OmegaConf.load(path), resolve=True)
+    assert isinstance(raw, dict), raw
+    return raw
 
 
 def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
     training = raw["training"]
-    optimizer = raw["optimizer"]
-    scheduler = optimizer["scheduler"]
-    assert scheduler["name"] == "reduce_lr_on_plateau", scheduler["name"]
     return TrainingConfig(
         iterations=int(training["iterations"]),
         epochs=int(training["epochs"]),
@@ -179,16 +190,15 @@ def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
         points_per_sample=int(training["points_per_sample"]),
         bitness_from=int(training["bitness_from"]),
         bitness_to=int(training["bitness_to"]),
-        lr=float(optimizer["lr"]),
-        scheduler_patience=int(scheduler["patience"]),
-        scheduler_factor=float(scheduler["factor"]),
         seed=int(training["seed"]),
         model_dir=Path(str(training["model_dir"])),
     )
 
 
-def build_model_config(raw: dict[str, Any]) -> ModelConfig:
-    model = raw["model"]
+def build_model_config(raw: dict[str, Any]) -> ModelConfig | None:
+    model = raw.get("model")
+    if model is None:
+        return None
     return ModelConfig(
         name=str(model["name"]),
         phi_hidden=int(model["phi_hidden"]),
@@ -198,7 +208,22 @@ def build_model_config(raw: dict[str, Any]) -> ModelConfig:
     )
 
 
-def load_or_create_snapshot(config: Config) -> dict[str, Any]:
+def build_optimizer_config(raw: dict[str, Any]) -> OptimizerConfig | None:
+    optimizer = raw.get("optimizer")
+    if optimizer is None:
+        return None
+    scheduler = optimizer["scheduler"]
+    assert optimizer["name"] == "adam", optimizer["name"]
+    assert scheduler["name"] == "reduce_lr_on_plateau", scheduler["name"]
+    return OptimizerConfig(
+        name=str(optimizer["name"]),
+        lr=float(optimizer["lr"]),
+        scheduler_patience=int(scheduler["patience"]),
+        scheduler_factor=float(scheduler["factor"]),
+    )
+
+
+def load_or_create_snapshot(config: TrainConfig) -> dict[str, Any]:
     config.training.model_dir.mkdir(parents=True, exist_ok=True)
     path = snapshot_path(config)
     if path.exists():
@@ -231,7 +256,7 @@ def load_or_create_snapshot(config: Config) -> dict[str, Any]:
 
 
 def normalize_bitness_snapshot(
-        snapshot: dict[str, Any], config: Config
+        snapshot: dict[str, Any], config: TrainConfig
 ) -> dict[str, Any]:
     progress = snapshot["progress"]
     if "last_completed_iteration" in progress:
@@ -310,11 +335,11 @@ def notify_iteration_trained(iteration: int, metrics: list[dict[str, Any]]) -> N
         print(f"telegram notification failed: {error}")
 
 
-def initial_last_completed_iteration(config: Config) -> int:
+def initial_last_completed_iteration(config: TrainConfig) -> int:
     return 0
 
 
-def prune_bitness_weights(config: Config, keep_iteration: int) -> None:
+def prune_bitness_weights(config: TrainConfig, keep_iteration: int) -> None:
     if keep_iteration < 1:
         return
     keep_suffix = f"_i{keep_iteration:03d}.pt"
@@ -324,7 +349,7 @@ def prune_bitness_weights(config: Config, keep_iteration: int) -> None:
         weights_path.unlink()
 
 
-def snapshot_path(config: Config) -> Path:
+def snapshot_path(config: TrainConfig) -> Path:
     return config.training.model_dir / SNAPSHOT_NAME
 
 

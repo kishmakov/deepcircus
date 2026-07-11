@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.generator import sample_point_dim
-from src.config import Config, load_bitness_config
+from src.config import TrainConfig, load_train_config
 from src.model import DEVICE, DeepSetPredictor
 from src.sampler import GeneratorProxy, Sampler
 
@@ -30,7 +30,7 @@ class IterationProgress:
     def checkpoint_model(
             self,
             model: nn.Module,
-            config: Config,
+            config: TrainConfig,
     ) -> Path:
         assert self.epoch > 0, self
         torch.save(model.state_dict(), config.weights_path(self.bitness))
@@ -48,7 +48,7 @@ class IterationProgress:
 
 
 def run_training(generator: GeneratorProxy) -> None:
-    config = load_bitness_config()
+    config = load_train_config("train.conf")
     sampler = Sampler(config, generator)
     models: dict[int, nn.Module] = {}
     coordinates = [
@@ -110,11 +110,12 @@ def run_training(generator: GeneratorProxy) -> None:
 
 def get_or_create_model(
         models: dict[int, nn.Module],
-        config: Config,
+        config: TrainConfig,
         bitness: int,
 ) -> nn.Module:
     if bitness not in models:
         model_config = config.model
+        assert model_config is not None, config
         assert model_config.name == "deepset", model_config.name
         model = DeepSetPredictor(
             point_dim=sample_point_dim(bitness),
@@ -131,22 +132,27 @@ def get_or_create_model(
 
 def create_optimizer(
         model: nn.Module,
-        config: Config,
+        config: TrainConfig,
 ) -> torch.optim.Optimizer:
+    optimizer_config = config.optimizer
+    assert optimizer_config is not None, config
+    assert optimizer_config.name == "adam", optimizer_config.name
     return torch.optim.Adam(
         model.parameters(),
-        lr=config.training.lr,
+        lr=optimizer_config.lr,
     )
 
 
 def create_scheduler(
         optimizer: torch.optim.Optimizer,
-        config: Config,
+        config: TrainConfig,
 ) -> torch.optim.lr_scheduler.ReduceLROnPlateau:
+    optimizer_config = config.optimizer
+    assert optimizer_config is not None, config
     return torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer,
-        patience=config.training.scheduler_patience,
-        factor=config.training.scheduler_factor,
+        patience=optimizer_config.scheduler_patience,
+        factor=optimizer_config.scheduler_factor,
     )
 
 
@@ -200,7 +206,7 @@ def evaluate_epoch(
 
 def load_saved_model(
         model: nn.Module,
-        config: Config,
+        config: TrainConfig,
         bitness: int,
 ) -> None:
     weights_path = config.weights_path(bitness)
