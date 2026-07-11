@@ -1,7 +1,5 @@
 #pragma once
 
-#include "generator.h"
-
 #include <stddef.h>
 #include <stdint.h>
 

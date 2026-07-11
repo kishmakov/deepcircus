@@ -1,5 +1,4 @@
 import ctypes
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -155,33 +154,6 @@ def load_library():
     library.gen_table_solvable_bitness.argtypes = []
     library.gen_table_solvable_bitness.restype = ctypes.c_uint16
 
-    library.gen_data_bitness.argtypes = [ctypes.c_void_p]
-    library.gen_data_bitness.restype = ctypes.c_uint16
-    library.gen_data_cases.argtypes = [ctypes.c_void_p]
-    library.gen_data_cases.restype = ctypes.c_size_t
-    library.gen_data_reps.argtypes = [ctypes.c_void_p]
-    library.gen_data_reps.restype = ctypes.c_size_t
-    library.gen_data_value_count.argtypes = [ctypes.c_void_p]
-    library.gen_data_value_count.restype = ctypes.c_size_t
-    library.gen_data_target_count.argtypes = [ctypes.c_void_p]
-    library.gen_data_target_count.restype = ctypes.c_size_t
-    library.gen_data_write_values.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
-    library.gen_data_write_values.restype = None
-    library.gen_data_write_targets.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
-    library.gen_data_write_targets.restype = None
-    library.gen_data_restriction_count.argtypes = [ctypes.c_void_p]
-    library.gen_data_restriction_count.restype = ctypes.c_size_t
-    library.gen_data_restriction.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
-    library.gen_data_restriction.restype = ctypes.c_void_p
-    library.gen_data_destroy.argtypes = [ctypes.c_void_p]
-    library.gen_data_destroy.restype = None
-    library.gen_tensor_cases.argtypes = [ctypes.c_void_p]
-    library.gen_tensor_cases.restype = ctypes.c_size_t
-    library.gen_tensor_value_count.argtypes = [ctypes.c_void_p]
-    library.gen_tensor_value_count.restype = ctypes.c_size_t
-    library.gen_tensor_write_values.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
-    library.gen_tensor_write_values.restype = None
-
     library.gen_tree_value.argtypes = [
         ctypes.c_uint16,
         ctypes.c_size_t,
@@ -189,29 +161,12 @@ def load_library():
     ]
     library.gen_tree_value.restype = ctypes.c_char_p
 
-    library.gen_tree_value_tensor.argtypes = [
-        ctypes.c_uint16,
-        ctypes.c_size_t,
-        ctypes.c_size_t,
-        ctypes.c_uint64,
-    ]
-    library.gen_tree_value_tensor.restype = ctypes.c_void_p
-
     library.gen_table_value.argtypes = [
         ctypes.c_uint16,
         ctypes.c_size_t,
         ctypes.c_char_p,
     ]
     library.gen_table_value.restype = ctypes.c_char_p
-
-    library.gen_table_value_tensor.argtypes = [
-        ctypes.c_uint16,
-        ctypes.c_size_t,
-        ctypes.c_size_t,
-        ctypes.c_size_t,
-        ctypes.c_uint64,
-    ]
-    library.gen_table_value_tensor.restype = ctypes.c_void_p
 
     library.gen_circuit_sets.argtypes = []
     library.gen_circuit_sets.restype = ctypes.c_char_p
@@ -433,125 +388,6 @@ def test_table_big_cases(library):
         assert len(value) == 2 * bitness + 1, (bitness, case_id, value)
 
 
-def collect_owned_data(
-    library,
-    kind,
-    bitness,
-    cases,
-    reps,
-    seed,
-    restriction_chunk_cases=0,
-):
-    if kind == "tree":
-        data = library.gen_tree_value_tensor(
-            bitness,
-            cases,
-            reps,
-            seed,
-        )
-    else:
-        data = library.gen_table_value_tensor(
-            bitness,
-            cases,
-            reps,
-            restriction_chunk_cases,
-            seed,
-        )
-    assert data
-    assert library.gen_data_bitness(data) == bitness
-    assert library.gen_data_cases(data) == cases
-    assert library.gen_data_reps(data) == reps
-
-    value_count = cases * reps * (2 * bitness + 1)
-    assert library.gen_data_value_count(data) == value_count
-    value_buffer = (ctypes.c_float * value_count)()
-    library.gen_data_write_values(data, value_buffer)
-    values = list(value_buffer)
-    target_count = library.gen_data_target_count(data)
-    targets = None
-    if target_count:
-        assert target_count == cases
-        target_buffer = (ctypes.c_float * target_count)()
-        library.gen_data_write_targets(data, target_buffer)
-        targets = list(target_buffer)
-
-    restrictions = []
-    for index in range(library.gen_data_restriction_count(data)):
-        tensor = library.gen_data_restriction(data, index)
-        chunk_cases = library.gen_tensor_cases(tensor)
-        count = chunk_cases * 2 * bitness * reps * (2 * bitness - 1)
-        assert library.gen_tensor_value_count(tensor) == count
-        restriction_buffer = (ctypes.c_float * count)()
-        library.gen_tensor_write_values(tensor, restriction_buffer)
-        restrictions.extend(restriction_buffer)
-
-    library.gen_data_destroy(data)
-    return values, targets, restrictions if restrictions else None
-
-
-def test_owned_data(library):
-    print("Check synchronous compact data ...")
-
-    for kind, bitness, chunk in (
-        ("tree", 17, 0),
-        ("table", 8, 0),
-        ("table", 17, 2),
-    ):
-        single = collect_owned_data(
-            library,
-            kind,
-            bitness,
-            4,
-            8,
-            20_250_710,
-            chunk,
-        )
-        repeated = collect_owned_data(
-            library, kind, bitness, 4, 8, 20_250_710, chunk
-        )
-        for first, second in zip(single, repeated):
-            if first is None:
-                assert second is None
-            else:
-                assert first == second, (kind, bitness)
-
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            concurrent = list(executor.map(
-                lambda _: collect_owned_data(
-                    library, kind, bitness, 4, 8, 20_250_710, chunk
-                ),
-                range(4),
-            ))
-        assert all(result == single for result in concurrent), (kind, bitness)
-
-    values, targets, restrictions = collect_owned_data(
-        library,
-        "table",
-        8,
-        1,
-        8,
-        2025,
-    )
-    assert targets == [0.0], targets
-    assert restrictions is None
-    rows = [values[rep * 17 : (rep + 1) * 17] for rep in range(8)]
-    inputs = [
-        "".join("1" if value == 1.0 else "0" for value in row[:8])
-        for row in rows
-    ]
-    assert inputs == [
-        "11010011",
-        "00100011",
-        "11011100",
-        "00101100",
-        "01011111",
-        "11001111",
-        "01010111",
-        "11100011",
-    ], inputs
-    assert_block_inputs_consistent(inputs, 8, "gen_table_value_tensor")
-
-
 def test_circuit_discovery(library):
     print(f"Check gen_circuit discovery ...")
 
@@ -603,7 +439,6 @@ if __name__ == "__main__":
     test_tree_cases(library)
     test_table_solvable_cases(library)
     test_table_big_cases(library)
-    test_owned_data(library)
     test_circuit_discovery(library)
     test_circuit_metadata(library)
     test_circuit_value(library)

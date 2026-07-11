@@ -4,10 +4,8 @@
 #include "utils.h"
 
 #include <cassert>
-#include <cstring>
 #include <map>
 #include <mutex>
-#include <random>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -21,7 +19,7 @@ namespace {
     std::mutex g_decision_trees_mutex;
 
     const DecisionTree &GetDecisionTree(uint16_t bitness, size_t case_id) {
-        assert(case_id < gen_tree_cases_number(bitness));
+        assert(case_id < gen::TreeCasesNumber(bitness));
         std::lock_guard<std::mutex> lock(g_decision_trees_mutex);
 
         const CaseKey key{bitness, case_id};
@@ -51,23 +49,21 @@ DecisionTree BuildTreeCase(uint16_t bitness, size_t case_id) {
     return tree;
 }
 
-uint16_t gen_min_tree_bitness() { return kMinTreeBitness; }
+namespace gen {
 
-size_t gen_tree_cases_number(uint16_t bitness) {
+uint16_t MinTreeBitness() { return kMinTreeBitness; }
+
+size_t TreeCasesNumber(uint16_t bitness) {
     assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
     return kTreeCasesNumber;
 }
 
-const char *gen_tree_value(uint16_t bitness, size_t case_id, const char *input) {
-    assert(case_id < gen_tree_cases_number(bitness));
-    assert(input != nullptr);
-    assert(std::strlen(input) == bitness);
+std::string TreeValue(uint16_t bitness, size_t case_id, std::string_view input) {
+    assert(case_id < TreeCasesNumber(bitness));
+    assert(input.size() == bitness);
 
-    thread_local std::string value;
-    thread_local FlippingSampler sampler;
-
-    value.assign(2 * bitness + 1, '0');
-    sampler.Reset(bitness, {input, bitness});
+    std::string value(2 * bitness + 1, '0');
+    FlippingSampler sampler(bitness, input);
 
     const auto evaluate = [bitness, case_id](std::string_view point) {
         return EvaluateTreeCase(bitness, case_id, point);
@@ -75,5 +71,7 @@ const char *gen_tree_value(uint16_t bitness, size_t case_id, const char *input) 
     sampler.Fill(value,
                  /*sample_offset=*/0, bitness, evaluate);
 
-    return value.c_str();
+    return value;
 }
+
+} // namespace gen

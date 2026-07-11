@@ -35,6 +35,8 @@ add_library(gen
     generator/dataset.cpp
     generator/generator.cpp
     generator/generator.h
+    generator/libgen.cpp
+    generator/libgen.h
     generator/table.h
     generator/table.cpp
     generator/tree.cpp

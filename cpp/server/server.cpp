@@ -67,14 +67,10 @@ namespace {
         uint64_t seed;
     };
 
-    struct DataDeleter {
-        void operator()(gen_data *data) const { gen_data_destroy(data); }
-    };
-
     struct TaskData {
         TensorKind kind;
         TensorSplit split;
-        std::unique_ptr<gen_data, DataDeleter> data;
+        gen::Data data;
     };
 
     struct TaskResult {
@@ -96,8 +92,8 @@ namespace {
     };
 
     struct TensorSource {
-        const gen_data *data = nullptr;
-        const gen_tensor *tensor = nullptr;
+        const gen::Data *data = nullptr;
+        const gen::Tensor *tensor = nullptr;
     };
 
     struct SharedTask {
@@ -239,20 +235,19 @@ namespace {
         if (cases == 0) {
             return;
         }
-        const bool recursive = kind == TensorKind::Table && bitness > gen_table_solvable_bitness();
+        const bool recursive = kind == TensorKind::Table && bitness > gen::TableSolvableBitness();
         const uint64_t chunk_cases = recursive ? std::min(cases, batch_size) : 0;
-        gen_data *generated = kind == TensorKind::Tree
-                                      ? gen_tree_value_tensor(bitness, cases, reps, seed)
-                                      : gen_table_value_tensor(bitness, cases, reps, chunk_cases, seed);
-        assert(generated != nullptr);
-        output.push_back(TaskData{kind, split, std::unique_ptr<gen_data, DataDeleter>(generated)});
+        gen::Data generated = kind == TensorKind::Tree
+                                      ? gen::TreeValueTensor(bitness, cases, reps, seed)
+                                      : gen::TableValueTensor(bitness, cases, reps, chunk_cases, seed);
+        output.push_back(TaskData{kind, split, std::move(generated)});
     }
 
     std::unique_ptr<TaskResult> GenerateTask(const TrainingShape &shape, const Task &task) {
         auto result = std::make_unique<TaskResult>();
         result->task = task;
-        const uint16_t min_tree = gen_min_tree_bitness();
-        const uint16_t solvable = gen_table_solvable_bitness();
+        const uint16_t min_tree = gen::MinTreeBitness();
+        const uint16_t solvable = gen::TableSolvableBitness();
         assert(min_tree <= solvable);
 
         uint64_t train_table = shape.train_samples;
@@ -294,40 +289,38 @@ namespace {
 
         uint64_t size = 0;
         for (const TaskData &task_data: result.data) {
-            const gen_data *data = task_data.data.get();
+            const gen::Data &data = task_data.data;
             TensorDescriptor descriptor{};
             descriptor.kind = task_data.kind;
             descriptor.split = task_data.split;
-            descriptor.bitness = gen_data_bitness(data);
-            descriptor.cases = gen_data_cases(data);
-            descriptor.reps = gen_data_reps(data);
+            descriptor.bitness = data.Bitness();
+            descriptor.cases = data.Cases();
+            descriptor.reps = data.Reps();
             descriptor.values_offset = size;
-            descriptor.value_count = gen_data_value_count(data);
+            descriptor.value_count = data.ValueCount();
             size += descriptor.value_count * sizeof(float);
             descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
-            descriptor.target_count = gen_data_target_count(data);
+            descriptor.target_count = data.TargetCount();
             if (descriptor.target_count > 0) {
                 descriptor.targets_offset = size;
                 size += descriptor.target_count * sizeof(float);
             }
             shared->tensors.push_back(descriptor);
-            sources.push_back(TensorSource{data, nullptr});
+            sources.push_back(TensorSource{&data, nullptr});
 
-            const size_t restriction_count = gen_data_restriction_count(data);
-            for (size_t index = 0; index < restriction_count; ++index) {
-                const gen_tensor *tensor = gen_data_restriction(data, index);
+            for (const gen::Tensor &tensor: data.Restrictions()) {
                 TensorDescriptor restriction{};
                 restriction.kind = TensorKind::Restrictions;
                 restriction.split = task_data.split;
-                restriction.bitness = gen_tensor_bitness(tensor);
-                restriction.cases = gen_tensor_cases(tensor);
-                restriction.reps = gen_tensor_reps(tensor);
+                restriction.bitness = tensor.Bitness();
+                restriction.cases = tensor.Cases();
+                restriction.reps = tensor.Reps();
                 restriction.values_offset = size;
-                restriction.value_count = gen_tensor_value_count(tensor);
+                restriction.value_count = tensor.ValueCount();
                 size += restriction.value_count * sizeof(float);
                 restriction.targets_offset = std::numeric_limits<uint64_t>::max();
                 shared->tensors.push_back(restriction);
-                sources.push_back(TensorSource{nullptr, tensor});
+                sources.push_back(TensorSource{nullptr, &tensor});
             }
         }
 
@@ -345,13 +338,13 @@ namespace {
             const TensorDescriptor &descriptor = shared->tensors[index];
             float *values = reinterpret_cast<float *>(destination + descriptor.values_offset);
             if (source.data != nullptr) {
-                gen_data_write_values(source.data, values);
+                source.data->WriteValues(values);
                 if (descriptor.target_count > 0) {
                     float *targets = reinterpret_cast<float *>(destination + descriptor.targets_offset);
-                    gen_data_write_targets(source.data, targets);
+                    source.data->WriteTargets(targets);
                 }
             } else {
-                gen_tensor_write_values(source.tensor, values);
+                source.tensor->WriteValues(values);
             }
         }
         return shared;

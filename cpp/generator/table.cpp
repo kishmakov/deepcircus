@@ -5,7 +5,6 @@
 
 #include <cassert>
 #include <cstdint>
-#include <cstring>
 #include <random>
 #include <string>
 #include <string_view>
@@ -94,7 +93,7 @@ namespace {
 
     std::vector<bool> SolvableTableVector(uint16_t bitness, size_t case_id) {
         assert(bitness >= kMinTableBitness && bitness <= kSolvableTableBitness);
-        assert(case_id < gen_table_cases_number(bitness));
+        assert(case_id < gen::TableCasesNumber(bitness));
 
         if (IsSmallBitness(bitness)) {
             return SmallTableVector(bitness, case_id);
@@ -123,7 +122,7 @@ namespace {
 
 TableCase::TableCase(uint16_t bitness, size_t case_id) : bitness_(bitness), case_id_(case_id) {
     assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
-    assert(case_id_ < gen_table_cases_number(bitness_));
+    assert(case_id_ < gen::TableCasesNumber(bitness_));
     if (bitness_ <= kSolvableTableBitness) {
         truth_table_ = SolvableTableVector(bitness_, case_id_);
     }
@@ -152,7 +151,9 @@ const std::vector<bool> &TableCase::TruthTable() const {
     return truth_table_;
 }
 
-size_t gen_table_cases_number(uint16_t bitness) {
+namespace gen {
+
+size_t TableCasesNumber(uint16_t bitness) {
     assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
     if (IsSmallBitness(bitness)) {
         return SmallBitnessCasesNumber(bitness);
@@ -163,24 +164,22 @@ size_t gen_table_cases_number(uint16_t bitness) {
     return kTableCasesNumber;
 }
 
-uint16_t gen_table_solvable_bitness() { return kSolvableTableBitness; }
+uint16_t TableSolvableBitness() { return kSolvableTableBitness; }
 
-const char *gen_table_value(uint16_t bitness, size_t case_id, const char *input) {
+std::string TableValue(uint16_t bitness, size_t case_id, std::string_view input) {
     assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
-    assert(case_id < gen_table_cases_number(bitness));
-    assert(input != nullptr);
-    assert(std::strlen(input) >= bitness);
+    assert(case_id < TableCasesNumber(bitness));
+    assert(input.size() >= bitness);
 
-    thread_local std::string value;
-    thread_local FlippingSampler sampler;
-
-    value.assign(2 * bitness + 1, '0');
-    sampler.Reset(bitness, {input, bitness});
+    std::string value(2 * bitness + 1, '0');
+    FlippingSampler sampler(bitness, input.substr(0, bitness));
 
     const TableCase table(bitness, case_id);
-    const auto evaluate = [&table](std::string_view input) { return table.Evaluate(input); };
+    const auto evaluate = [&table](std::string_view point) { return table.Evaluate(point); };
     sampler.Fill(value,
                  /*sample_offset=*/0, bitness, evaluate);
 
-    return value.c_str();
+    return value;
 }
+
+} // namespace gen

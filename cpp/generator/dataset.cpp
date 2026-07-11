@@ -7,7 +7,6 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
-#include <memory>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -94,31 +93,9 @@ namespace {
         }
     }
 
-} // namespace
-
-struct gen_tensor {
-    uint16_t bitness;
-    size_t cases;
-    size_t reps;
-    std::vector<bool> values;
-};
-
-struct gen_data {
-    DataKind kind;
-    uint16_t bitness;
-    size_t cases;
-    size_t reps;
-    std::vector<bool> values;
-    std::vector<float> targets;
-    // Recursive table restrictions are complete and owned by the parent result.
-    std::vector<std::unique_ptr<gen_tensor>> restrictions;
-};
-
-namespace {
-
     // This entire batch is generated synchronously on the calling thread.
-    std::unique_ptr<gen_data> MakeData(DataKind kind, uint16_t bitness, size_t cases, size_t reps,
-                                       size_t restriction_chunk_cases, uint64_t seed) {
+    gen::Data MakeData(DataKind kind, uint16_t bitness, size_t cases, size_t reps, size_t restriction_chunk_cases,
+                       uint64_t seed) {
         assert(cases > 0);
         assert(reps > 0);
         assert(reps % 2 == 0);
@@ -134,148 +111,95 @@ namespace {
             assert(restriction_chunk_cases <= cases);
         }
 
-        auto data = std::make_unique<gen_data>();
-        data->kind = kind;
-        data->bitness = bitness;
-        data->cases = cases;
-        data->reps = reps;
+        const bool recursive = kind == DataKind::Table && bitness > kSolvableTableBitness;
         const size_t sample_size = 2 * bitness + 1;
-        data->values.resize(cases * reps * sample_size);
-        if (kind == DataKind::Tree || bitness <= kSolvableTableBitness) {
-            data->targets.resize(cases);
+        std::vector<bool> values(cases * reps * sample_size);
+        std::vector<float> targets;
+        if (!recursive) {
+            targets.resize(cases);
         }
 
-        if (kind == DataKind::Table && bitness > kSolvableTableBitness) {
+        const size_t restriction_size = recursive ? 2 * bitness * reps * (2 * bitness - 1) : 0;
+        std::vector<gen::Tensor> restrictions;
+        std::vector<std::vector<bool>> restriction_bits;
+        if (recursive) {
             for (size_t first_case = 0; first_case < cases; first_case += restriction_chunk_cases) {
-                auto tensor = std::make_unique<gen_tensor>();
-                tensor->bitness = bitness;
-                tensor->cases = std::min(restriction_chunk_cases, cases - first_case);
-                tensor->reps = reps;
-                tensor->values.resize(tensor->cases * 2 * bitness * reps * (2 * bitness - 1));
-                data->restrictions.push_back(std::move(tensor));
+                const size_t chunk_cases = std::min(restriction_chunk_cases, cases - first_case);
+                restriction_bits.emplace_back(chunk_cases * restriction_size);
             }
         }
 
         const uint64_t value_seed =
                 DomainSeed(seed, kind == DataKind::Tree ? kTreeValueDomain : kTableValueDomain, bitness);
         const uint64_t restriction_seed = DomainSeed(seed, kRestrictionDomain, bitness);
-        const size_t population =
-                kind == DataKind::Tree ? gen_tree_cases_number(bitness) : gen_table_cases_number(bitness);
+        const size_t population = kind == DataKind::Tree ? gen::TreeCasesNumber(bitness) : gen::TableCasesNumber(bitness);
         const std::vector<size_t> case_ids = SampleCaseIds(
                 population, cases,
                 DomainSeed(seed, kind == DataKind::Tree ? kTreeSelectionDomain : kTableSelectionDomain, bitness));
 
         std::vector<float> case_values(reps * sample_size);
-        const size_t restriction_size =
-                kind == DataKind::Table && bitness > kSolvableTableBitness ? 2 * bitness * reps * (2 * bitness - 1) : 0;
         std::vector<float> restriction_values(restriction_size);
         for (size_t case_index = 0; case_index < cases; ++case_index) {
             const size_t case_id = case_ids[case_index];
             if (kind == DataKind::Tree) {
                 DecisionTree tree = BuildTreeCase(bitness, case_id);
                 tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
-                data->targets[case_index] = static_cast<float>(bitness - tree.depth);
+                targets[case_index] = static_cast<float>(bitness - tree.depth);
             } else {
                 TableCase table(bitness, case_id);
                 table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
-                if (bitness <= kSolvableTableBitness) {
+                if (!recursive) {
                     const size_t depth = SolveForDepth(bitness, table.TruthTable());
-                    data->targets[case_index] = static_cast<float>(bitness - depth);
+                    targets[case_index] = static_cast<float>(bitness - depth);
                 } else {
                     const size_t chunk_id = case_index / restriction_chunk_cases;
                     const size_t chunk_case = case_index % restriction_chunk_cases;
-                    gen_tensor *tensor = data->restrictions[chunk_id].get();
                     table.FillRestrictionsTensor(reps, CaseInputSeed(restriction_seed, bitness, case_id),
                                                  restriction_values.data());
-                    StoreBits(tensor->values, chunk_case * restriction_size, restriction_values);
+                    StoreBits(restriction_bits[chunk_id], chunk_case * restriction_size, restriction_values);
                 }
             }
-            StoreBits(data->values, case_index * case_values.size(), case_values);
+            StoreBits(values, case_index * case_values.size(), case_values);
         }
-        return data;
+
+        if (recursive) {
+            restrictions.reserve(restriction_bits.size());
+            for (size_t chunk = 0; chunk < restriction_bits.size(); ++chunk) {
+                const size_t chunk_cases = restriction_bits[chunk].size() / restriction_size;
+                restrictions.emplace_back(bitness, chunk_cases, reps, std::move(restriction_bits[chunk]));
+            }
+        }
+
+        return gen::Data(bitness, cases, reps, std::move(values), std::move(targets), std::move(restrictions));
     }
 
 } // namespace
 
-gen_data *gen_tree_value_tensor(uint16_t bitness, size_t cases, size_t reps, uint64_t seed) {
-    return MakeData(DataKind::Tree, bitness, cases, reps, 0, seed).release();
-}
+namespace gen {
 
-gen_data *gen_table_value_tensor(uint16_t bitness, size_t cases, size_t reps, size_t restriction_chunk_cases,
-                                 uint64_t seed) {
-    return MakeData(DataKind::Table, bitness, cases, reps, restriction_chunk_cases, seed).release();
-}
+Tensor::Tensor(uint16_t bitness, size_t cases, size_t reps, std::vector<bool> values)
+    : bitness_(bitness), cases_(cases), reps_(reps), values_(std::move(values)) {}
 
-uint16_t gen_data_bitness(const gen_data *data) {
-    assert(data != nullptr);
-    return data->bitness;
-}
+void Tensor::WriteValues(float *output) const { WriteBits(values_, output); }
 
-size_t gen_data_cases(const gen_data *data) {
-    assert(data != nullptr);
-    return data->cases;
-}
+Data::Data(uint16_t bitness, size_t cases, size_t reps, std::vector<bool> values, std::vector<float> targets,
+           std::vector<Tensor> restrictions)
+    : bitness_(bitness), cases_(cases), reps_(reps), values_(std::move(values)), targets_(std::move(targets)),
+      restrictions_(std::move(restrictions)) {}
 
-size_t gen_data_reps(const gen_data *data) {
-    assert(data != nullptr);
-    return data->reps;
-}
+void Data::WriteValues(float *output) const { WriteBits(values_, output); }
 
-size_t gen_data_value_count(const gen_data *data) {
-    assert(data != nullptr);
-    return data->values.size();
-}
-
-size_t gen_data_target_count(const gen_data *data) {
-    assert(data != nullptr);
-    return data->targets.size();
-}
-
-void gen_data_write_values(const gen_data *data, float *output) {
-    assert(data != nullptr);
-    WriteBits(data->values, output);
-}
-
-void gen_data_write_targets(const gen_data *data, float *output) {
-    assert(data != nullptr);
+void Data::WriteTargets(float *output) const {
     assert(output != nullptr);
-    std::copy(data->targets.begin(), data->targets.end(), output);
+    std::copy(targets_.begin(), targets_.end(), output);
 }
 
-size_t gen_data_restriction_count(const gen_data *data) {
-    assert(data != nullptr);
-    return data->restrictions.size();
+Data TreeValueTensor(uint16_t bitness, size_t cases, size_t reps, uint64_t seed) {
+    return MakeData(DataKind::Tree, bitness, cases, reps, 0, seed);
 }
 
-const gen_tensor *gen_data_restriction(const gen_data *data, size_t index) {
-    assert(data != nullptr);
-    assert(index < data->restrictions.size());
-    return data->restrictions[index].get();
+Data TableValueTensor(uint16_t bitness, size_t cases, size_t reps, size_t restriction_chunk_cases, uint64_t seed) {
+    return MakeData(DataKind::Table, bitness, cases, reps, restriction_chunk_cases, seed);
 }
 
-void gen_data_destroy(gen_data *data) { delete data; }
-
-uint16_t gen_tensor_bitness(const gen_tensor *tensor) {
-    assert(tensor != nullptr);
-    return tensor->bitness;
-}
-
-size_t gen_tensor_cases(const gen_tensor *tensor) {
-    assert(tensor != nullptr);
-    return tensor->cases;
-}
-
-size_t gen_tensor_reps(const gen_tensor *tensor) {
-    assert(tensor != nullptr);
-    return tensor->reps;
-}
-
-size_t gen_tensor_value_count(const gen_tensor *tensor) {
-    assert(tensor != nullptr);
-    return tensor->values.size();
-}
-
-void gen_tensor_write_values(const gen_tensor *tensor, float *output) {
-    assert(tensor != nullptr);
-    WriteBits(tensor->values, output);
-}
+} // namespace gen

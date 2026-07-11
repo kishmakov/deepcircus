@@ -1,16 +1,23 @@
 #include "generator.h"
+
 #include "aig.h"
 
-// API
+namespace gen {
 
-const char *gen_circuit_sets() { return CircuitSets().c_str(); }
+const std::string &CircuitSets() { return ::CircuitSets(); }
 
-const char *gen_circuit_cases(const char *set_name) { return CircuitCases(set_name).c_str(); }
+const std::string &CircuitCases(const std::string &set_name) { return ::CircuitCases(set_name.c_str()); }
 
-size_t gen_circuit_inputs(const char *set_name, const char *case_name) { return CircuitInputs(set_name, case_name); }
-
-size_t gen_circuit_outputs(const char *set_name, const char *case_name) { return CircuitOutputs(set_name, case_name); }
-
-const char *gen_circuit_value(const char *set_name, const char *case_name, const char *input_state) {
-    return CircuitValue(set_name, case_name, input_state);
+size_t CircuitInputs(const std::string &set_name, const std::string &case_name) {
+    return ::CircuitInputs(set_name.c_str(), case_name.c_str());
 }
+
+size_t CircuitOutputs(const std::string &set_name, const std::string &case_name) {
+    return ::CircuitOutputs(set_name.c_str(), case_name.c_str());
+}
+
+std::string CircuitValue(const std::string &set_name, const std::string &case_name, const std::string &input_state) {
+    return ::CircuitValue(set_name.c_str(), case_name.c_str(), input_state.c_str());
+}
+
+} // namespace gen
