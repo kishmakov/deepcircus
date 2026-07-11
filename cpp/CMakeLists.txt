@@ -47,3 +47,4 @@ target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
 target_link_libraries(gen PRIVATE aiger Threads::Threads)
 
 add_executable(generator_server server.cpp)
+target_link_libraries(generator_server PRIVATE gen Threads::Threads)

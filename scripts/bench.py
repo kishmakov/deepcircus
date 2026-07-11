@@ -7,16 +7,25 @@ import socket
 import struct
 import subprocess
 import sys
+from multiprocessing import shared_memory
 from pathlib import Path
 from time import perf_counter
+
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 HEADER = struct.Struct("<IQ")
-INITIALIZATION = struct.Struct("<QQHHQ")
+INITIALIZATION = struct.Struct("<QQHHQQQQQ")
+TASK_PREFIX = struct.Struct("<QHQQ")
+TENSOR_DESCRIPTOR = struct.Struct("<BBHQQQQQQ")
 INITIALIZE = 1
-SHUTDOWN = 2
+NEXT = 2
+RELEASE = 3
+SHUTDOWN = 4
+RESTRICTIONS = 3
+NO_OFFSET = (1 << 64) - 1
 
 
 def receive_exact(connection: socket.socket, size: int) -> bytes:
@@ -35,6 +44,92 @@ def request(connection: socket.socket, command: int, payload: bytes = b"") -> by
     status, response_size = HEADER.unpack(receive_exact(connection, HEADER.size))
     assert status == 0, status
     return receive_exact(connection, response_size)
+
+
+def take_string(payload: bytes, offset: int) -> tuple[str, int]:
+    size = struct.unpack_from("<I", payload, offset)[0]
+    offset += 4
+    return payload[offset : offset + size].decode("ascii"), offset + size
+
+
+def consume_tasks(connection: socket.socket) -> tuple[int, int, int]:
+    task_count = 0
+    tensor_count = 0
+    byte_count = 0
+    while True:
+        payload = request(connection, NEXT)
+        assert payload, payload
+        if payload[0] == 1:
+            assert len(payload) == 1, len(payload)
+            return task_count, tensor_count, byte_count
+        assert payload[0] == 0, payload[0]
+
+        offset = 1
+        iteration, bitness, task_seed, shared_size = TASK_PREFIX.unpack_from(
+            payload,
+            offset,
+        )
+        offset += TASK_PREFIX.size
+        name, offset = take_string(payload, offset)
+        tensors = struct.unpack_from("<I", payload, offset)[0]
+        offset += 4
+
+        memory = shared_memory.SharedMemory(name=name)
+        assert memory.size == shared_size, (memory.size, shared_size)
+        try:
+            for _ in range(tensors):
+                descriptor = TENSOR_DESCRIPTOR.unpack_from(payload, offset)
+                offset += TENSOR_DESCRIPTOR.size
+                (
+                    kind,
+                    split,
+                    tensor_bitness,
+                    cases,
+                    reps,
+                    values_offset,
+                    value_count,
+                    targets_offset,
+                    target_count,
+                ) = descriptor
+                assert tensor_bitness == bitness, (tensor_bitness, bitness)
+                assert kind in (1, 2, RESTRICTIONS), kind
+                assert split in (1, 2), split
+                if kind == RESTRICTIONS:
+                    shape = (cases, 2 * bitness, reps, 2 * bitness - 1)
+                else:
+                    shape = (cases, reps, 2 * bitness + 1)
+                assert int(np.prod(shape)) == value_count, (shape, value_count)
+                values = np.ndarray(
+                    shape,
+                    dtype=np.float32,
+                    buffer=memory.buf,
+                    offset=values_offset,
+                )
+                if target_count:
+                    assert targets_offset != NO_OFFSET, targets_offset
+                    assert target_count == cases, (target_count, cases)
+                    targets = np.ndarray(
+                        (cases,),
+                        dtype=np.float32,
+                        buffer=memory.buf,
+                        offset=targets_offset,
+                    )
+                    del targets
+                else:
+                    assert targets_offset == NO_OFFSET, targets_offset
+                del values
+            assert offset == len(payload), (offset, len(payload))
+            assert iteration > 0, iteration
+            assert task_seed >= 0, task_seed
+        finally:
+            memory.close()
+            memory.unlink()
+
+        response = request(connection, RELEASE)
+        assert not response, response
+        task_count += 1
+        tensor_count += tensors
+        byte_count += shared_size
 
 
 def main() -> None:
@@ -67,6 +162,10 @@ def main() -> None:
             config.bitness_from,
             config.bitness_to,
             config.training.seed,
+            config.training.train_samples,
+            config.training.validation_samples,
+            config.training.points_per_sample,
+            config.training.batch_size,
         )
         initialization_started = perf_counter()
         response = request(connection, INITIALIZE, payload)
@@ -74,14 +173,26 @@ def main() -> None:
         initialization_seconds = perf_counter() - initialization_started
         initialized = True
 
+        generation_started = perf_counter()
+        task_count, tensor_count, byte_count = consume_tasks(connection)
+        generation_seconds = perf_counter() - generation_started
+
         print(json.dumps({
             "first_iteration": first_iteration,
             "last_iteration": last_iteration,
             "bitness_from": config.bitness_from,
             "bitness_to": config.bitness_to,
             "seed": config.training.seed,
+            "train_samples": config.training.train_samples,
+            "validation_samples": config.training.validation_samples,
+            "points_per_sample": config.training.points_per_sample,
+            "tasks": task_count,
+            "tensors": tensor_count,
+            "tensor_bytes": byte_count,
             "startup_seconds": startup_seconds,
             "initialization_seconds": initialization_seconds,
+            "generation_seconds": generation_seconds,
+            "tasks_per_second": task_count / generation_seconds,
             "total_seconds": perf_counter() - total_started,
         }))
     finally:
