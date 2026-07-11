@@ -20,7 +20,7 @@ size_t CircuitInputs(const char* set_name, const char* case_name);
 size_t CircuitOutputs(const char* set_name, const char* case_name);
 
 // Computes value samples for an AIG circuit into a thread_local buffer and
-// returns it. The layout matches bb_circuit_value (see bool_bench.h).
+// returns it. The layout matches gen_circuit_value (see generator.h).
 const char* CircuitValue(
     const char* set_name,
     const char* case_name,

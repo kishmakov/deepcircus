@@ -1,4 +1,4 @@
-#include "bool_bench.h"
+#include "generator.h"
 #include "decision_tree.h"
 #include "table.h"
 #include "tree.h"
@@ -226,10 +226,10 @@ private:
 
 }  // namespace
 
-struct bb_tensor;
+struct gen_tensor;
 
-struct bb_data {
-    bb_generator* owner;
+struct gen_data {
+    gen_generator* owner;
     DataKind kind;
     uint16_t bitness;
     size_t cases;
@@ -242,7 +242,7 @@ struct bb_data {
     std::vector<std::unique_ptr<TableCase>> tables;
     std::unique_ptr<float[]> values;
     std::unique_ptr<float[]> targets;
-    bb_tensor* prefetched_restrictions = nullptr;
+    gen_tensor* prefetched_restrictions = nullptr;
     bool prefetched_claimed = false;
     size_t active_tensors = 0;
 
@@ -253,9 +253,9 @@ struct bb_data {
     std::atomic<size_t> next_case{0};
 };
 
-struct bb_tensor {
-    bb_generator* owner;
-    bb_data* parent;
+struct gen_tensor {
+    gen_generator* owner;
+    gen_data* parent;
     size_t first_case;
     size_t cases;
     std::unique_ptr<float[]> values;
@@ -267,8 +267,8 @@ struct bb_tensor {
     std::atomic<size_t> next_case{0};
 };
 
-struct bb_generator {
-    explicit bb_generator(size_t workers)
+struct gen_generator {
+    explicit gen_generator(size_t workers)
         : frontend(std::this_thread::get_id())
         , workers(workers)
         , pool(std::make_unique<ThreadPool>(workers))
@@ -278,18 +278,18 @@ struct bb_generator {
     std::thread::id frontend;
     size_t workers;
     std::unique_ptr<ThreadPool> pool;
-    std::unordered_set<bb_data*> data;
-    std::unordered_set<bb_tensor*> tensors;
+    std::unordered_set<gen_data*> data;
+    std::unordered_set<gen_tensor*> tensors;
 };
 
 namespace {
 
-void AssertFrontend(const bb_generator* generator) {
+void AssertFrontend(const gen_generator* generator) {
     assert(generator != nullptr);
     assert(generator->frontend == std::this_thread::get_id());
 }
 
-void FinishDataTask(bb_data* data) {
+void FinishDataTask(gen_data* data) {
     std::lock_guard<std::mutex> lock(data->mutex);
     assert(data->state == HandleState::Generating);
     assert(data->remaining > 0);
@@ -300,7 +300,7 @@ void FinishDataTask(bb_data* data) {
     }
 }
 
-void FinishTensorTask(bb_tensor* tensor) {
+void FinishTensorTask(gen_tensor* tensor) {
     std::lock_guard<std::mutex> lock(tensor->mutex);
     assert(tensor->state == HandleState::Generating);
     assert(tensor->remaining > 0);
@@ -312,9 +312,9 @@ void FinishTensorTask(bb_tensor* tensor) {
 }
 
 void RunRestrictionWorker(
-    bb_generator* generator,
-    bb_data* data,
-    bb_tensor* tensor)
+    gen_generator* generator,
+    gen_data* data,
+    gen_tensor* tensor)
 {
     const size_t values_per_case =
         2 * data->bitness * data->reps * (2 * data->bitness - 1);
@@ -335,7 +335,7 @@ void RunRestrictionWorker(
     FinishTensorTask(tensor);
 }
 
-void GenerateDataCase(bb_data* data, size_t case_index) {
+void GenerateDataCase(gen_data* data, size_t case_index) {
     const size_t sample_size = 2 * data->bitness + 1;
     const size_t case_id = data->case_ids[case_index];
     if (data->kind == DataKind::Tree) {
@@ -364,7 +364,7 @@ void GenerateDataCase(bb_data* data, size_t case_index) {
         data->tables[case_index] = std::move(table);
 
         if (case_index < data->restriction_chunk_cases) {
-            bb_tensor* tensor = data->prefetched_restrictions;
+            gen_tensor* tensor = data->prefetched_restrictions;
             const size_t values_per_case =
                 2 * data->bitness * data->reps * (2 * data->bitness - 1);
             data->tables[case_index]->FillRestrictionsTensor(
@@ -379,7 +379,7 @@ void GenerateDataCase(bb_data* data, size_t case_index) {
     }
 }
 
-void RunDataWorker(bb_generator* generator, bb_data* data) {
+void RunDataWorker(gen_generator* generator, gen_data* data) {
     while (true) {
         const size_t case_index = data->next_case.fetch_add(1);
         if (case_index >= data->cases) {
@@ -394,9 +394,9 @@ void RunDataWorker(bb_generator* generator, bb_data* data) {
     FinishDataTask(data);
 }
 
-bb_tensor* MakeRestrictionTensor(
-    bb_generator* generator,
-    bb_data* data,
+gen_tensor* MakeRestrictionTensor(
+    gen_generator* generator,
+    gen_data* data,
     size_t first_case,
     size_t cases,
     bool enqueue)
@@ -406,7 +406,7 @@ bb_tensor* MakeRestrictionTensor(
     assert(cases > 0);
     assert(first_case + cases <= data->cases);
 
-    auto tensor = std::make_unique<bb_tensor>();
+    auto tensor = std::make_unique<gen_tensor>();
     tensor->owner = generator;
     tensor->parent = data;
     tensor->first_case = first_case;
@@ -416,7 +416,7 @@ bb_tensor* MakeRestrictionTensor(
     const size_t values_per_case =
         2 * data->bitness * data->reps * (2 * data->bitness - 1);
     tensor->values = std::make_unique<float[]>(cases * values_per_case);
-    bb_tensor* result = tensor.release();
+    gen_tensor* result = tensor.release();
     const bool inserted = generator->tensors.insert(result).second;
     assert(inserted);
 
@@ -434,8 +434,8 @@ bb_tensor* MakeRestrictionTensor(
     return result;
 }
 
-bb_data* MakeData(
-    bb_generator* generator,
+gen_data* MakeData(
+    gen_generator* generator,
     DataKind kind,
     uint16_t bitness,
     size_t cases,
@@ -460,7 +460,7 @@ bb_data* MakeData(
         }
     }
 
-    auto data = std::make_unique<bb_data>();
+    auto data = std::make_unique<gen_data>();
     data->owner = generator;
     data->kind = kind;
     data->bitness = bitness;
@@ -473,8 +473,8 @@ bb_data* MakeData(
         bitness);
     data->restriction_seed = DomainSeed(seed, kRestrictionDomain, bitness);
     const size_t population = kind == DataKind::Tree
-        ? bb_tree_cases_number(bitness)
-        : bb_table_cases_number(bitness);
+        ? gen_tree_cases_number(bitness)
+        : gen_table_cases_number(bitness);
     data->case_ids = SampleCaseIds(
         population,
         cases,
@@ -494,7 +494,7 @@ bb_data* MakeData(
     }
     data->state = HandleState::Generating;
 
-    bb_data* result = data.release();
+    gen_data* result = data.release();
     const bool inserted = generator->data.insert(result).second;
     assert(inserted);
 
@@ -521,22 +521,22 @@ bb_data* MakeData(
 
 }  // namespace
 
-bb_generator* bb_generator_create(size_t workers) {
+gen_generator* gen_generator_create(size_t workers) {
     assert(workers > 0);
-    return new bb_generator(workers);
+    return new gen_generator(workers);
 }
 
-void bb_generator_destroy(bb_generator* generator) {
+void gen_generator_destroy(gen_generator* generator) {
     if (generator == nullptr) {
         return;
     }
     AssertFrontend(generator);
     generator->pool->WaitIdle();
-    for (bb_tensor* tensor : generator->tensors) {
+    for (gen_tensor* tensor : generator->tensors) {
         delete tensor;
     }
     generator->tensors.clear();
-    for (bb_data* data : generator->data) {
+    for (gen_data* data : generator->data) {
         delete data;
     }
     generator->data.clear();
@@ -544,8 +544,8 @@ void bb_generator_destroy(bb_generator* generator) {
     delete generator;
 }
 
-bb_data* bb_tree_value_tensor(
-    bb_generator* generator,
+gen_data* gen_tree_value_tensor(
+    gen_generator* generator,
     uint16_t bitness,
     size_t cases,
     size_t reps,
@@ -561,8 +561,8 @@ bb_data* bb_tree_value_tensor(
         seed);
 }
 
-bb_data* bb_table_value_tensor(
-    bb_generator* generator,
+gen_data* gen_table_value_tensor(
+    gen_generator* generator,
     uint16_t bitness,
     size_t cases,
     size_t reps,
@@ -579,7 +579,7 @@ bb_data* bb_table_value_tensor(
         seed);
 }
 
-void bb_data_acquire(bb_data* data) {
+void gen_data_acquire(gen_data* data) {
     assert(data != nullptr);
     AssertFrontend(data->owner);
     std::unique_lock<std::mutex> lock(data->mutex);
@@ -592,38 +592,38 @@ void bb_data_acquire(bb_data* data) {
     data->state = HandleState::Acquired;
 }
 
-uint16_t bb_data_bitness(const bb_data* data) {
+uint16_t gen_data_bitness(const gen_data* data) {
     assert(data != nullptr);
     assert(data->state == HandleState::Acquired);
     return data->bitness;
 }
 
-size_t bb_data_cases(const bb_data* data) {
+size_t gen_data_cases(const gen_data* data) {
     assert(data != nullptr);
     assert(data->state == HandleState::Acquired);
     return data->cases;
 }
 
-size_t bb_data_reps(const bb_data* data) {
+size_t gen_data_reps(const gen_data* data) {
     assert(data != nullptr);
     assert(data->state == HandleState::Acquired);
     return data->reps;
 }
 
-float* bb_data_take_values(bb_data* data) {
+float* gen_data_take_values(gen_data* data) {
     assert(data != nullptr);
     assert(data->state == HandleState::Acquired);
     assert(data->values != nullptr);
     return data->values.release();
 }
 
-float* bb_data_take_targets(bb_data* data) {
+float* gen_data_take_targets(gen_data* data) {
     assert(data != nullptr);
     assert(data->state == HandleState::Acquired);
     return data->targets.release();
 }
 
-void bb_data_release(bb_generator* generator, bb_data* data) {
+void gen_data_release(gen_generator* generator, gen_data* data) {
     AssertFrontend(generator);
     assert(data != nullptr);
     assert(data->owner == generator);
@@ -631,7 +631,7 @@ void bb_data_release(bb_generator* generator, bb_data* data) {
     assert(data->active_tensors == 0);
 
     if (data->prefetched_restrictions != nullptr) {
-        bb_tensor* tensor = data->prefetched_restrictions;
+        gen_tensor* tensor = data->prefetched_restrictions;
         assert(!data->prefetched_claimed);
         assert(tensor->state == HandleState::Ready);
         const size_t erased_tensor = generator->tensors.erase(tensor);
@@ -645,9 +645,9 @@ void bb_data_release(bb_generator* generator, bb_data* data) {
     delete data;
 }
 
-bb_tensor* bb_table_restrictions_tensor(
-    bb_generator* generator,
-    bb_data* table_data,
+gen_tensor* gen_table_restrictions_tensor(
+    gen_generator* generator,
+    gen_data* table_data,
     size_t first_case,
     size_t cases)
 {
@@ -679,7 +679,7 @@ bb_tensor* bb_table_restrictions_tensor(
         /*enqueue=*/true);
 }
 
-void bb_tensor_acquire(bb_tensor* tensor) {
+void gen_tensor_acquire(gen_tensor* tensor) {
     assert(tensor != nullptr);
     AssertFrontend(tensor->owner);
     std::unique_lock<std::mutex> lock(tensor->mutex);
@@ -692,19 +692,19 @@ void bb_tensor_acquire(bb_tensor* tensor) {
     tensor->state = HandleState::Acquired;
 }
 
-float* bb_tensor_take_values(bb_tensor* tensor) {
+float* gen_tensor_take_values(gen_tensor* tensor) {
     assert(tensor != nullptr);
     assert(tensor->state == HandleState::Acquired);
     assert(tensor->values != nullptr);
     return tensor->values.release();
 }
 
-void bb_tensor_release(bb_generator* generator, bb_tensor* tensor) {
+void gen_tensor_release(gen_generator* generator, gen_tensor* tensor) {
     AssertFrontend(generator);
     assert(tensor != nullptr);
     assert(tensor->owner == generator);
     assert(tensor->state == HandleState::Acquired);
-    bb_data* parent = tensor->parent;
+    gen_data* parent = tensor->parent;
     assert(parent != nullptr);
     assert(parent->active_tensors > 0);
     --parent->active_tensors;
@@ -718,6 +718,6 @@ void bb_tensor_release(bb_generator* generator, bb_tensor* tensor) {
     delete tensor;
 }
 
-void bb_float_buffer_destroy(float* buffer) {
+void gen_float_buffer_destroy(float* buffer) {
     delete[] buffer;
 }

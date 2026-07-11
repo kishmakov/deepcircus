@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.bool_bench import sample_point_dim
+from src.generator import sample_point_dim
 from src.config import Config, load_bitness_config
 from src.model import DEVICE, DeepSetPredictor
 from src.sampler import GeneratorProxy, Sampler

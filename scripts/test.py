@@ -2,7 +2,7 @@ import ctypes
 from pathlib import Path
 
 
-LIBRARY = Path(__file__).resolve().parents[1] / "cpp" / "build" / "libbb.so"
+LIBRARY = Path(__file__).resolve().parents[1] / "cpp" / "build" / "libgen.so"
 CIRCUITS = Path(__file__).resolve().parents[1] / "data" / "circuits"
 
 TABLE_SOLVABLE_CASES = [
@@ -148,64 +148,64 @@ TREE_CASES = [
 def load_library():
     library = ctypes.CDLL(str(LIBRARY))
 
-    library.bb_tree_cases_number.argtypes = [ctypes.c_uint16]
-    library.bb_tree_cases_number.restype = ctypes.c_size_t
+    library.gen_tree_cases_number.argtypes = [ctypes.c_uint16]
+    library.gen_tree_cases_number.restype = ctypes.c_size_t
 
-    library.bb_table_solvable_bitness.argtypes = []
-    library.bb_table_solvable_bitness.restype = ctypes.c_uint16
+    library.gen_table_solvable_bitness.argtypes = []
+    library.gen_table_solvable_bitness.restype = ctypes.c_uint16
 
     float_pointer = ctypes.POINTER(ctypes.c_float)
-    library.bb_generator_create.argtypes = [ctypes.c_size_t]
-    library.bb_generator_create.restype = ctypes.c_void_p
-    library.bb_generator_destroy.argtypes = [ctypes.c_void_p]
-    library.bb_generator_destroy.restype = None
-    library.bb_data_acquire.argtypes = [ctypes.c_void_p]
-    library.bb_data_acquire.restype = None
-    library.bb_data_bitness.argtypes = [ctypes.c_void_p]
-    library.bb_data_bitness.restype = ctypes.c_uint16
-    library.bb_data_cases.argtypes = [ctypes.c_void_p]
-    library.bb_data_cases.restype = ctypes.c_size_t
-    library.bb_data_reps.argtypes = [ctypes.c_void_p]
-    library.bb_data_reps.restype = ctypes.c_size_t
-    library.bb_data_take_values.argtypes = [ctypes.c_void_p]
-    library.bb_data_take_values.restype = float_pointer
-    library.bb_data_take_targets.argtypes = [ctypes.c_void_p]
-    library.bb_data_take_targets.restype = float_pointer
-    library.bb_data_release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-    library.bb_data_release.restype = None
-    library.bb_tensor_acquire.argtypes = [ctypes.c_void_p]
-    library.bb_tensor_acquire.restype = None
-    library.bb_tensor_take_values.argtypes = [ctypes.c_void_p]
-    library.bb_tensor_take_values.restype = float_pointer
-    library.bb_tensor_release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-    library.bb_tensor_release.restype = None
-    library.bb_float_buffer_destroy.argtypes = [float_pointer]
-    library.bb_float_buffer_destroy.restype = None
+    library.gen_generator_create.argtypes = [ctypes.c_size_t]
+    library.gen_generator_create.restype = ctypes.c_void_p
+    library.gen_generator_destroy.argtypes = [ctypes.c_void_p]
+    library.gen_generator_destroy.restype = None
+    library.gen_data_acquire.argtypes = [ctypes.c_void_p]
+    library.gen_data_acquire.restype = None
+    library.gen_data_bitness.argtypes = [ctypes.c_void_p]
+    library.gen_data_bitness.restype = ctypes.c_uint16
+    library.gen_data_cases.argtypes = [ctypes.c_void_p]
+    library.gen_data_cases.restype = ctypes.c_size_t
+    library.gen_data_reps.argtypes = [ctypes.c_void_p]
+    library.gen_data_reps.restype = ctypes.c_size_t
+    library.gen_data_take_values.argtypes = [ctypes.c_void_p]
+    library.gen_data_take_values.restype = float_pointer
+    library.gen_data_take_targets.argtypes = [ctypes.c_void_p]
+    library.gen_data_take_targets.restype = float_pointer
+    library.gen_data_release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    library.gen_data_release.restype = None
+    library.gen_tensor_acquire.argtypes = [ctypes.c_void_p]
+    library.gen_tensor_acquire.restype = None
+    library.gen_tensor_take_values.argtypes = [ctypes.c_void_p]
+    library.gen_tensor_take_values.restype = float_pointer
+    library.gen_tensor_release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+    library.gen_tensor_release.restype = None
+    library.gen_float_buffer_destroy.argtypes = [float_pointer]
+    library.gen_float_buffer_destroy.restype = None
 
-    library.bb_tree_value.argtypes = [
+    library.gen_tree_value.argtypes = [
         ctypes.c_uint16,
         ctypes.c_size_t,
         ctypes.c_char_p,
     ]
-    library.bb_tree_value.restype = ctypes.c_char_p
+    library.gen_tree_value.restype = ctypes.c_char_p
 
-    library.bb_tree_value_tensor.argtypes = [
+    library.gen_tree_value_tensor.argtypes = [
         ctypes.c_void_p,
         ctypes.c_uint16,
         ctypes.c_size_t,
         ctypes.c_size_t,
         ctypes.c_uint64,
     ]
-    library.bb_tree_value_tensor.restype = ctypes.c_void_p
+    library.gen_tree_value_tensor.restype = ctypes.c_void_p
 
-    library.bb_table_value.argtypes = [
+    library.gen_table_value.argtypes = [
         ctypes.c_uint16,
         ctypes.c_size_t,
         ctypes.c_char_p,
     ]
-    library.bb_table_value.restype = ctypes.c_char_p
+    library.gen_table_value.restype = ctypes.c_char_p
 
-    library.bb_table_value_tensor.argtypes = [
+    library.gen_table_value_tensor.argtypes = [
         ctypes.c_void_p,
         ctypes.c_uint16,
         ctypes.c_size_t,
@@ -213,34 +213,34 @@ def load_library():
         ctypes.c_size_t,
         ctypes.c_uint64,
     ]
-    library.bb_table_value_tensor.restype = ctypes.c_void_p
+    library.gen_table_value_tensor.restype = ctypes.c_void_p
 
-    library.bb_table_restrictions_tensor.argtypes = [
+    library.gen_table_restrictions_tensor.argtypes = [
         ctypes.c_void_p,
         ctypes.c_void_p,
         ctypes.c_size_t,
         ctypes.c_size_t,
     ]
-    library.bb_table_restrictions_tensor.restype = ctypes.c_void_p
+    library.gen_table_restrictions_tensor.restype = ctypes.c_void_p
 
-    library.bb_circuit_sets.argtypes = []
-    library.bb_circuit_sets.restype = ctypes.c_char_p
+    library.gen_circuit_sets.argtypes = []
+    library.gen_circuit_sets.restype = ctypes.c_char_p
 
-    library.bb_circuit_cases.argtypes = [ctypes.c_char_p]
-    library.bb_circuit_cases.restype = ctypes.c_char_p
+    library.gen_circuit_cases.argtypes = [ctypes.c_char_p]
+    library.gen_circuit_cases.restype = ctypes.c_char_p
 
-    library.bb_circuit_inputs.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-    library.bb_circuit_inputs.restype = ctypes.c_size_t
+    library.gen_circuit_inputs.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    library.gen_circuit_inputs.restype = ctypes.c_size_t
 
-    library.bb_circuit_outputs.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
-    library.bb_circuit_outputs.restype = ctypes.c_size_t
+    library.gen_circuit_outputs.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    library.gen_circuit_outputs.restype = ctypes.c_size_t
 
-    library.bb_circuit_value.argtypes = [
+    library.gen_circuit_value.argtypes = [
         ctypes.c_char_p,
         ctypes.c_char_p,
         ctypes.c_char_p,
     ]
-    library.bb_circuit_value.restype = ctypes.c_char_p
+    library.gen_circuit_value.restype = ctypes.c_char_p
 
     return library
 
@@ -278,7 +278,7 @@ def read_aig_metadata(set_name, case_name):
 
 
 def circuit_value(library, set_name, case_name, input_state):
-    return library.bb_circuit_value(
+    return library.gen_circuit_value(
         set_name.encode("ascii"),
         case_name.encode("ascii"),
         input_state.encode("ascii"),
@@ -286,7 +286,7 @@ def circuit_value(library, set_name, case_name, input_state):
 
 
 def tree_value(library, bitness, case_id, input_bits):
-    return library.bb_tree_value(
+    return library.gen_tree_value(
         bitness,
         case_id,
         input_bits.encode("ascii"),
@@ -294,7 +294,7 @@ def tree_value(library, bitness, case_id, input_bits):
 
 
 def table_value(library, bitness, case_id, input_bits):
-    return library.bb_table_value(
+    return library.gen_table_value(
         bitness,
         case_id,
         input_bits.encode("ascii"),
@@ -536,13 +536,13 @@ def test_tree_cases(library):
         value = assert_case_consistent(
             library,
             tree_value,
-            "bb_tree_value",
+            "gen_tree_value",
             bitness,
             case_id,
             input_bits,
         )
         assert value == expected_value, (
-            f"bb_tree_value({bitness}, {case_id}, {input_bits}): "
+            f"gen_tree_value({bitness}, {case_id}, {input_bits}): "
             f"actual={value}, expected={expected_value}"
         )
 
@@ -555,11 +555,11 @@ def test_tree_cases(library):
         first_repeat = tree_value(library, bitness, case_id, input_bits)
         other_repeat = tree_value(library, bitness, case_id, flipped)
         assert first == first_repeat, (
-            f"bb_tree_value({bitness}, {case_id}, {input_bits}) repeat: "
+            f"gen_tree_value({bitness}, {case_id}, {input_bits}) repeat: "
             f"first={first}, second={first_repeat}"
         )
         assert other == other_repeat, (
-            f"bb_tree_value({bitness}, {case_id}, {flipped}) repeat: "
+            f"gen_tree_value({bitness}, {case_id}, {flipped}) repeat: "
             f"first={other}, second={other_repeat}"
         )
 
@@ -578,13 +578,13 @@ def test_table_solvable_cases(library):
         value = assert_case_consistent(
             library,
             table_value,
-            "bb_table_value",
+            "gen_table_value",
             bitness,
             case_id,
             input_bits,
         )
         assert value == expected_value, (
-            f"bb_table_value({bitness}, {case_id}, {input_bits}): "
+            f"gen_table_value({bitness}, {case_id}, {input_bits}): "
             f"actual={value}, expected={expected_value}"
         )
 
@@ -592,11 +592,11 @@ def test_table_big_cases(library):
     print(f"Check big table cases ...")
 
     for bitness, case_id, input_bits, expected_value in TABLE_BIG_CASES:
-        assert bitness > library.bb_table_solvable_bitness(), bitness
+        assert bitness > library.gen_table_solvable_bitness(), bitness
         value = assert_case_consistent(
             library,
             table_value,
-            "bb_table_value",
+            "gen_table_value",
             bitness,
             case_id,
             input_bits,
@@ -608,29 +608,29 @@ def legacy_test_metric_tensors(library):
     print("Check depth/node tensor APIs ...")
 
     assert_metric_tensor_consistent(
-        library.bb_tree_nodes_tensor,
-        "bb_tree_nodes_tensor",
+        library.gen_tree_nodes_tensor,
+        "gen_tree_nodes_tensor",
         17,
         [0, 42, 239],
         [0, 42, 239],
     )
     assert_metric_tensor_consistent(
-        library.bb_tree_depth_tensor,
-        "bb_tree_depth_tensor",
+        library.gen_tree_depth_tensor,
+        "gen_tree_depth_tensor",
         17,
         [0, 42, 239],
         [0, 9, 16],
     )
     assert_metric_tensor_consistent(
-        library.bb_table_nodes_tensor,
-        "bb_table_nodes_tensor",
+        library.gen_table_nodes_tensor,
+        "gen_table_nodes_tensor",
         4,
         [0, 3190, 11304],
         [0, 7, 6],
     )
     assert_metric_tensor_consistent(
-        library.bb_table_depth_tensor,
-        "bb_table_depth_tensor",
+        library.gen_table_depth_tensor,
+        "gen_table_depth_tensor",
         7,
         [42, 239],
         [7, 7],
@@ -642,9 +642,9 @@ def legacy_test_value_tensors(library):
 
     assert_value_tensor_consistent(
         library,
-        library.bb_tree_value_tensor,
+        library.gen_tree_value_tensor,
         tree_value,
-        "bb_tree_value_tensor",
+        "gen_tree_value_tensor",
         17,
         [42],
         8,
@@ -662,9 +662,9 @@ def legacy_test_value_tensors(library):
     )
     assert_value_tensor_consistent(
         library,
-        library.bb_tree_value_tensor,
+        library.gen_tree_value_tensor,
         tree_value,
-        "bb_tree_value_tensor",
+        "gen_tree_value_tensor",
         24,
         [188, 189],
         4,
@@ -672,9 +672,9 @@ def legacy_test_value_tensors(library):
     )
     assert_value_tensor_consistent(
         library,
-        library.bb_table_value_tensor,
+        library.gen_table_value_tensor,
         table_value,
-        "bb_table_value_tensor",
+        "gen_table_value_tensor",
         4,
         [0],
         8,
@@ -682,9 +682,9 @@ def legacy_test_value_tensors(library):
     )
     assert_value_tensor_consistent(
         library,
-        library.bb_table_value_tensor,
+        library.gen_table_value_tensor,
         table_value,
-        "bb_table_value_tensor",
+        "gen_table_value_tensor",
         7,
         [42, 239],
         6,
@@ -692,9 +692,9 @@ def legacy_test_value_tensors(library):
     )
     assert_value_tensor_consistent(
         library,
-        library.bb_table_value_tensor,
+        library.gen_table_value_tensor,
         table_value,
-        "bb_table_value_tensor",
+        "gen_table_value_tensor",
         17,
         [42, 43],
         4,
@@ -702,9 +702,9 @@ def legacy_test_value_tensors(library):
     )
     assert_restrictions_tensor_consistent(
         library,
-        library.bb_tree_restrictions_tensor,
+        library.gen_tree_restrictions_tensor,
         tree_value,
-        "bb_tree_restrictions_tensor",
+        "gen_tree_restrictions_tensor",
         17,
         [42, 43],
         4,
@@ -712,9 +712,9 @@ def legacy_test_value_tensors(library):
     )
     assert_restrictions_tensor_consistent(
         library,
-        library.bb_table_restrictions_tensor,
+        library.gen_table_restrictions_tensor,
         table_value,
-        "bb_table_restrictions_tensor",
+        "gen_table_restrictions_tensor",
         7,
         [42, 239],
         4,
@@ -722,9 +722,9 @@ def legacy_test_value_tensors(library):
     )
     assert_restrictions_tensor_consistent(
         library,
-        library.bb_table_restrictions_tensor,
+        library.gen_table_restrictions_tensor,
         table_value,
-        "bb_table_restrictions_tensor",
+        "gen_table_restrictions_tensor",
         17,
         [42],
         4,
@@ -733,7 +733,7 @@ def legacy_test_value_tensors(library):
 
 
 def legacy_test_table_value_tensor_golden(library):
-    print("Check bb_table_value_tensor ...")
+    print("Check gen_table_value_tensor ...")
 
     bitness = 8
     case_id = 509_888_371  # random.Random(239).randrange(1 << 32)
@@ -743,7 +743,7 @@ def legacy_test_table_value_tensor_golden(library):
     case_ids = (ctypes.c_size_t * 1)(case_id)
     output = (ctypes.c_float * (reps * sample_size))()
 
-    library.bb_table_value_tensor(
+    library.gen_table_value_tensor(
         bitness,
         case_ids,
         1,
@@ -911,10 +911,10 @@ def collect_owned_data(
     seed,
     restriction_chunk_cases=0,
 ):
-    generator = library.bb_generator_create(workers)
+    generator = library.gen_generator_create(workers)
     assert generator
     if kind == "tree":
-        data = library.bb_tree_value_tensor(
+        data = library.gen_tree_value_tensor(
             generator,
             bitness,
             cases,
@@ -922,7 +922,7 @@ def collect_owned_data(
             seed,
         )
     else:
-        data = library.bb_table_value_tensor(
+        data = library.gen_table_value_tensor(
             generator,
             bitness,
             cases,
@@ -931,40 +931,40 @@ def collect_owned_data(
             seed,
         )
     assert data
-    library.bb_data_acquire(data)
-    assert library.bb_data_bitness(data) == bitness
-    assert library.bb_data_cases(data) == cases
-    assert library.bb_data_reps(data) == reps
+    library.gen_data_acquire(data)
+    assert library.gen_data_bitness(data) == bitness
+    assert library.gen_data_cases(data) == cases
+    assert library.gen_data_reps(data) == reps
 
     value_count = cases * reps * (2 * bitness + 1)
-    value_pointer = library.bb_data_take_values(data)
+    value_pointer = library.gen_data_take_values(data)
     values = list(value_pointer[:value_count])
-    library.bb_float_buffer_destroy(value_pointer)
-    target_pointer = library.bb_data_take_targets(data)
+    library.gen_float_buffer_destroy(value_pointer)
+    target_pointer = library.gen_data_take_targets(data)
     targets = None
     if target_pointer:
         targets = list(target_pointer[:cases])
-        library.bb_float_buffer_destroy(target_pointer)
+        library.gen_float_buffer_destroy(target_pointer)
 
     restrictions = []
     if restriction_chunk_cases:
         for first_case in range(0, cases, restriction_chunk_cases):
             chunk_cases = min(restriction_chunk_cases, cases - first_case)
-            tensor = library.bb_table_restrictions_tensor(
+            tensor = library.gen_table_restrictions_tensor(
                 generator,
                 data,
                 first_case,
                 chunk_cases,
             )
-            library.bb_tensor_acquire(tensor)
+            library.gen_tensor_acquire(tensor)
             count = chunk_cases * 2 * bitness * reps * (2 * bitness - 1)
-            restriction_pointer = library.bb_tensor_take_values(tensor)
+            restriction_pointer = library.gen_tensor_take_values(tensor)
             restrictions.extend(restriction_pointer[:count])
-            library.bb_float_buffer_destroy(restriction_pointer)
-            library.bb_tensor_release(generator, tensor)
+            library.gen_float_buffer_destroy(restriction_pointer)
+            library.gen_tensor_release(generator, tensor)
 
-    library.bb_data_release(generator, data)
-    library.bb_generator_destroy(generator)
+    library.gen_data_release(generator, data)
+    library.gen_generator_destroy(generator)
     return values, targets, restrictions if restrictions else None
 
 
@@ -1028,45 +1028,45 @@ def test_owned_data(library):
         "01010111",
         "11100011",
     ], inputs
-    assert_block_inputs_consistent(inputs, 8, "bb_table_value_tensor")
+    assert_block_inputs_consistent(inputs, 8, "gen_table_value_tensor")
 
 
 def test_circuit_discovery(library):
-    print(f"Check bb_circuit discovery ...")
+    print(f"Check gen_circuit discovery ...")
 
-    sets = split_list(library.bb_circuit_sets())
+    sets = split_list(library.gen_circuit_sets())
     assert sets == expected_circuit_sets()
 
     for set_name in sets:
-        assert split_list(library.bb_circuit_cases(set_name.encode("ascii"))) == (
+        assert split_list(library.gen_circuit_cases(set_name.encode("ascii"))) == (
             expected_circuit_cases(set_name)
         )
 
 
 def test_circuit_metadata(library):
-    print(f"Check bb_circuit metadata ...")
+    print(f"Check gen_circuit metadata ...")
 
     for set_name in expected_circuit_sets():
         for case_name in expected_circuit_cases(set_name):
             expected_inputs, expected_outputs = read_aig_metadata(set_name, case_name)
-            assert library.bb_circuit_inputs(
+            assert library.gen_circuit_inputs(
                 set_name.encode("ascii"),
                 case_name.encode("ascii"),
             ) == expected_inputs
-            assert library.bb_circuit_outputs(
+            assert library.gen_circuit_outputs(
                 set_name.encode("ascii"),
                 case_name.encode("ascii"),
             ) == expected_outputs
 
-    assert library.bb_circuit_inputs(b"iscas85", b"c17") == 5
-    assert library.bb_circuit_outputs(b"iscas85", b"c17") == 2
+    assert library.gen_circuit_inputs(b"iscas85", b"c17") == 5
+    assert library.gen_circuit_outputs(b"iscas85", b"c17") == 2
 
-    assert library.bb_circuit_inputs(b"iscas87", b"s27") == 7
-    assert library.bb_circuit_outputs(b"iscas87", b"s27") == 1
+    assert library.gen_circuit_inputs(b"iscas87", b"s27") == 7
+    assert library.gen_circuit_outputs(b"iscas87", b"s27") == 1
 
 
 def test_circuit_value(library):
-    print(f"Check bb_circuit_value ...")
+    print(f"Check gen_circuit_value ...")
 
     c17 = circuit_value(library, "iscas85", "c17", "00000")
     assert len(c17) == 5 + 2 * 6

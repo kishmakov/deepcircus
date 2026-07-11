@@ -8,8 +8,8 @@ input bits, routes multiprocessing workers, or assembles table/tree tensors.
 
 1. **C++-owned typed data**
 
-   `bb_tree_value_tensor` and `bb_table_value_tensor` enqueue typed batches and
-   return opaque `bb_data` handles. Each handle owns its sampled case IDs, case
+   `gen_tree_value_tensor` and `gen_table_value_tensor` enqueue typed batches and
+   return opaque `gen_data` handles. Each handle owns its sampled case IDs, case
    representations, values, exact targets, and case-local caches.
 
 2. **Deterministic sampling and inputs**
@@ -20,7 +20,7 @@ input bits, routes multiprocessing workers, or assembles table/tree tensors.
 
 3. **Transferred zero-copy views**
 
-   Python calls `bb_data_acquire` and takes ownership of the C++ buffers as
+   Python calls `gen_data_acquire` and takes ownership of the C++ buffers as
    NumPy/PyTorch views. NumPy finalizers delete transferred buffers when the last
    view dies. Exact case representations are dropped immediately after handoff;
    exact targets are generated together with values as `bitness - depth`.
@@ -34,7 +34,7 @@ input bits, routes multiprocessing workers, or assembles table/tree tensors.
 
 5. **C++ worker pool**
 
-   A persistent `bb_generator` owns the worker threads. Different cases are
+   A persistent `gen_generator` owns the worker threads. Different cases are
    generated concurrently while the Python caller remains the single frontend
    thread. The old Python multiprocessing fleet and case routing are removed.
 

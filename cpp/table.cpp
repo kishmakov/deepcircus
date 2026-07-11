@@ -1,4 +1,4 @@
-#include "bool_bench.h"
+#include "generator.h"
 #include "decision_tree.h"
 #include "table.h"
 #include "utils.h"
@@ -93,7 +93,7 @@ std::vector<bool> SmallTableVector(uint16_t bitness, size_t case_id) {
 
 std::vector<bool> SolvableTableVector(uint16_t bitness, size_t case_id) {
     assert(bitness >= kMinTableBitness && bitness <= kSolvableTableBitness);
-    assert(case_id < bb_table_cases_number(bitness));
+    assert(case_id < gen_table_cases_number(bitness));
 
     if (IsSmallBitness(bitness)) {
         return SmallTableVector(bitness, case_id);
@@ -129,7 +129,7 @@ TableCase::TableCase(uint16_t bitness, size_t case_id)
     , case_id_(case_id)
 {
     assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
-    assert(case_id_ < bb_table_cases_number(bitness_));
+    assert(case_id_ < gen_table_cases_number(bitness_));
     if (bitness_ <= kSolvableTableBitness) {
         truth_table_ = SolvableTableVector(bitness_, case_id_);
     }
@@ -166,7 +166,7 @@ const std::vector<bool>& TableCase::TruthTable() const {
     return truth_table_;
 }
 
-size_t bb_table_cases_number(uint16_t bitness) {
+size_t gen_table_cases_number(uint16_t bitness) {
     assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
     if (IsSmallBitness(bitness)) {
         return SmallBitnessCasesNumber(bitness);
@@ -177,13 +177,13 @@ size_t bb_table_cases_number(uint16_t bitness) {
     return kTableCasesNumber;
 }
 
-uint16_t bb_table_solvable_bitness() {
+uint16_t gen_table_solvable_bitness() {
     return kSolvableTableBitness;
 }
 
-const char* bb_table_value(uint16_t bitness, size_t case_id, const char* input) {
+const char* gen_table_value(uint16_t bitness, size_t case_id, const char* input) {
     assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
-    assert(case_id < bb_table_cases_number(bitness));
+    assert(case_id < gen_table_cases_number(bitness));
     assert(input != nullptr);
     assert(std::strlen(input) >= bitness);
 

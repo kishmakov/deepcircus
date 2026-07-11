@@ -7,7 +7,7 @@ uv run scripts/run.py
 ```
 
 The script creates `GeneratorProxy(16)`, calls `run_training`, uses a persistent
-process-backed worker fleet, calls C++ through `libbb.so` via ctypes, builds
+process-backed worker fleet, calls C++ through `libgen.so` via ctypes, builds
 NumPy/PyTorch tensors, and trains/evaluates a PyTorch model.
 
 ## 1. Establish a Baseline
@@ -51,7 +51,7 @@ This should show whether time is going into:
 
 ## 3. Profile Native C++ Work
 
-The ctypes calls into `libbb.so` are native work, so use `perf`.
+The ctypes calls into `libgen.so` are native work, so use `perf`.
 
 ```bash
 perf record -g --call-graph dwarf -- uv run scripts/run.py
@@ -71,7 +71,7 @@ Look especially for hot functions in:
 
 - `bool-bench/decision_tree.cpp`
 - `bool-bench/small_bitness.cpp`
-- `bool-bench/bool_bench.cpp`
+- `bool-bench/generator.cpp`
 
 ## 4. Inspect Multiprocessing Behavior
 

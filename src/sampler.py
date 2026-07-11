@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from src.bool_bench import GeneratedData, Generator, load_generator
+from src.generator import GeneratedData, Generator, load_generator
 from src.config import Config
 from src.model import predict_values
 

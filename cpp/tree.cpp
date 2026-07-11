@@ -1,4 +1,4 @@
-#include "bool_bench.h"
+#include "generator.h"
 #include "decision_tree.h"
 #include "tree.h"
 #include "utils.h"
@@ -21,7 +21,7 @@ std::map<CaseKey, DecisionTree> g_decision_trees;
 std::mutex g_decision_trees_mutex;
 
 const DecisionTree& GetDecisionTree(uint16_t bitness, size_t case_id) {
-    assert(case_id < bb_tree_cases_number(bitness));
+    assert(case_id < gen_tree_cases_number(bitness));
     std::lock_guard<std::mutex> lock(g_decision_trees_mutex);
 
     const CaseKey key{bitness, case_id};
@@ -59,17 +59,17 @@ DecisionTree BuildTreeCase(uint16_t bitness, size_t case_id) {
     return tree;
 }
 
-uint16_t bb_min_tree_bitness() {
+uint16_t gen_min_tree_bitness() {
     return kMinTreeBitness;
 }
 
-size_t bb_tree_cases_number(uint16_t bitness) {
+size_t gen_tree_cases_number(uint16_t bitness) {
     assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
     return kTreeCasesNumber;
 }
 
-const char* bb_tree_value(uint16_t bitness, size_t case_id, const char* input) {
-    assert(case_id < bb_tree_cases_number(bitness));
+const char* gen_tree_value(uint16_t bitness, size_t case_id, const char* input) {
+    assert(case_id < gen_tree_cases_number(bitness));
     assert(input != nullptr);
     assert(std::strlen(input) == bitness);
 

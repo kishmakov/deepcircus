@@ -1,6 +1,6 @@
 #pragma once
 
-#include "bool_bench.h"
+#include "generator.h"
 
 #include <stddef.h>
 #include <stdint.h>
