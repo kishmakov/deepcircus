@@ -28,23 +28,28 @@ add_library(aiger STATIC "${aiger_SOURCE_DIR}/aiger.c")
 target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
 
 add_library(gen
-    aig.cpp
-    aig.h
-    decision_tree.cpp
-    decision_tree.h
-    dataset.cpp
-    generator.cpp
-    generator.h
-    table.h
-    table.cpp
-    tree.cpp
-    tree.h
-    utils.cpp
-    utils.h
+    generator/aig.cpp
+    generator/aig.h
+    generator/decision_tree.cpp
+    generator/decision_tree.h
+    generator/dataset.cpp
+    generator/generator.cpp
+    generator/generator.h
+    generator/table.h
+    generator/table.cpp
+    generator/tree.cpp
+    generator/tree.h
+    generator/utils.cpp
+    generator/utils.h
 )
 
-target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(gen PRIVATE aiger Threads::Threads)
+target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
+target_link_libraries(gen PRIVATE aiger)
 
-add_executable(generator_server server.cpp)
+add_executable(generator_server
+    server/server.cpp
+    server/thread_pool.cpp
+    server/thread_pool.h
+)
+target_include_directories(generator_server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/server")
 target_link_libraries(generator_server PRIVATE gen Threads::Threads)

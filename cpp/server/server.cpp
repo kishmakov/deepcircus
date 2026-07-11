@@ -1,4 +1,5 @@
 #include "generator.h"
+#include "thread_pool.h"
 
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -15,7 +16,6 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <deque>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -29,7 +29,6 @@
 
 namespace {
 
-    constexpr size_t kReadyCapacity = 2;
     constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
 
     enum class Command : uint32_t {
@@ -68,16 +67,20 @@ namespace {
         uint64_t seed;
     };
 
-    struct TensorBuffer {
+    struct DataDeleter {
+        void operator()(gen_data *data) const { gen_data_destroy(data); }
+    };
+
+    struct TaskData {
         TensorKind kind;
         TensorSplit split;
-        uint16_t bitness;
-        uint64_t cases;
-        uint64_t reps;
-        uint64_t value_count;
-        uint64_t target_count;
-        std::unique_ptr<float[]> values;
-        std::unique_ptr<float[]> targets;
+        std::unique_ptr<gen_data, DataDeleter> data;
+    };
+
+    struct TaskResult {
+        Task task;
+        // Worker output remains compact until this coordinate is published.
+        std::vector<TaskData> data;
     };
 
     struct TensorDescriptor {
@@ -92,7 +95,13 @@ namespace {
         uint64_t target_count;
     };
 
+    struct TensorSource {
+        const gen_data *data = nullptr;
+        const gen_tensor *tensor = nullptr;
+    };
+
     struct SharedTask {
+        // At most the coordinate currently borrowed by Python has this form.
         ~SharedTask() {
             if (mapping != MAP_FAILED) {
                 munmap(mapping, size);
@@ -123,6 +132,17 @@ namespace {
     uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration) {
         uint64_t state = seed ^ (static_cast<uint64_t>(bitness) << 48) ^ iteration;
         return SplitMix64(state);
+    }
+
+    void AppendParams(const TrainingShape &shape) {
+        std::filesystem::create_directories("/tmp/circus");
+        std::ofstream output("/tmp/circus/params.txt", std::ios::app);
+        assert(output.is_open());
+        output << "first_iteration=" << shape.first_iteration << " last_iteration=" << shape.last_iteration
+               << " bitness_from=" << shape.bitness_from << " bitness_to=" << shape.bitness_to << " seed=" << shape.seed
+               << " train_samples=" << shape.train_samples << " validation_samples=" << shape.validation_samples
+               << " points_per_sample=" << shape.points_per_sample << " batch_size=" << shape.batch_size << '\n';
+        assert(output.good());
     }
 
     bool ReadExact(int socket, void *destination, size_t size) {
@@ -210,58 +230,27 @@ namespace {
         assert(shape.points_per_sample > 0);
         assert(shape.points_per_sample % 2 == 0);
         assert(shape.batch_size > 0);
+        AppendParams(shape);
         return shape;
     }
 
-    void AddData(std::vector<TensorBuffer> &output, gen_generator *generator, TensorKind kind, TensorSplit split,
-                 uint16_t bitness, uint64_t cases, uint64_t reps, uint64_t batch_size, uint64_t seed) {
+    void AddData(std::vector<TaskData> &output, TensorKind kind, TensorSplit split, uint16_t bitness, uint64_t cases,
+                 uint64_t reps, uint64_t batch_size, uint64_t seed) {
         if (cases == 0) {
             return;
         }
-
         const bool recursive = kind == TensorKind::Table && bitness > gen_table_solvable_bitness();
         const uint64_t chunk_cases = recursive ? std::min(cases, batch_size) : 0;
-        gen_data *data = kind == TensorKind::Tree
-                                 ? gen_tree_value_tensor(generator, bitness, cases, reps, seed)
-                                 : gen_table_value_tensor(generator, bitness, cases, reps, chunk_cases, seed);
-        assert(data != nullptr);
-        gen_data_acquire(data);
-
-        TensorBuffer values{};
-        values.kind = kind;
-        values.split = split;
-        values.bitness = bitness;
-        values.cases = cases;
-        values.reps = reps;
-        values.value_count = cases * reps * (2 * bitness + 1);
-        values.target_count = recursive ? 0 : cases;
-        values.values.reset(gen_data_take_values(data));
-        values.targets.reset(gen_data_take_targets(data));
-        output.push_back(std::move(values));
-
-        if (recursive) {
-            for (uint64_t first_case = 0; first_case < cases; first_case += chunk_cases) {
-                const uint64_t restriction_cases = std::min(chunk_cases, cases - first_case);
-                gen_tensor *tensor = gen_table_restrictions_tensor(generator, data, first_case, restriction_cases);
-                assert(tensor != nullptr);
-                gen_tensor_acquire(tensor);
-                TensorBuffer restrictions{};
-                restrictions.kind = TensorKind::Restrictions;
-                restrictions.split = split;
-                restrictions.bitness = bitness;
-                restrictions.cases = restriction_cases;
-                restrictions.reps = reps;
-                restrictions.value_count = restriction_cases * 2 * bitness * reps * (2 * bitness - 1);
-                restrictions.values.reset(gen_tensor_take_values(tensor));
-                output.push_back(std::move(restrictions));
-                gen_tensor_release(generator, tensor);
-            }
-        }
-        gen_data_release(generator, data);
+        gen_data *generated = kind == TensorKind::Tree
+                                      ? gen_tree_value_tensor(bitness, cases, reps, seed)
+                                      : gen_table_value_tensor(bitness, cases, reps, chunk_cases, seed);
+        assert(generated != nullptr);
+        output.push_back(TaskData{kind, split, std::unique_ptr<gen_data, DataDeleter>(generated)});
     }
 
-    std::vector<TensorBuffer> GenerateTask(gen_generator *generator, const TrainingShape &shape, const Task &task) {
-        std::vector<TensorBuffer> output;
+    std::unique_ptr<TaskResult> GenerateTask(const TrainingShape &shape, const Task &task) {
+        auto result = std::make_unique<TaskResult>();
+        result->task = task;
         const uint16_t min_tree = gen_min_tree_bitness();
         const uint16_t solvable = gen_table_solvable_bitness();
         assert(min_tree <= solvable);
@@ -285,41 +274,63 @@ namespace {
             validation_tree = shape.validation_samples;
         }
 
-        AddData(output, generator, TensorKind::Table, TensorSplit::Train, task.bitness, train_table,
-                shape.points_per_sample, shape.batch_size, task.seed ^ 0x1001);
-        AddData(output, generator, TensorKind::Tree, TensorSplit::Train, task.bitness, train_tree,
-                shape.points_per_sample, shape.batch_size, task.seed ^ 0x1002);
-        AddData(output, generator, TensorKind::Table, TensorSplit::Validation, task.bitness, validation_table,
+        AddData(result->data, TensorKind::Table, TensorSplit::Train, task.bitness, train_table, shape.points_per_sample,
+                shape.batch_size, task.seed ^ 0x1001);
+        AddData(result->data, TensorKind::Tree, TensorSplit::Train, task.bitness, train_tree, shape.points_per_sample,
+                shape.batch_size, task.seed ^ 0x1002);
+        AddData(result->data, TensorKind::Table, TensorSplit::Validation, task.bitness, validation_table,
                 shape.points_per_sample, shape.batch_size, task.seed ^ 0x2001);
-        AddData(output, generator, TensorKind::Tree, TensorSplit::Validation, task.bitness, validation_tree,
+        AddData(result->data, TensorKind::Tree, TensorSplit::Validation, task.bitness, validation_tree,
                 shape.points_per_sample, shape.batch_size, task.seed ^ 0x2002);
-        return output;
+        return result;
     }
 
-    std::unique_ptr<SharedTask> ShareTask(const Task &task, std::vector<TensorBuffer> tensors, uint64_t task_id) {
+    // Expand one compact coordinate directly into its final shared-memory layout.
+    std::unique_ptr<SharedTask> ShareTask(const TaskResult &result, uint64_t task_id) {
         auto shared = std::make_unique<SharedTask>();
-        shared->task = task;
+        shared->task = result.task;
         shared->name = "/deepcircus_" + std::to_string(getpid()) + "_" + std::to_string(task_id);
+        std::vector<TensorSource> sources;
 
         uint64_t size = 0;
-        for (const TensorBuffer &tensor: tensors) {
+        for (const TaskData &task_data: result.data) {
+            const gen_data *data = task_data.data.get();
             TensorDescriptor descriptor{};
-            descriptor.kind = tensor.kind;
-            descriptor.split = tensor.split;
-            descriptor.bitness = tensor.bitness;
-            descriptor.cases = tensor.cases;
-            descriptor.reps = tensor.reps;
+            descriptor.kind = task_data.kind;
+            descriptor.split = task_data.split;
+            descriptor.bitness = gen_data_bitness(data);
+            descriptor.cases = gen_data_cases(data);
+            descriptor.reps = gen_data_reps(data);
             descriptor.values_offset = size;
-            descriptor.value_count = tensor.value_count;
-            size += tensor.value_count * sizeof(float);
+            descriptor.value_count = gen_data_value_count(data);
+            size += descriptor.value_count * sizeof(float);
             descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
-            descriptor.target_count = tensor.target_count;
-            if (tensor.target_count > 0) {
+            descriptor.target_count = gen_data_target_count(data);
+            if (descriptor.target_count > 0) {
                 descriptor.targets_offset = size;
-                size += tensor.target_count * sizeof(float);
+                size += descriptor.target_count * sizeof(float);
             }
             shared->tensors.push_back(descriptor);
+            sources.push_back(TensorSource{data, nullptr});
+
+            const size_t restriction_count = gen_data_restriction_count(data);
+            for (size_t index = 0; index < restriction_count; ++index) {
+                const gen_tensor *tensor = gen_data_restriction(data, index);
+                TensorDescriptor restriction{};
+                restriction.kind = TensorKind::Restrictions;
+                restriction.split = task_data.split;
+                restriction.bitness = gen_tensor_bitness(tensor);
+                restriction.cases = gen_tensor_cases(tensor);
+                restriction.reps = gen_tensor_reps(tensor);
+                restriction.values_offset = size;
+                restriction.value_count = gen_tensor_value_count(tensor);
+                size += restriction.value_count * sizeof(float);
+                restriction.targets_offset = std::numeric_limits<uint64_t>::max();
+                shared->tensors.push_back(restriction);
+                sources.push_back(TensorSource{nullptr, tensor});
+            }
         }
+
         shared->size = size;
         shared->file = shm_open(shared->name.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
         assert(shared->file >= 0);
@@ -329,14 +340,18 @@ namespace {
         assert(shared->mapping != MAP_FAILED);
 
         char *destination = static_cast<char *>(shared->mapping);
-        for (size_t index = 0; index < tensors.size(); ++index) {
-            const TensorBuffer &tensor = tensors[index];
+        for (size_t index = 0; index < sources.size(); ++index) {
+            const TensorSource &source = sources[index];
             const TensorDescriptor &descriptor = shared->tensors[index];
-            std::memcpy(destination + descriptor.values_offset, tensor.values.get(),
-                        tensor.value_count * sizeof(float));
-            if (tensor.target_count > 0) {
-                std::memcpy(destination + descriptor.targets_offset, tensor.targets.get(),
-                            tensor.target_count * sizeof(float));
+            float *values = reinterpret_cast<float *>(destination + descriptor.values_offset);
+            if (source.data != nullptr) {
+                gen_data_write_values(source.data, values);
+                if (descriptor.target_count > 0) {
+                    float *targets = reinterpret_cast<float *>(destination + descriptor.targets_offset);
+                    gen_data_write_targets(source.data, targets);
+                }
+            } else {
+                gen_tensor_write_values(source.tensor, values);
             }
         }
         return shared;
@@ -344,77 +359,48 @@ namespace {
 
     class TaskQueue {
     public:
-        TaskQueue(TrainingShape shape, size_t workers) : shape_(shape), workers_(workers) {
+        TaskQueue(TrainingShape shape, size_t workers) : shape_(shape), pool_(workers) {
             for (uint64_t iteration = shape.first_iteration; iteration <= shape.last_iteration; ++iteration) {
                 for (uint32_t bitness = shape.bitness_from; bitness <= shape.bitness_to; ++bitness) {
                     tasks_.push_back(Task{iteration, static_cast<uint16_t>(bitness),
                                           TaskSeed(shape.seed, static_cast<uint16_t>(bitness), iteration)});
                 }
             }
-            producer_ = std::thread([this] { Produce(); });
+            results_.resize(tasks_.size());
+            // Fixed result indices decouple parallel completion from publication order.
+            for (size_t index = 0; index < tasks_.size(); ++index) {
+                const Task task = tasks_[index];
+                pool_.Enqueue([this, index, task] {
+                    std::unique_ptr<TaskResult> result = GenerateTask(shape_, task);
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        assert(results_[index] == nullptr);
+                        results_[index] = std::move(result);
+                    }
+                    ready_.notify_all();
+                });
+            }
         }
 
-        ~TaskQueue() {
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                stopping_ = true;
-            }
-            space_.notify_all();
-            if (producer_.joinable()) {
-                producer_.join();
-            }
-        }
-
-        std::unique_ptr<SharedTask> Take() {
-            std::unique_lock<std::mutex> lock(mutex_);
-            ready_.wait(lock, [this] { return !results_.empty() || finished_; });
-            if (results_.empty()) {
+        std::unique_ptr<TaskResult> Take() {
+            if (next_ == results_.size()) {
                 return nullptr;
             }
-            std::unique_ptr<SharedTask> result = std::move(results_.front());
-            results_.pop_front();
-            lock.unlock();
-            space_.notify_one();
+            std::unique_lock<std::mutex> lock(mutex_);
+            ready_.wait(lock, [this] { return results_[next_] != nullptr; });
+            std::unique_ptr<TaskResult> result = std::move(results_[next_]);
+            ++next_;
             return result;
         }
 
     private:
-        void Produce() {
-            gen_generator *generator = gen_generator_create(workers_);
-            assert(generator != nullptr);
-            uint64_t task_id = 0;
-            while (!tasks_.empty()) {
-                const Task task = tasks_.front();
-                tasks_.pop_front();
-                auto result = ShareTask(task, GenerateTask(generator, shape_, task), task_id++);
-
-                std::unique_lock<std::mutex> lock(mutex_);
-                space_.wait(lock, [this] { return stopping_ || results_.size() < kReadyCapacity; });
-                if (stopping_) {
-                    break;
-                }
-                results_.push_back(std::move(result));
-                lock.unlock();
-                ready_.notify_one();
-            }
-            gen_generator_destroy(generator);
-            {
-                std::lock_guard<std::mutex> lock(mutex_);
-                finished_ = true;
-            }
-            ready_.notify_all();
-        }
-
         TrainingShape shape_;
-        size_t workers_;
-        std::deque<Task> tasks_;
-        std::deque<std::unique_ptr<SharedTask>> results_;
-        std::thread producer_;
+        std::vector<Task> tasks_;
+        std::vector<std::unique_ptr<TaskResult>> results_;
+        size_t next_ = 0;
         std::mutex mutex_;
         std::condition_variable ready_;
-        std::condition_variable space_;
-        bool stopping_ = false;
-        bool finished_ = false;
+        ThreadPool pool_;
     };
 
     std::vector<char> DescribeTask(const SharedTask *task) {
@@ -452,13 +438,15 @@ namespace {
         WriteResponse(socket);
 
         std::unique_ptr<SharedTask> current;
+        uint64_t task_id = 0;
         while (true) {
             const Command next_command = static_cast<Command>(ReadValue<uint32_t>(socket));
             const uint64_t next_payload_size = ReadValue<uint64_t>(socket);
             assert(next_payload_size == 0);
             if (next_command == Command::Next) {
                 assert(current == nullptr);
-                current = tasks.Take();
+                std::unique_ptr<TaskResult> result = tasks.Take();
+                current = result == nullptr ? nullptr : ShareTask(*result, task_id++);
                 WriteResponse(socket, DescribeTask(current.get()));
             } else if (next_command == Command::Release) {
                 assert(current != nullptr);

@@ -17,7 +17,7 @@ public:
     explicit RandomBoolGenerator(std::mt19937 rng);
 
     bool Generate();
-    std::mt19937& RNG();
+    std::mt19937 &RNG();
 
 private:
     std::mt19937 rng_;
@@ -31,16 +31,13 @@ uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id);
 
 class InputGenerator {
 public:
-    InputGenerator(
-        uint16_t bitness,
-        size_t reps,
-        uint64_t seed);
+    InputGenerator(uint16_t bitness, size_t reps, uint64_t seed);
 
     void StartSample();
     std::string_view Generate(size_t rep);
 
 private:
-    void FillRandom(std::string& output);
+    void FillRandom(std::string &output);
 
     uint16_t bitness_;
     size_t reps_;
@@ -52,19 +49,11 @@ private:
     size_t next_rep_;
 };
 
-void FillGeneratedValueTensor(
-    uint16_t bitness,
-    size_t reps,
-    uint64_t seed,
-    float* out,
-    const std::function<bool(std::string_view)>& evaluate);
+void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, float *out,
+                              const std::function<bool(std::string_view)> &evaluate);
 
-void FillGeneratedRestrictionsTensor(
-    uint16_t bitness,
-    size_t reps,
-    uint64_t seed,
-    float* out,
-    const std::function<bool(std::string_view)>& evaluate);
+void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, float *out,
+                                     const std::function<bool(std::string_view)> &evaluate);
 
 class FlippingSampler {
 public:
@@ -74,17 +63,11 @@ public:
     void Reset(uint16_t bitness, std::string_view input);
     std::string input;
 
-    void Fill(
-        std::string& value,
-        size_t sample_offset,
-        size_t fixed_bit_id,
-        const std::function<bool(std::string_view)>& evaluate);
+    void Fill(std::string &value, size_t sample_offset, size_t fixed_bit_id,
+              const std::function<bool(std::string_view)> &evaluate);
 
-    void Fill(
-        float* value,
-        size_t sample_offset,
-        size_t fixed_bit_id,
-        const std::function<bool(std::string_view)>& evaluate);
+    void Fill(float *value, size_t sample_offset, size_t fixed_bit_id,
+              const std::function<bool(std::string_view)> &evaluate);
 
 private:
     uint16_t bitness_ = 0;

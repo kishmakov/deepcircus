@@ -52,7 +52,10 @@ def take_string(payload: bytes, offset: int) -> tuple[str, int]:
     return payload[offset : offset + size].decode("ascii"), offset + size
 
 
-def consume_tasks(connection: socket.socket) -> tuple[int, int, int]:
+def consume_tasks(
+    connection: socket.socket,
+    coordinates: list[tuple[int, int]],
+) -> tuple[int, int, int]:
     task_count = 0
     tensor_count = 0
     byte_count = 0
@@ -61,6 +64,7 @@ def consume_tasks(connection: socket.socket) -> tuple[int, int, int]:
         assert payload, payload
         if payload[0] == 1:
             assert len(payload) == 1, len(payload)
+            assert task_count == len(coordinates), (task_count, coordinates)
             return task_count, tensor_count, byte_count
         assert payload[0] == 0, payload[0]
 
@@ -68,6 +72,11 @@ def consume_tasks(connection: socket.socket) -> tuple[int, int, int]:
         iteration, bitness, task_seed, shared_size = TASK_PREFIX.unpack_from(
             payload,
             offset,
+        )
+        assert task_count < len(coordinates), (task_count, coordinates)
+        assert (iteration, bitness) == coordinates[task_count], (
+            (iteration, bitness),
+            coordinates[task_count],
         )
         offset += TASK_PREFIX.size
         name, offset = take_string(payload, offset)
@@ -174,7 +183,15 @@ def main() -> None:
         initialized = True
 
         generation_started = perf_counter()
-        task_count, tensor_count, byte_count = consume_tasks(connection)
+        coordinates = [
+            (iteration, bitness)
+            for iteration in range(first_iteration, last_iteration + 1)
+            for bitness in config.bitness_range()
+        ]
+        task_count, tensor_count, byte_count = consume_tasks(
+            connection,
+            coordinates,
+        )
         generation_seconds = perf_counter() - generation_started
 
         print(json.dumps({

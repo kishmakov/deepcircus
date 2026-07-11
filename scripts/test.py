@@ -1,4 +1,5 @@
 import ctypes
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 
@@ -154,33 +155,32 @@ def load_library():
     library.gen_table_solvable_bitness.argtypes = []
     library.gen_table_solvable_bitness.restype = ctypes.c_uint16
 
-    float_pointer = ctypes.POINTER(ctypes.c_float)
-    library.gen_generator_create.argtypes = [ctypes.c_size_t]
-    library.gen_generator_create.restype = ctypes.c_void_p
-    library.gen_generator_destroy.argtypes = [ctypes.c_void_p]
-    library.gen_generator_destroy.restype = None
-    library.gen_data_acquire.argtypes = [ctypes.c_void_p]
-    library.gen_data_acquire.restype = None
     library.gen_data_bitness.argtypes = [ctypes.c_void_p]
     library.gen_data_bitness.restype = ctypes.c_uint16
     library.gen_data_cases.argtypes = [ctypes.c_void_p]
     library.gen_data_cases.restype = ctypes.c_size_t
     library.gen_data_reps.argtypes = [ctypes.c_void_p]
     library.gen_data_reps.restype = ctypes.c_size_t
-    library.gen_data_take_values.argtypes = [ctypes.c_void_p]
-    library.gen_data_take_values.restype = float_pointer
-    library.gen_data_take_targets.argtypes = [ctypes.c_void_p]
-    library.gen_data_take_targets.restype = float_pointer
-    library.gen_data_release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-    library.gen_data_release.restype = None
-    library.gen_tensor_acquire.argtypes = [ctypes.c_void_p]
-    library.gen_tensor_acquire.restype = None
-    library.gen_tensor_take_values.argtypes = [ctypes.c_void_p]
-    library.gen_tensor_take_values.restype = float_pointer
-    library.gen_tensor_release.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-    library.gen_tensor_release.restype = None
-    library.gen_float_buffer_destroy.argtypes = [float_pointer]
-    library.gen_float_buffer_destroy.restype = None
+    library.gen_data_value_count.argtypes = [ctypes.c_void_p]
+    library.gen_data_value_count.restype = ctypes.c_size_t
+    library.gen_data_target_count.argtypes = [ctypes.c_void_p]
+    library.gen_data_target_count.restype = ctypes.c_size_t
+    library.gen_data_write_values.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
+    library.gen_data_write_values.restype = None
+    library.gen_data_write_targets.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
+    library.gen_data_write_targets.restype = None
+    library.gen_data_restriction_count.argtypes = [ctypes.c_void_p]
+    library.gen_data_restriction_count.restype = ctypes.c_size_t
+    library.gen_data_restriction.argtypes = [ctypes.c_void_p, ctypes.c_size_t]
+    library.gen_data_restriction.restype = ctypes.c_void_p
+    library.gen_data_destroy.argtypes = [ctypes.c_void_p]
+    library.gen_data_destroy.restype = None
+    library.gen_tensor_cases.argtypes = [ctypes.c_void_p]
+    library.gen_tensor_cases.restype = ctypes.c_size_t
+    library.gen_tensor_value_count.argtypes = [ctypes.c_void_p]
+    library.gen_tensor_value_count.restype = ctypes.c_size_t
+    library.gen_tensor_write_values.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_float)]
+    library.gen_tensor_write_values.restype = None
 
     library.gen_tree_value.argtypes = [
         ctypes.c_uint16,
@@ -190,7 +190,6 @@ def load_library():
     library.gen_tree_value.restype = ctypes.c_char_p
 
     library.gen_tree_value_tensor.argtypes = [
-        ctypes.c_void_p,
         ctypes.c_uint16,
         ctypes.c_size_t,
         ctypes.c_size_t,
@@ -206,7 +205,6 @@ def load_library():
     library.gen_table_value.restype = ctypes.c_char_p
 
     library.gen_table_value_tensor.argtypes = [
-        ctypes.c_void_p,
         ctypes.c_uint16,
         ctypes.c_size_t,
         ctypes.c_size_t,
@@ -214,14 +212,6 @@ def load_library():
         ctypes.c_uint64,
     ]
     library.gen_table_value_tensor.restype = ctypes.c_void_p
-
-    library.gen_table_restrictions_tensor.argtypes = [
-        ctypes.c_void_p,
-        ctypes.c_void_p,
-        ctypes.c_size_t,
-        ctypes.c_size_t,
-    ]
-    library.gen_table_restrictions_tensor.restype = ctypes.c_void_p
 
     library.gen_circuit_sets.argtypes = []
     library.gen_circuit_sets.restype = ctypes.c_char_p
@@ -328,167 +318,6 @@ def assert_block_inputs_consistent(generated_inputs, bitness, tensor_name):
             tensor_name,
             generated_inputs,
         )
-
-
-def assert_metric_tensor_consistent(
-    tensor_func,
-    tensor_name,
-    bitness,
-    case_ids,
-    expected,
-):
-    case_array = (ctypes.c_size_t * len(case_ids))(*case_ids)
-    output = (ctypes.c_float * len(case_ids))()
-    tensor_func(
-        bitness,
-        case_array,
-        len(case_ids),
-        output,
-    )
-
-    actual = list(output)
-    expected = [float(value) for value in expected]
-    assert actual == expected, (tensor_name, actual, expected)
-
-
-def assert_value_tensor_consistent(
-    library,
-    tensor_func,
-    value_func,
-    tensor_name,
-    bitness,
-    case_ids,
-    reps,
-    seed,
-    expected_inputs=None,
-):
-    case_array = (ctypes.c_size_t * len(case_ids))(*case_ids)
-    sample_size = 2 * bitness + 1
-    output = (ctypes.c_float * (len(case_ids) * reps * sample_size))()
-    tensor_func(
-        bitness,
-        case_array,
-        len(case_ids),
-        reps,
-        seed,
-        output,
-    )
-
-    repeated = (ctypes.c_float * len(output))()
-    tensor_func(
-        bitness,
-        case_array,
-        len(case_ids),
-        reps,
-        seed,
-        repeated,
-    )
-    assert list(output) == list(repeated), tensor_name
-
-    for case_index, case_id in enumerate(case_ids):
-        generated_inputs = []
-        for rep in range(reps):
-            offset = (case_index * reps + rep) * sample_size
-            actual = list(output[offset : offset + sample_size])
-            bits = "".join("1" if value == 1.0 else "0" for value in actual[:bitness])
-            generated_inputs.append(bits)
-            value = value_func(library, bitness, case_id, bits)
-            expected = [bit_to_signed_float(bit) for bit in value]
-            assert actual == expected, (
-                f"{tensor_name}({bitness}) mismatch: "
-                f"case_index={case_index}, case_id={case_id}, rep={rep}, "
-                f"input={bits}, actual={actual}, expected={expected}"
-            )
-
-        assert_block_inputs_consistent(generated_inputs, bitness, tensor_name)
-        if expected_inputs is not None:
-            assert generated_inputs == expected_inputs[case_index], (
-                tensor_name,
-                generated_inputs,
-                expected_inputs[case_index],
-            )
-
-
-def assert_restrictions_tensor_consistent(
-    library,
-    tensor_func,
-    value_func,
-    tensor_name,
-    bitness,
-    case_ids,
-    reps,
-    seed,
-):
-    free_bits = bitness - 1
-    sample_size = 2 * free_bits + 1
-    restrictions = bitness * 2
-    case_array = (ctypes.c_size_t * len(case_ids))(*case_ids)
-    output = (ctypes.c_float * (
-        len(case_ids) * restrictions * reps * sample_size
-    ))()
-    tensor_func(
-        bitness,
-        case_array,
-        len(case_ids),
-        reps,
-        seed,
-        output,
-    )
-
-    repeated = (ctypes.c_float * len(output))()
-    tensor_func(
-        bitness,
-        case_array,
-        len(case_ids),
-        reps,
-        seed,
-        repeated,
-    )
-    assert list(output) == list(repeated), tensor_name
-
-    for case_index, case_id in enumerate(case_ids):
-        for fixed_bit_id in range(bitness):
-            for fixed_bit_value in range(2):
-                restriction_id = fixed_bit_id * 2 + fixed_bit_value
-                generated_inputs = []
-
-                for rep in range(reps):
-                    offset = (
-                        (case_index * restrictions + restriction_id) * reps + rep
-                    ) * sample_size
-                    actual = list(output[offset : offset + sample_size])
-                    free_input = "".join(
-                        "1" if value == 1.0 else "0"
-                        for value in actual[:free_bits]
-                    )
-                    generated_inputs.append(free_input)
-
-                    full_input = list("0" * bitness)
-                    full_input[fixed_bit_id] = str(fixed_bit_value)
-                    for coord, bit_value in enumerate(free_input):
-                        full_bit_id = coord if coord < fixed_bit_id else coord + 1
-                        full_input[full_bit_id] = bit_value
-                    full_input = "".join(full_input)
-
-                    direct_value = value_func(library, bitness, case_id, full_input)
-                    expected_bits = (
-                        free_input
-                        + direct_value[bitness]
-                        + "".join(
-                            direct_value[bitness + 1 + full_bit_id]
-                            for full_bit_id in range(bitness)
-                            if full_bit_id != fixed_bit_id
-                        )
-                    )
-                    expected = [bit_to_signed_float(bit) for bit in expected_bits]
-                    assert actual == expected, (
-                        f"{tensor_name}({bitness}) mismatch: "
-                        f"case_index={case_index}, case_id={case_id}, "
-                        f"restriction_id={restriction_id}, rep={rep}, "
-                        f"input={free_input}, actual={actual}, expected={expected}"
-                    )
-
-                assert_block_inputs_consistent(generated_inputs, free_bits, tensor_name)
 
 
 def assert_case_consistent(library, value_func, value_name, bitness, case_id, input_bits):
@@ -604,306 +433,8 @@ def test_table_big_cases(library):
         assert len(value) == 2 * bitness + 1, (bitness, case_id, value)
 
 
-def legacy_test_metric_tensors(library):
-    print("Check depth/node tensor APIs ...")
-
-    assert_metric_tensor_consistent(
-        library.gen_tree_nodes_tensor,
-        "gen_tree_nodes_tensor",
-        17,
-        [0, 42, 239],
-        [0, 42, 239],
-    )
-    assert_metric_tensor_consistent(
-        library.gen_tree_depth_tensor,
-        "gen_tree_depth_tensor",
-        17,
-        [0, 42, 239],
-        [0, 9, 16],
-    )
-    assert_metric_tensor_consistent(
-        library.gen_table_nodes_tensor,
-        "gen_table_nodes_tensor",
-        4,
-        [0, 3190, 11304],
-        [0, 7, 6],
-    )
-    assert_metric_tensor_consistent(
-        library.gen_table_depth_tensor,
-        "gen_table_depth_tensor",
-        7,
-        [42, 239],
-        [7, 7],
-    )
-
-
-def legacy_test_value_tensors(library):
-    print(f"Check value tensor APIs ...")
-
-    assert_value_tensor_consistent(
-        library,
-        library.gen_tree_value_tensor,
-        tree_value,
-        "gen_tree_value_tensor",
-        17,
-        [42],
-        8,
-        239,
-        [[
-            "10011010010000001",
-            "01100101110000001",
-            "10011010001111110",
-            "01100101101111110",
-            "00000111011011001",
-            "01110000001001110",
-            "00111101111110101",
-            "10110110111110001",
-        ]],
-    )
-    assert_value_tensor_consistent(
-        library,
-        library.gen_tree_value_tensor,
-        tree_value,
-        "gen_tree_value_tensor",
-        24,
-        [188, 189],
-        4,
-        12_345,
-    )
-    assert_value_tensor_consistent(
-        library,
-        library.gen_table_value_tensor,
-        table_value,
-        "gen_table_value_tensor",
-        4,
-        [0],
-        8,
-        0,
-    )
-    assert_value_tensor_consistent(
-        library,
-        library.gen_table_value_tensor,
-        table_value,
-        "gen_table_value_tensor",
-        7,
-        [42, 239],
-        6,
-        0xffffffffffffffff,
-    )
-    assert_value_tensor_consistent(
-        library,
-        library.gen_table_value_tensor,
-        table_value,
-        "gen_table_value_tensor",
-        17,
-        [42, 43],
-        4,
-        42,
-    )
-    assert_restrictions_tensor_consistent(
-        library,
-        library.gen_tree_restrictions_tensor,
-        tree_value,
-        "gen_tree_restrictions_tensor",
-        17,
-        [42, 43],
-        4,
-        239,
-    )
-    assert_restrictions_tensor_consistent(
-        library,
-        library.gen_table_restrictions_tensor,
-        table_value,
-        "gen_table_restrictions_tensor",
-        7,
-        [42, 239],
-        4,
-        17,
-    )
-    assert_restrictions_tensor_consistent(
-        library,
-        library.gen_table_restrictions_tensor,
-        table_value,
-        "gen_table_restrictions_tensor",
-        17,
-        [42],
-        4,
-        42,
-    )
-
-
-def legacy_test_table_value_tensor_golden(library):
-    print("Check gen_table_value_tensor ...")
-
-    bitness = 8
-    case_id = 509_888_371  # random.Random(239).randrange(1 << 32)
-    reps = 128
-    seed = 20_250_710
-    sample_size = 2 * bitness + 1
-    case_ids = (ctypes.c_size_t * 1)(case_id)
-    output = (ctypes.c_float * (reps * sample_size))()
-
-    library.gen_table_value_tensor(
-        bitness,
-        case_ids,
-        1,
-        reps,
-        seed,
-        output,
-    )
-
-    actual_bits = [
-        "".join(
-            "1" if value == 1.0 else "0"
-            for value in output[rep * sample_size : (rep + 1) * sample_size]
-        )
-        for rep in range(reps)
-    ]
-    actual = [
-        f"{row[:bitness]}|{row[bitness]}|{row[bitness + 1:]}"
-        for row in actual_bits
-    ]
-
-    expected_block_inversions = """
-10101111|1|11010000
-01101111|1|11100110
-10011111|0|10101000
-01011111|0|01011110
-10100111|0|11001111
-01100111|0|11001000
-10010111|1|10000110
-01010111|1|01000000
-10101011|0|10011101
-01101011|1|01110111
-10011011|0|00101010
-01011011|1|00110010
-10100011|1|00110000
-01100011|0|00001000
-10010011|1|01110110
-01010011|0|10001101
-10101101|0|00101010
-01101101|1|00110110
-10011101|0|11011101
-01011101|1|11110101
-10100101|1|10000000
-01100101|0|01001000
-10010101|1|10000110
-01010101|0|01001010
-10101001|0|11000001
-01101001|1|11010110
-10011001|1|00001000
-01011001|1|00100111
-10100001|0|00100111
-01100001|0|00101001
-10010001|1|11011110
-01010001|0|11011000
-10101110|0|01101101
-01101110|0|10110101
-10011110|0|10010010
-01011110|0|01110010
-10100110|1|01100000
-01100110|0|10000000
-10010110|0|11010001
-01010110|0|11000101
-10101010|1|01100010
-01101010|1|10110001
-10011010|0|00010000
-01011010|0|00111011
-10100010|0|00101111
-01100010|0|00111010
-10010010|0|01010001
-01010010|1|10110000
-10101100|0|10100100
-01101100|0|01110001
-10011100|1|11010000
-01011100|1|11110101
-10100100|0|00110111
-01100100|0|00010100
-10010100|0|00111001
-01010100|0|00101000
-10101000|1|01111010
-01101000|0|10101011
-10011000|0|00110101
-01011000|1|00010101
-10100000|1|11011000
-01100000|1|11010000
-10010000|0|11100001
-01010000|0|11101010
-""".strip().splitlines()
-    expected_random = """
-00111000|0|10001110
-00001110|0|11011101
-10100111|0|11001111
-00101011|1|01000110
-11100001|0|00111001
-01100011|0|00001000
-01101000|0|10101011
-11010101|0|01001100
-11100010|0|00001110
-00011001|0|11001100
-00011001|0|11001100
-11011110|0|00101010
-00000011|0|10000001
-10000010|1|10001101
-01001100|1|10010111
-11111010|0|10010111
-10110110|0|00010010
-00110001|0|00100011
-01110110|0|00001110
-11010000|1|00000011
-10111011|1|01001100
-11110011|0|01101010
-01000100|0|01001000
-11110100|0|11000000
-00100110|0|10100001
-10000010|1|10001101
-01011111|0|01011110
-11011101|1|10000001
-01110100|1|01001100
-01110001|0|10001001
-10101011|0|10011101
-00110001|0|00100011
-11101111|1|11111001
-10110010|0|00000011
-01111111|0|11010111
-11110001|1|00101000
-01010000|0|11101010
-00111101|0|01100011
-10001000|1|01100110
-00011000|0|01001100
-11000001|1|11010010
-00111100|1|01111010
-00100100|0|00111101
-10101001|0|11000001
-11000100|0|01001000
-00110111|1|00111100
-00101001|1|01000010
-10101000|1|01111010
-10001110|1|00001110
-01110010|1|00101010
-10111101|0|00000010
-11010001|1|01110011
-11001011|1|10001100
-11010011|1|01010011
-00001010|1|11001000
-01110101|0|00001001
-10010000|0|11100001
-11001001|0|00101011
-01000001|1|10000000
-01011100|1|11110101
-00011001|0|11001100
-11110011|0|01101010
-01001111|1|11100111
-10101111|1|11010000
-""".strip().splitlines()
-
-    expected = expected_block_inversions + expected_random
-    assert actual == expected, (actual, expected)
-
-
 def collect_owned_data(
     library,
-    workers,
     kind,
     bitness,
     cases,
@@ -911,11 +442,8 @@ def collect_owned_data(
     seed,
     restriction_chunk_cases=0,
 ):
-    generator = library.gen_generator_create(workers)
-    assert generator
     if kind == "tree":
         data = library.gen_tree_value_tensor(
-            generator,
             bitness,
             cases,
             reps,
@@ -923,7 +451,6 @@ def collect_owned_data(
         )
     else:
         data = library.gen_table_value_tensor(
-            generator,
             bitness,
             cases,
             reps,
@@ -931,45 +458,39 @@ def collect_owned_data(
             seed,
         )
     assert data
-    library.gen_data_acquire(data)
     assert library.gen_data_bitness(data) == bitness
     assert library.gen_data_cases(data) == cases
     assert library.gen_data_reps(data) == reps
 
     value_count = cases * reps * (2 * bitness + 1)
-    value_pointer = library.gen_data_take_values(data)
-    values = list(value_pointer[:value_count])
-    library.gen_float_buffer_destroy(value_pointer)
-    target_pointer = library.gen_data_take_targets(data)
+    assert library.gen_data_value_count(data) == value_count
+    value_buffer = (ctypes.c_float * value_count)()
+    library.gen_data_write_values(data, value_buffer)
+    values = list(value_buffer)
+    target_count = library.gen_data_target_count(data)
     targets = None
-    if target_pointer:
-        targets = list(target_pointer[:cases])
-        library.gen_float_buffer_destroy(target_pointer)
+    if target_count:
+        assert target_count == cases
+        target_buffer = (ctypes.c_float * target_count)()
+        library.gen_data_write_targets(data, target_buffer)
+        targets = list(target_buffer)
 
     restrictions = []
-    if restriction_chunk_cases:
-        for first_case in range(0, cases, restriction_chunk_cases):
-            chunk_cases = min(restriction_chunk_cases, cases - first_case)
-            tensor = library.gen_table_restrictions_tensor(
-                generator,
-                data,
-                first_case,
-                chunk_cases,
-            )
-            library.gen_tensor_acquire(tensor)
-            count = chunk_cases * 2 * bitness * reps * (2 * bitness - 1)
-            restriction_pointer = library.gen_tensor_take_values(tensor)
-            restrictions.extend(restriction_pointer[:count])
-            library.gen_float_buffer_destroy(restriction_pointer)
-            library.gen_tensor_release(generator, tensor)
+    for index in range(library.gen_data_restriction_count(data)):
+        tensor = library.gen_data_restriction(data, index)
+        chunk_cases = library.gen_tensor_cases(tensor)
+        count = chunk_cases * 2 * bitness * reps * (2 * bitness - 1)
+        assert library.gen_tensor_value_count(tensor) == count
+        restriction_buffer = (ctypes.c_float * count)()
+        library.gen_tensor_write_values(tensor, restriction_buffer)
+        restrictions.extend(restriction_buffer)
 
-    library.gen_data_release(generator, data)
-    library.gen_generator_destroy(generator)
+    library.gen_data_destroy(data)
     return values, targets, restrictions if restrictions else None
 
 
 def test_owned_data(library):
-    print("Check C++-owned threaded data ...")
+    print("Check synchronous compact data ...")
 
     for kind, bitness, chunk in (
         ("tree", 17, 0),
@@ -978,7 +499,6 @@ def test_owned_data(library):
     ):
         single = collect_owned_data(
             library,
-            1,
             kind,
             bitness,
             4,
@@ -986,25 +506,26 @@ def test_owned_data(library):
             20_250_710,
             chunk,
         )
-        threaded = collect_owned_data(
-            library,
-            16,
-            kind,
-            bitness,
-            4,
-            8,
-            20_250_710,
-            chunk,
+        repeated = collect_owned_data(
+            library, kind, bitness, 4, 8, 20_250_710, chunk
         )
-        for first, second in zip(single, threaded):
+        for first, second in zip(single, repeated):
             if first is None:
                 assert second is None
             else:
                 assert first == second, (kind, bitness)
 
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            concurrent = list(executor.map(
+                lambda _: collect_owned_data(
+                    library, kind, bitness, 4, 8, 20_250_710, chunk
+                ),
+                range(4),
+            ))
+        assert all(result == single for result in concurrent), (kind, bitness)
+
     values, targets, restrictions = collect_owned_data(
         library,
-        4,
         "table",
         8,
         1,
