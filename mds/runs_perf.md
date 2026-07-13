@@ -28,87 +28,30 @@ Page size (bytes): 4096
 Exit status: 0
 ```
 
-# 2. C++ creates tensors for ids passed as batch
+# 2. After big refactoring
 
 ## Total time.
 
 Command being timed: "uv run scripts/run.py"
-User time (seconds): 545.13
-System time (seconds): 26.73
-Percent of CPU this job got: 332%
-Elapsed (wall clock) time (h:mm:ss or m:ss): 2:51.90
+User time (seconds): 754.74
+System time (seconds): 7.06
+Percent of CPU this job got: 964%
+Elapsed (wall clock) time (h:mm:ss or m:ss): 1:18.96
 Average shared text size (kbytes): 0
 Average unshared data size (kbytes): 0
 Average stack size (kbytes): 0
 Average total size (kbytes): 0
-Maximum resident set size (kbytes): 5408452
+Maximum resident set size (kbytes): 4479260
 Average resident set size (kbytes): 0
-Major (requiring I/O) page faults: 0
-Minor (reclaiming a frame) page faults: 6249411
-Voluntary context switches: 949044
-Involuntary context switches: 5448
+Major (requiring I/O) page faults: 8
+Minor (reclaiming a frame) page faults: 3188381
+Voluntary context switches: 5101
+Involuntary context switches: 2157
 Swaps: 0
-File system inputs: 0
+File system inputs: 1184
 File system outputs: 0
 Socket messages sent: 0
 Socket messages received: 0
 Signals delivered: 0
 Page size (bytes): 4096
 Exit status: 0
-
-# 3. Pass NumPy output buffers to C++
-
-## Total time.
-
-Command being timed: "uv run scripts/run.py"
-User time (seconds): 330.55
-System time (seconds): 18.27
-Percent of CPU this job got: 328%
-Elapsed (wall clock) time (h:mm:ss or m:ss): 1:46.31
-Average shared text size (kbytes): 0
-Average unshared data size (kbytes): 0
-Average stack size (kbytes): 0
-Average total size (kbytes): 0
-Maximum resident set size (kbytes): 5283800
-Average resident set size (kbytes): 0
-Major (requiring I/O) page faults: 0
-Minor (reclaiming a frame) page faults: 4258807
-Voluntary context switches: 537843
-Involuntary context switches: 3458
-Swaps: 0
-File system inputs: 0
-File system outputs: 0
-Socket messages sent: 0
-Socket messages received: 0
-Signals delivered: 0
-Page size (bytes): 4096
-Exit status: 0
-
-# 4. Pass 0/1 generation to C++
-
-## Total time.
-
-Command being timed: "uv run scripts/run.py"
-User time (seconds): 469.31
-System time (seconds): 26.55
-Percent of CPU this job got: 670%
-Elapsed (wall clock) time (h:mm:ss or m:ss): 1:13.97
-Average shared text size (kbytes): 0
-Average unshared data size (kbytes): 0
-Average stack size (kbytes): 0
-Average total size (kbytes): 0
-Maximum resident set size (kbytes): 4742148
-Average resident set size (kbytes): 0
-Major (requiring I/O) page faults: 0
-Minor (reclaiming a frame) page faults: 5643911
-Voluntary context switches: 781172
-Involuntary context switches: 3809
-Swaps: 0
-File system inputs: 0
-File system outputs: 0
-Socket messages sent: 0
-Socket messages received: 0
-Signals delivered: 0
-Page size (bytes): 4096
-Exit status: 0
-
