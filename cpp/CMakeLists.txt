@@ -49,7 +49,11 @@ target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
 target_link_libraries(gen PRIVATE aiger)
 
 add_executable(generator_server
+    server/daemon.cpp
+    server/daemon.h
     server/server.cpp
+    server/task_queue.cpp
+    server/task_queue.h
     server/thread_pool.cpp
     server/thread_pool.h
 )

@@ -3,15 +3,16 @@
 #include <stddef.h>
 
 #include <string>
+#include <vector>
 
 // Discovers AIG circuits under circuits/ and computes their value samples.
 // The aiger library and the internal circuit structures stay private to aig.cpp.
 
-// Sorted newline-separated circuit set names discovered under circuits/.
-const std::string &CircuitSets();
+// Sorted circuit set names discovered under circuits/.
+const std::vector<std::string> &CircuitSets();
 
-// Sorted newline-separated circuit case names for the given set.
-const std::string &CircuitCases(const char *set_name);
+// Sorted circuit case names for the given set.
+const std::vector<std::string> &CircuitCases(const char *set_name);
 
 // Number of inputs (primary inputs + latches) for a circuit case.
 size_t CircuitInputs(const char *set_name, const char *case_name);

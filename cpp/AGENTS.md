@@ -22,5 +22,13 @@ complete coordinates concurrently into compact handles. Results are exposed in
 iteration-major, bitness-major order, with only the current coordinate expanded
 to float32 shared memory.
 
-`scripts/bench.py` exercises this protocol. Migration of the main Python
-training client to the daemon task protocol remains separate work.
+A task's validation set depends only on its bitness, so it is generated once
+per bitness (iteration 0) ahead of every training task for that bitness,
+instead of being recomputed per iteration. Iteration-0 tasks carry only a
+validation tensor with exact targets. Training tasks (iteration >= 1) carry
+only a train tensor with exact targets (tables up to the solvable bitness,
+trees above it) plus, above the solvable bitness, a recursive-table tensor
+with restrictions instead of targets.
+
+Both `scripts/bench.py` and the training client (`src/generator.py`) speak this
+protocol.

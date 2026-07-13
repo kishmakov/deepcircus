@@ -4,36 +4,25 @@ import os
 import socket
 import struct
 import subprocess
-from collections.abc import Sequence
+from dataclasses import dataclass, field
+from multiprocessing import shared_memory
 from pathlib import Path
 
 import numpy as np
 
 
 _SERVER_NAME = "generator_server"
-_PROTOCOL_VERSION = 1
 _HEADER = struct.Struct("<IQ")
-_U64 = struct.Struct("<Q")
+_INITIALIZATION = struct.Struct("<QQHHQQQQQ")
+_TASK_PREFIX = struct.Struct("<QHQQ")
+_TENSOR_DESCRIPTOR = struct.Struct("<BHQQQQQQ")
 
+_INITIALIZE = 1
+_NEXT = 2
+_RELEASE = 3
 
-class _Command:
-    INFO = 1
-    CASES = 2
-    TREE_REQUEST = 3
-    TABLE_REQUEST = 4
-    DATA_ACQUIRE = 5
-    RESTRICTIONS_REQUEST = 6
-    TENSOR_ACQUIRE = 7
-    DATA_RELEASE = 8
-    TREE_VALUE = 9
-    TABLE_VALUE = 10
-    CIRCUIT_SETS = 11
-    CIRCUIT_CASES = 12
-    CIRCUIT_INPUTS = 13
-    CIRCUIT_OUTPUTS = 14
-    CIRCUIT_VALUE = 15
-    CLOSE = 16
-    SHUTDOWN = 17
+_KIND_RESTRICTIONS = 2
+_NO_OFFSET = (1 << 64) - 1
 
 
 def _find_server() -> Path:
@@ -59,158 +48,53 @@ def restriction_point_dim(bitness: int) -> int:
     return sample_point_dim(bitness - 1)
 
 
-def circuit_sample_point_dim(inputs: int, outputs: int) -> int:
-    return inputs + outputs * (inputs + 1)
+@dataclass
+class GeneratedTask:
+    """One (iteration, bitness) coordinate borrowed from the daemon.
 
+    Validation depends only on bitness, so it arrives once per bitness in a
+    task with iteration 0, ahead of every training task for that bitness;
+    training tasks (iteration >= 1) carry only the train fields. Arrays are
+    zero-copy views into shared memory: the training tensor comes with exact
+    targets, while `approx_values` (present above the solvable bitness) comes
+    with `restrictions` chunks instead of targets. All views die at release().
+    """
 
-def _string(value: str) -> bytes:
-    encoded = value.encode("ascii")
-    return struct.pack("<I", len(encoded)) + encoded
-
-
-class GeneratedTensor:
-    def __init__(
-        self,
-        generator: Generator,
-        handle: int,
-        bitness: int,
-        cases: int,
-        reps: int,
-    ) -> None:
-        self._generator = generator
-        self._handle = handle
-        self.bitness = bitness
-        self.cases = cases
-        self.reps = reps
-        self._values: np.ndarray | None = None
-
-    def acquire(self) -> np.ndarray:
-        assert self._handle is not None, "released tensor"
-        assert self._values is None, "tensor already acquired"
-        shape = (
-            self.cases,
-            2 * self.bitness,
-            self.reps,
-            restriction_point_dim(self.bitness),
-        )
-        count = int(np.prod(shape))
-        payload = _U64.pack(self._handle)
-        buffer = self._generator._request(_Command.TENSOR_ACQUIRE, payload)
-        assert len(buffer) == count * np.dtype(np.float32).itemsize, len(buffer)
-        self._values = np.frombuffer(buffer, dtype=np.float32).reshape(shape)
-        self._generator._forget(self)
-        self._handle = None
-        return self._values
+    generator: Generator
+    iteration: int
+    bitness: int
+    seed: int
+    memory: shared_memory.SharedMemory
+    train_values: np.ndarray | None = None
+    train_targets: np.ndarray | None = None
+    approx_values: np.ndarray | None = None
+    restrictions: list[np.ndarray] = field(default_factory=list)
+    validation_values: np.ndarray | None = None
+    validation_targets: np.ndarray | None = None
 
     def release(self) -> None:
-        assert self._values is not None, "tensor not acquired"
-        self._values = None
-
-    def _invalidate(self) -> None:
-        self._handle = None
-
-
-class GeneratedData:
-    def __init__(
-        self,
-        generator: Generator,
-        handle: int,
-        recursive_table: bool,
-    ) -> None:
-        self._generator = generator
-        self._handle = handle
-        self.recursive_table = recursive_table
-        self.bitness: int | None = None
-        self.cases: int | None = None
-        self.reps: int | None = None
-        self.values: np.ndarray | None = None
-        self.targets: np.ndarray | None = None
-        self._acquired = False
-
-    def acquire(self) -> GeneratedData:
-        assert self._handle is not None, "released data"
-        assert self.values is None, "data already acquired"
-        buffer = self._generator._request(
-            _Command.DATA_ACQUIRE,
-            _U64.pack(self._handle),
-        )
-        metadata = struct.Struct("<HQQB")
-        self.bitness, self.cases, self.reps, has_targets = metadata.unpack_from(buffer)
-        value_count = self.cases * self.reps * sample_point_dim(self.bitness)
-        values_offset = metadata.size
-        targets_offset = values_offset + value_count * 4
-        self.values = np.frombuffer(
-            buffer,
-            dtype=np.float32,
-            count=value_count,
-            offset=values_offset,
-        ).reshape(self.cases, self.reps, sample_point_dim(self.bitness))
-        if has_targets:
-            self.targets = np.frombuffer(
-                buffer,
-                dtype=np.float32,
-                count=self.cases,
-                offset=targets_offset,
-            )
-        else:
-            assert self.recursive_table
-            self.targets = None
-        expected = targets_offset + (self.cases * 4 if has_targets else 0)
-        assert len(buffer) == expected, (len(buffer), expected)
-        self._acquired = True
-
-        if not self.recursive_table:
-            self._generator._forget(self)
-            self._handle = None
-        return self
-
-    def restrictions(self, first_case: int, cases: int) -> GeneratedTensor:
-        assert self._handle is not None, "released data"
-        assert self.values is not None, "data not acquired"
-        assert self.recursive_table
-        assert self.bitness is not None
-        assert self.reps is not None
-        assert self.cases is not None
-        assert cases > 0, cases
-        assert first_case + cases <= self.cases, (first_case, cases, self.cases)
-        response = self._generator._request(
-            _Command.RESTRICTIONS_REQUEST,
-            struct.pack("<QQQ", self._handle, first_case, cases),
-        )
-        handle = _U64.unpack(response)[0]
-        tensor = GeneratedTensor(
-            self._generator,
-            handle,
-            self.bitness,
-            cases,
-            self.reps,
-        )
-        self._generator._remember(tensor)
-        return tensor
-
-    def release(self) -> None:
-        assert self._acquired, "data not acquired"
-        self.values = None
-        self.targets = None
-        if self._handle is not None:
-            self._generator._request(_Command.DATA_RELEASE, _U64.pack(self._handle))
-            self._generator._forget(self)
-            self._handle = None
-        self._acquired = False
-
-    def _invalidate(self) -> None:
-        self._handle = None
+        self.train_values = None
+        self.train_targets = None
+        self.approx_values = None
+        self.restrictions = []
+        self.validation_values = None
+        self.validation_targets = None
+        self.memory.close()
+        self.memory.unlink()
+        self.generator._release_task(self)
 
 
 class Generator:
+    """Client of the generator daemon's task protocol."""
+
     def __init__(self, server_path: Path = SERVER, workers: int = 1):
         assert workers > 0, workers
         self.server_path = str(server_path)
         self.workers = workers
         self._process: subprocess.Popen[str] | None = None
         self._socket: socket.socket | None = None
-        self._owned: set[GeneratedData | GeneratedTensor] = set()
-        self._info: tuple[int, int] | None = None
+        self._initialized = False
+        self._borrowed: GeneratedTask | None = None
         self._connect()
 
     def _connect(self) -> None:
@@ -232,20 +116,115 @@ class Generator:
         port = int(ready.removeprefix("PORT "))
         self._socket = socket.create_connection(("127.0.0.1", port))
 
+    def initialize(
+        self,
+        first_iteration: int,
+        last_iteration: int,
+        bitness_from: int,
+        bitness_to: int,
+        seed: int,
+        train_samples: int,
+        validation_samples: int,
+        points_per_sample: int,
+        batch_size: int,
+    ) -> None:
+        assert not self._initialized
+        payload = _INITIALIZATION.pack(
+            first_iteration,
+            last_iteration,
+            bitness_from,
+            bitness_to,
+            seed,
+            train_samples,
+            validation_samples,
+            points_per_sample,
+            batch_size,
+        )
+        response = self._request(_INITIALIZE, payload)
+        assert not response, response
+        self._initialized = True
+
+    def next_task(self) -> GeneratedTask | None:
+        assert self._initialized, "generator not initialized"
+        assert self._borrowed is None, "previous task not released"
+        payload = self._request(_NEXT)
+        assert payload, payload
+        if payload[0] == 1:
+            assert len(payload) == 1, len(payload)
+            return None
+        assert payload[0] == 0, payload[0]
+
+        offset = 1
+        iteration, bitness, seed, shared_size = _TASK_PREFIX.unpack_from(payload, offset)
+        offset += _TASK_PREFIX.size
+        name_size = struct.unpack_from("<I", payload, offset)[0]
+        offset += 4
+        name = payload[offset : offset + name_size].decode("ascii")
+        offset += name_size
+        tensors = struct.unpack_from("<I", payload, offset)[0]
+        offset += 4
+
+        memory = shared_memory.SharedMemory(name=name)
+        assert memory.size == shared_size, (memory.size, shared_size)
+        task = GeneratedTask(self, iteration, bitness, seed, memory)
+
+        for _ in range(tensors):
+            kind, tensor_bitness, cases, reps, values_offset, value_count, targets_offset, target_count = (
+                _TENSOR_DESCRIPTOR.unpack_from(payload, offset)
+            )
+            offset += _TENSOR_DESCRIPTOR.size
+            assert tensor_bitness == bitness, (tensor_bitness, bitness)
+            if kind == _KIND_RESTRICTIONS:
+                shape = (cases, 2 * bitness, reps, restriction_point_dim(bitness))
+            else:
+                shape = (cases, reps, sample_point_dim(bitness))
+            assert int(np.prod(shape)) == value_count, (shape, value_count)
+            values = np.ndarray(shape, dtype=np.float32, buffer=memory.buf, offset=values_offset)
+            targets = None
+            if target_count:
+                assert target_count == cases, (target_count, cases)
+                targets = np.ndarray((cases,), dtype=np.float32, buffer=memory.buf, offset=targets_offset)
+            else:
+                assert targets_offset == _NO_OFFSET, targets_offset
+
+            if kind == _KIND_RESTRICTIONS:
+                assert task.approx_values is not None, kind
+                task.restrictions.append(values)
+            elif targets is None:
+                assert task.approx_values is None
+                task.approx_values = values
+            elif iteration == 0:
+                assert task.validation_values is None
+                task.validation_values = values
+                task.validation_targets = targets
+            else:
+                assert task.train_values is None
+                task.train_values = values
+                task.train_targets = targets
+        assert offset == len(payload), (offset, len(payload))
+        is_validation = task.validation_values is not None
+        assert is_validation != (task.train_values is not None), (iteration, bitness)
+        assert is_validation == (iteration == 0), (iteration, bitness)
+
+        self._borrowed = task
+        return task
+
+    def _release_task(self, task: GeneratedTask) -> None:
+        assert self._borrowed is task
+        response = self._request(_RELEASE)
+        assert not response, response
+        self._borrowed = None
+
     def close(self) -> None:
+        # Hanging up is the goodbye: the daemon exits once the socket closes.
         if self._socket is None:
             return
-        command = _Command.SHUTDOWN if self._process is not None else _Command.CLOSE
-        self._request(command)
         self._socket.close()
         self._socket = None
         if self._process is not None:
             return_code = self._process.wait()
             assert return_code == 0, return_code
             self._process = None
-        for owner in list(self._owned):
-            owner._invalidate()
-        self._owned.clear()
 
     def _request(self, command: int, payload: bytes = b"") -> bytearray:
         assert self._socket is not None, "closed generator"
@@ -266,180 +245,6 @@ class Generator:
             offset += count
         return result
 
-    def _remember(self, owner: GeneratedData | GeneratedTensor) -> None:
-        assert owner not in self._owned
-        self._owned.add(owner)
-
-    def _forget(self, owner: GeneratedData | GeneratedTensor) -> None:
-        assert owner in self._owned
-        self._owned.remove(owner)
-
-    def _get_info(self) -> tuple[int, int]:
-        if self._info is None:
-            version, min_tree, table_solvable = struct.unpack(
-                "<IHH",
-                self._request(_Command.INFO),
-            )
-            assert version == _PROTOCOL_VERSION, version
-            self._info = (min_tree, table_solvable)
-        return self._info
-
-    def tree_cases_number(self, bitness: int) -> int:
-        response = self._request(_Command.CASES, struct.pack("<BH", 0, bitness))
-        return _U64.unpack(response)[0]
-
-    def table_cases_number(self, bitness: int) -> int:
-        response = self._request(_Command.CASES, struct.pack("<BH", 1, bitness))
-        return _U64.unpack(response)[0]
-
-    def min_tree_bitness(self) -> int:
-        return self._get_info()[0]
-
-    def table_solvable_bitness(self) -> int:
-        return self._get_info()[1]
-
-    def tree_value_tensor(
-        self,
-        bitness: int,
-        cases: int,
-        reps: int,
-        seed: int,
-    ) -> GeneratedData:
-        response = self._request(
-            _Command.TREE_REQUEST,
-            struct.pack("<HQQQ", bitness, cases, reps, seed),
-        )
-        data = GeneratedData(self, _U64.unpack(response)[0], recursive_table=False)
-        self._remember(data)
-        return data
-
-    def table_value_tensor(
-        self,
-        bitness: int,
-        cases: int,
-        reps: int,
-        restriction_chunk_cases: int,
-        seed: int,
-    ) -> GeneratedData:
-        recursive = bitness > self.table_solvable_bitness()
-        assert (restriction_chunk_cases > 0) == recursive, (
-            bitness,
-            restriction_chunk_cases,
-        )
-        response = self._request(
-            _Command.TABLE_REQUEST,
-            struct.pack(
-                "<HQQQQ",
-                bitness,
-                cases,
-                reps,
-                restriction_chunk_cases,
-                seed,
-            ),
-        )
-        data = GeneratedData(self, _U64.unpack(response)[0], recursive)
-        self._remember(data)
-        return data
-
-    def tree_value(self, bitness: int, case_id: int, input_bits: str) -> np.ndarray:
-        return self._value(_Command.TREE_VALUE, bitness, case_id, input_bits)
-
-    def tree_values(
-        self,
-        bitness: int,
-        case_id: int,
-        input_bits: Sequence[str],
-    ) -> np.ndarray:
-        return self._values(_Command.TREE_VALUE, bitness, case_id, input_bits)
-
-    def table_value(self, bitness: int, case_id: int, input_bits: str) -> np.ndarray:
-        return self._value(_Command.TABLE_VALUE, bitness, case_id, input_bits)
-
-    def table_values(
-        self,
-        bitness: int,
-        case_id: int,
-        input_bits: Sequence[str],
-    ) -> np.ndarray:
-        return self._values(_Command.TABLE_VALUE, bitness, case_id, input_bits)
-
-    def _value(
-        self,
-        command: int,
-        bitness: int,
-        case_id: int,
-        input_bits: str,
-    ) -> np.ndarray:
-        response = self._request(
-            command,
-            struct.pack("<HQ", bitness, case_id) + _string(input_bits),
-        )
-        return _ascii_bits_to_signed(response, sample_point_dim(bitness))
-
-    def _values(
-        self,
-        command: int,
-        bitness: int,
-        case_id: int,
-        input_bits: Sequence[str],
-    ) -> np.ndarray:
-        samples = np.empty(
-            (len(input_bits), sample_point_dim(bitness)),
-            dtype=np.float32,
-        )
-        for row_id, bits in enumerate(input_bits):
-            samples[row_id] = self._value(command, bitness, case_id, bits)
-        return samples
-
-    def circuit_sets(self) -> list[str]:
-        return _split_newlines(self._request(_Command.CIRCUIT_SETS))
-
-    def circuit_cases(self, set_name: str) -> list[str]:
-        return _split_newlines(
-            self._request(_Command.CIRCUIT_CASES, _string(set_name)),
-        )
-
-    def circuit_inputs(self, set_name: str, case_name: str) -> int:
-        response = self._request(
-            _Command.CIRCUIT_INPUTS,
-            _string(set_name) + _string(case_name),
-        )
-        return _U64.unpack(response)[0]
-
-    def circuit_outputs(self, set_name: str, case_name: str) -> int:
-        response = self._request(
-            _Command.CIRCUIT_OUTPUTS,
-            _string(set_name) + _string(case_name),
-        )
-        return _U64.unpack(response)[0]
-
-    def circuit_value(
-        self,
-        set_name: str,
-        case_name: str,
-        input_state: str,
-    ) -> np.ndarray:
-        response = self._request(
-            _Command.CIRCUIT_VALUE,
-            _string(set_name) + _string(case_name) + _string(input_state),
-        )
-        point_dim = circuit_sample_point_dim(
-            self.circuit_inputs(set_name, case_name),
-            self.circuit_outputs(set_name, case_name),
-        )
-        return _ascii_bits_to_signed(response, point_dim)
-
 
 def load_generator(workers: int = 1) -> Generator:
     return Generator(SERVER, workers)
-
-
-def _ascii_bits_to_signed(value: bytes, expected_len: int) -> np.ndarray:
-    assert len(value) == expected_len
-    bits = np.frombuffer(value, dtype=np.uint8).astype(np.int8) - ord("0")
-    return bits * 2 - 1
-
-
-def _split_newlines(value: bytes) -> list[str]:
-    text = value.decode("ascii")
-    return [] if not text else text.split("\n")

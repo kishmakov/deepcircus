@@ -51,30 +51,13 @@ def run_training(generator: GeneratorProxy) -> None:
     config = load_train_config("train.conf")
     sampler = Sampler(config, generator)
     models: dict[int, nn.Module] = {}
-    coordinates = [
-        (iteration, bitness)
-        for iteration in config.iterations_range()
-        for bitness in config.bitness_range()
-    ]
-    if not coordinates:
-        return
-
-    current_stage = sampler.request_stage(*coordinates[0])
     previous_model = None
     previous_iteration = None
 
-    for coordinate_id, (iteration, bitness) in enumerate(coordinates):
+    for iteration, bitness in sampler.coordinates():
         if iteration != previous_iteration:
             previous_model = None
-        stage = current_stage
-        assert (stage.iteration, stage.bitness) == (iteration, bitness)
-        sampler.acquire_stage(stage)
-
-        next_stage = None
-        if coordinate_id + 1 < len(coordinates):
-            next_stage = sampler.request_stage(*coordinates[coordinate_id + 1])
-
-        sampler.prepare_stage(stage, previous_model)
+        stage = sampler.take_stage(iteration, bitness, previous_model)
         progress = IterationProgress(iteration, bitness)
         model = get_or_create_model(models, config, bitness)
         optimizer = create_optimizer(model, config)
@@ -97,10 +80,6 @@ def run_training(generator: GeneratorProxy) -> None:
                 break
 
         progress.checkpoint_model(model, config)
-        del train_loader
-        del validation_loader
-        sampler.release_stage(stage)
-        current_stage = next_stage
         previous_model = model
         previous_iteration = iteration
 

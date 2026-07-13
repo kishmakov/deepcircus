@@ -4,9 +4,9 @@
 
 namespace gen {
 
-const std::string &CircuitSets() { return ::CircuitSets(); }
+const std::vector<std::string> &CircuitSets() { return ::CircuitSets(); }
 
-const std::string &CircuitCases(const std::string &set_name) { return ::CircuitCases(set_name.c_str()); }
+const std::vector<std::string> &CircuitCases(const std::string &set_name) { return ::CircuitCases(set_name.c_str()); }
 
 size_t CircuitInputs(const std::string &set_name, const std::string &case_name) {
     return ::CircuitInputs(set_name.c_str(), case_name.c_str());

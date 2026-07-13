@@ -26,8 +26,9 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/generator/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
 - `cpp/generator/dataset.cpp` owns deterministic case-ID sampling and compact generated data/restriction handles
 - `cpp/server/thread_pool.{h,cpp}` owns the FIFO coordinate worker pool
+- `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns task generation, the task queue, and `main`
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
-- `src/generator.py` owns generator loading, ctypes signatures, the Python generator wrapper, and sample generation helpers
+- `src/generator.py` owns the generator daemon client: server spawning, the task protocol, and shared-memory task views
 - Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
 - Generator values stay bit-packed until materialized into caller-provided float buffers
 - `src/sampler.py` owns the thin generator wrapper and pipelined dataset orchestration; do not restore Python multiprocessing or case routing

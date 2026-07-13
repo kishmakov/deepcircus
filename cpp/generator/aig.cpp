@@ -49,8 +49,8 @@ namespace {
 
     struct CircuitCatalog {
         std::map<std::string, std::map<std::string, CircuitMeta>> sets;
-        std::string joined_sets;
-        std::map<std::string, std::string> joined_cases;
+        std::vector<std::string> set_names;
+        std::map<std::string, std::vector<std::string>> cases;
     };
 
     struct AigCircuit {
@@ -81,17 +81,6 @@ namespace {
             }
         }
     };
-
-    std::string JoinNames(const std::vector<std::string> &names) {
-        std::string joined;
-        for (size_t i = 0; i < names.size(); ++i) {
-            if (i != 0) {
-                joined.push_back('\n');
-            }
-            joined += names[i];
-        }
-        return joined;
-    }
 
     std::filesystem::path CircuitRoot() {
         const std::filesystem::path source_root =
@@ -181,18 +170,15 @@ namespace {
             }
         }
 
-        std::vector<std::string> set_names;
         for (const auto &[set_name, cases]: catalog.sets) {
-            set_names.push_back(set_name);
+            catalog.set_names.push_back(set_name);
 
             std::vector<std::string> case_names;
             for (const auto &[case_name, meta]: cases) {
                 case_names.push_back(case_name);
             }
-            catalog.joined_cases.emplace(set_name, JoinNames(case_names));
+            catalog.cases.emplace(set_name, std::move(case_names));
         }
-        catalog.joined_sets = JoinNames(set_names);
-
         return catalog;
     }
 
@@ -293,14 +279,14 @@ namespace {
 
 } // namespace
 
-const std::string &CircuitSets() { return GetCircuitCatalog().joined_sets; }
+const std::vector<std::string> &CircuitSets() { return GetCircuitCatalog().set_names; }
 
-const std::string &CircuitCases(const char *set_name) {
+const std::vector<std::string> &CircuitCases(const char *set_name) {
     assert(set_name != nullptr);
 
     const CircuitCatalog &catalog = GetCircuitCatalog();
-    const auto it = catalog.joined_cases.find(set_name);
-    assert(it != catalog.joined_cases.end());
+    const auto it = catalog.cases.find(set_name);
+    assert(it != catalog.cases.end());
     return it->second;
 }
 

@@ -25,11 +25,29 @@ const char *gen_table_value(uint16_t bitness, size_t case_id, const char *input)
     return value.c_str();
 }
 
-const char *gen_circuit_sets() { return gen::CircuitSets().c_str(); }
+const char *gen_circuit_sets() {
+    thread_local std::string sets;
+    sets.clear();
+    for (const std::string &set_name : gen::CircuitSets()) {
+        if (!sets.empty()) {
+            sets.push_back('\n');
+        }
+        sets += set_name;
+    }
+    return sets.c_str();
+}
 
 const char *gen_circuit_cases(const char *set_name) {
     assert(set_name != nullptr);
-    return gen::CircuitCases(set_name).c_str();
+    thread_local std::string cases;
+    cases.clear();
+    for (const std::string &case_name : gen::CircuitCases(set_name)) {
+        if (!cases.empty()) {
+            cases.push_back('\n');
+        }
+        cases += case_name;
+    }
+    return cases.c_str();
 }
 
 size_t gen_circuit_inputs(const char *set_name, const char *case_name) {

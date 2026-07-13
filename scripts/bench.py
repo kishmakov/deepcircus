@@ -19,12 +19,11 @@ sys.path.insert(0, str(ROOT))
 HEADER = struct.Struct("<IQ")
 INITIALIZATION = struct.Struct("<QQHHQQQQQ")
 TASK_PREFIX = struct.Struct("<QHQQ")
-TENSOR_DESCRIPTOR = struct.Struct("<BBHQQQQQQ")
+TENSOR_DESCRIPTOR = struct.Struct("<BHQQQQQQ")
 INITIALIZE = 1
 NEXT = 2
 RELEASE = 3
-SHUTDOWN = 4
-RESTRICTIONS = 3
+RESTRICTIONS = 2
 NO_OFFSET = (1 << 64) - 1
 
 
@@ -91,7 +90,6 @@ def consume_tasks(
                 offset += TENSOR_DESCRIPTOR.size
                 (
                     kind,
-                    split,
                     tensor_bitness,
                     cases,
                     reps,
@@ -101,8 +99,7 @@ def consume_tasks(
                     target_count,
                 ) = descriptor
                 assert tensor_bitness == bitness, (tensor_bitness, bitness)
-                assert kind in (1, 2, RESTRICTIONS), kind
-                assert split in (1, 2), split
+                assert kind in (1, RESTRICTIONS), kind
                 if kind == RESTRICTIONS:
                     shape = (cases, 2 * bitness, reps, 2 * bitness - 1)
                 else:
@@ -128,8 +125,6 @@ def consume_tasks(
                     assert targets_offset == NO_OFFSET, targets_offset
                 del values
             assert offset == len(payload), (offset, len(payload))
-            assert iteration > 0, iteration
-            assert task_seed >= 0, task_seed
         finally:
             memory.close()
             memory.unlink()
@@ -157,7 +152,6 @@ def main() -> None:
     assert process.stdout is not None
 
     connection = None
-    initialized = False
     try:
         ready = process.stdout.readline().strip()
         assert ready.startswith("PORT "), ready
@@ -180,10 +174,12 @@ def main() -> None:
         response = request(connection, INITIALIZE, payload)
         assert not response, response
         initialization_seconds = perf_counter() - initialization_started
-        initialized = True
 
         generation_started = perf_counter()
-        coordinates = [
+        # Validation tensors depend only on bitness, so the daemon emits one
+        # task per bitness (iteration 0) ahead of the training tasks.
+        coordinates = [(0, bitness) for bitness in config.bitness_range()]
+        coordinates += [
             (iteration, bitness)
             for iteration in range(first_iteration, last_iteration + 1)
             for bitness in config.bitness_range()
@@ -214,11 +210,7 @@ def main() -> None:
         }))
     finally:
         if connection is not None:
-            if initialized:
-                response = request(connection, SHUTDOWN)
-                assert not response, response
             connection.close()
-        if initialized:
             return_code = process.wait()
             assert return_code == 0, return_code
         elif process.poll() is None:
