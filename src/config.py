@@ -128,7 +128,7 @@ class TrainConfig:
             snapshot["progress"]["last_completed_iteration"],
         )
         global_step = int(snapshot["progress"]["global_step"]) + len(metrics)
-        snapshot["metrics"] = metrics
+        snapshot["metrics"] = list(snapshot["metrics"]) + metrics
         snapshot["progress"] = {
             "stage": "done" if iteration >= self.training.iterations else "train",
             "global_step": global_step,

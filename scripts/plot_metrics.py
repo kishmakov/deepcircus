@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Plot DeepCircus experiment metrics from self-contained JSON metadata."""
+"""Plot per-bitness train/validation RMSE curves from the bitness snapshot."""
 
 from __future__ import annotations
 
@@ -21,17 +21,9 @@ makedirs(environ["MPLCONFIGDIR"], exist_ok=True)
 import matplotlib.pyplot as plt
 
 
-DEFAULT_META = "/tmp/circus/experiment.json"
-COLORS = (
-    (0, 0, 0),
-    (105, 105, 105),
-    (139, 0, 0),
-    (255, 0, 0),
-    (0, 0, 139),
-    (0, 0, 255),
-    (0, 100, 0),
-    (34, 139, 34),
-)
+DEFAULT_META = "/tmp/circus/bitness_snapshot.json"
+GROUP_SIZE = 5
+COLORS = ("#0072B2", "#E69F00", "#009E73", "#D55E00", "#CC79A7")
 
 
 def main() -> None:
@@ -43,96 +35,77 @@ def main() -> None:
     with open(args.json, encoding="utf-8") as f:
         meta = load(f)
 
+    metrics = list(meta["metrics"])
+    metrics += meta.get("pending_iteration", {}).get("metrics", [])
+    assert metrics, f"no metrics in {args.json}"
+
     output_dir = dirname(args.json) or "."
     makedirs(output_dir, exist_ok=True)
 
-    for series in meta["series"]:
-        out_path = join(output_dir, f"{series['name']}.png")
-        if series.get("kind") == "value":
-            plot_value_series(meta["metrics"], series, out_path, args.scale)
-        else:
-            plot_series(meta["metrics"], series, out_path, args.scale)
+    for group_start, bitnesses in bitness_groups(metrics).items():
+        group_end = group_start + GROUP_SIZE - 1
+        out_path = join(output_dir, f"rmse_b{group_start:02d}_b{group_end:02d}.png")
+        plot_group(metrics, bitnesses, out_path, args.scale)
         print(out_path)
 
 
-def plot_series(
+def bitness_groups(metrics: list[dict[str, Any]]) -> dict[int, list[int]]:
+    groups: dict[int, list[int]] = {}
+    for bitness in sorted({int(metric["bitness"]) for metric in metrics}):
+        groups.setdefault(bitness // GROUP_SIZE * GROUP_SIZE, []).append(bitness)
+    return groups
+
+
+def plot_group(
     metrics: list[dict[str, Any]],
-    series: dict[str, Any],
+    bitnesses: list[int],
     out_path: str,
     scale: str,
 ) -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6), dpi=150)
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6), dpi=150, sharex=True)
 
-    for line_id, line in enumerate(series["lines"]):
-        points = line_points(metrics, line)
-        if not points:
-            continue
-        color = plot_color(line, line_id)
-        x_values = [point["x"] for point in points]
-        mae_values = transform_y_values([point["mae"] for point in points], scale)
-        rmse_values = transform_y_values([point["rmse"] for point in points], scale)
+    for bitness in bitnesses:
+        points = bitness_points(metrics, bitness)
+        x_values = [point["iteration"] for point in points]
+        color = COLORS[bitness % GROUP_SIZE]
+        for axis, rmse_key in zip(axes, ("train_rmse", "val_rmse")):
+            axis.plot(
+                x_values,
+                transform_y_values([point[rmse_key] for point in points], scale),
+                label=f"bitness {bitness}",
+                color=color,
+                linewidth=2,
+                marker="o",
+                markersize=4,
+            )
 
-        axes[0].plot(
-            x_values,
-            mae_values,
-            label=line["label"],
-            color=color,
-            linewidth=float(line.get("linewidth", 2)),
-        )
-        axes[1].plot(
-            x_values,
-            rmse_values,
-            label=line["label"],
-            color=color,
-            linewidth=float(line.get("linewidth", 2)),
-        )
-
-    axes[0].set_ylabel("MAE" if scale == "lin" else "log(MAE)")
-    axes[1].set_ylabel("RMSE" if scale == "lin" else "log(RMSE)")
-    fig.suptitle(series["title"])
-    for axis in axes:
-        axis.set_xlabel(series["x_label"])
+    for axis, title in zip(axes, ("train", "validation")):
+        axis.set_title(title)
+        axis.set_xlabel("iteration")
+        axis.set_ylabel("RMSE" if scale == "lin" else "log(RMSE)")
         axis.grid(alpha=0.2)
-        if len(axis.lines):
-            axis.legend(title=series.get("legend_title"))
+        axis.legend()
+    fig.suptitle(f"bitness {bitnesses[0]}–{bitnesses[-1]}")
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(out_path)
     plt.close(fig)
 
 
-def plot_value_series(
+def bitness_points(
     metrics: list[dict[str, Any]],
-    series: dict[str, Any],
-    out_path: str,
-    scale: str,
-) -> None:
-    fig, axis = plt.subplots(1, 1, figsize=(10, 6), dpi=150)
-
-    for line_id, line in enumerate(series["lines"]):
-        points = value_line_points(metrics, line)
-        if not points:
-            continue
-        y_values = transform_y_values([point["y"] for point in points], scale)
-        axis.plot(
-            [point["x"] for point in points],
-            y_values,
-            label=line["label"],
-            color=plot_color(line, line_id),
-            linewidth=float(line.get("linewidth", 2)),
-            linestyle=line.get("linestyle", "-"),
-        )
-
-    axis.set_title(series["title"])
-    axis.set_xlabel(series["x_label"])
-    axis.set_ylabel(
-        series["y_label"] if scale == "lin" else f"log({series['y_label']})"
-    )
-    axis.grid(alpha=0.2)
-    if len(axis.lines):
-        axis.legend(title=series.get("legend_title"))
-    fig.tight_layout()
-    fig.savefig(out_path)
-    plt.close(fig)
+    bitness: int,
+) -> list[dict[str, float]]:
+    points = [
+        {
+            "iteration": float(metric["iteration"]),
+            "train_rmse": float(metric["train_rmse"]),
+            "val_rmse": float(metric["val_rmse"]),
+        }
+        for metric in metrics
+        if int(metric["bitness"]) == bitness
+    ]
+    points.sort(key=lambda point: point["iteration"])
+    return points
 
 
 def transform_y_values(values: list[float], scale: str) -> list[float]:
@@ -141,67 +114,6 @@ def transform_y_values(values: list[float], scale: str) -> list[float]:
     assert scale == "log", scale
     assert all(value > 0 for value in values), values
     return [log(value) for value in values]
-
-
-def line_points(metrics: list[dict[str, Any]], line: dict[str, Any]) -> list[dict[str, float]]:
-    x_key = line["x_key"]
-    mae_key = line["mae_key"]
-    rmse_key = line["rmse_key"]
-    where = line.get("where", {})
-
-    points = []
-    for metric in metrics:
-        if not matches_where(metric, where):
-            continue
-        if x_key not in metric or mae_key not in metric or rmse_key not in metric:
-            continue
-        points.append(
-            {
-                "x": float(metric[x_key]),
-                "mae": float(metric[mae_key]),
-                "rmse": float(metric[rmse_key]),
-            }
-        )
-
-    points.sort(key=lambda point: point["x"])
-    return points
-
-
-def value_line_points(
-    metrics: list[dict[str, Any]],
-    line: dict[str, Any],
-) -> list[dict[str, float]]:
-    x_key = line["x_key"]
-    y_key = line["y_key"]
-    where = line.get("where", {})
-
-    points = []
-    for metric in metrics:
-        if not matches_where(metric, where):
-            continue
-        if x_key not in metric or y_key not in metric:
-            continue
-        points.append(
-            {
-                "x": float(metric[x_key]),
-                "y": float(metric[y_key]),
-            }
-        )
-
-    points.sort(key=lambda point: point["x"])
-    return points
-
-
-def plot_color(line: dict[str, Any], line_id: int) -> tuple[float, float, float]:
-    color = line.get("color", COLORS[line_id % len(COLORS)])
-    return tuple(channel / 255 for channel in color)
-
-
-def matches_where(metric: dict[str, Any], where: dict[str, Any]) -> bool:
-    for key, expected in where.items():
-        if metric.get(key) != expected:
-            return False
-    return True
 
 
 if __name__ == "__main__":
