@@ -6,213 +6,10 @@
 #include <bit>
 #include <cassert>
 #include <limits>
-#include <tuple>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace {
-
-    struct SelectedBits {
-        uint16_t mask = 0;
-        uint16_t values = 0;
-
-        bool operator==(const SelectedBits &other) const { return mask == other.mask && values == other.values; }
-    };
-
-    struct SelectedBitsHash {
-        size_t operator()(SelectedBits bits) const {
-            return static_cast<size_t>(bits.mask) | (static_cast<size_t>(bits.values) << 16);
-        }
-    };
-
-    struct StateStats {
-        uint8_t seen = 0;
-    };
-
-    struct StatePlan {
-        bool is_leaf = true;
-        bool value = false;
-        uint16_t bit_id = 0;
-        size_t depth = 0;
-        size_t size = 0;
-    };
-
-    enum class TruthTableObjective {
-        Depth,
-        Size,
-    };
-
-    SelectedBits WithBit(SelectedBits bits, uint16_t bit_id, bool value) {
-        const uint16_t bit = static_cast<uint16_t>(1u << bit_id);
-        bits.mask |= bit;
-        if (value) {
-            bits.values |= bit;
-        } else {
-            bits.values &= static_cast<uint16_t>(~bit);
-        }
-        return bits;
-    }
-
-    bool IsBetterPlan(const StatePlan &candidate, const StatePlan &best, TruthTableObjective objective) {
-        if (objective == TruthTableObjective::Depth) {
-            return std::tie(candidate.depth, candidate.size, candidate.bit_id) <
-                   std::tie(best.depth, best.size, best.bit_id);
-        }
-        return std::tie(candidate.size, candidate.depth, candidate.bit_id) <
-               std::tie(best.size, best.depth, best.bit_id);
-    }
-
-    class TruthTableTreeBuilder {
-    public:
-        TruthTableTreeBuilder(uint16_t bitness, std::vector<bool> truth_table, TruthTableObjective objective) :
-            bitness_(bitness), truth_table_(std::move(truth_table)), objective_(objective), tree_(bitness) {
-            assert(bitness_ <= 16);
-            assert(truth_table_.size() == (size_t{1} << bitness_));
-        }
-
-        DecisionTree Build() {
-            tree_.nodes.push_back(false);
-            if (bitness_ <= 6) {
-                BuildOptimalNodes(0, {});
-            } else {
-                BuildOrderedNodes(0, {});
-            }
-            tree_.Finalize();
-            return std::move(tree_);
-        }
-
-    private:
-        void BuildOptimalNodes(size_t node_id, SelectedBits bits) {
-            const StatePlan plan = ChoosePlan(bits);
-
-            if (plan.is_leaf) {
-                tree_.nodes[node_id] = plan.value;
-                ++tree_.num_leafs;
-                return;
-            }
-
-            const size_t child0 = tree_.nodes.size();
-            const size_t child1 = tree_.nodes.size() + 1;
-            tree_.nodes[node_id] = Div{plan.bit_id, child0, child1};
-            tree_.used_bits[plan.bit_id] = true;
-            tree_.nodes.push_back(false);
-            tree_.nodes.push_back(false);
-
-            BuildOptimalNodes(child0, WithBit(bits, plan.bit_id, false));
-            BuildOptimalNodes(child1, WithBit(bits, plan.bit_id, true));
-        }
-
-        void BuildOrderedNodes(size_t node_id, SelectedBits bits) {
-            const StateStats stats = Analyze(bits);
-            if (stats.seen != 3) {
-                tree_.nodes[node_id] = stats.seen == 2;
-                ++tree_.num_leafs;
-                return;
-            }
-
-            const uint16_t bit_id = ChooseOrderedBit(bits);
-            const size_t child0 = tree_.nodes.size();
-            const size_t child1 = tree_.nodes.size() + 1;
-            tree_.nodes[node_id] = Div{bit_id, child0, child1};
-            tree_.used_bits[bit_id] = true;
-            tree_.nodes.push_back(false);
-            tree_.nodes.push_back(false);
-
-            BuildOrderedNodes(child0, WithBit(bits, bit_id, false));
-            BuildOrderedNodes(child1, WithBit(bits, bit_id, true));
-        }
-
-        StateStats Analyze(SelectedBits bits) {
-            auto cached = stats_memo_.find(bits);
-            if (cached != stats_memo_.end()) {
-                return cached->second;
-            }
-
-            StateStats stats;
-            const uint16_t all_bits = AllBitsMask();
-            const uint16_t free_mask = static_cast<uint16_t>(all_bits ^ bits.mask);
-            uint16_t sub = free_mask;
-            do {
-                const uint16_t input_id = static_cast<uint16_t>(sub | bits.values);
-                stats.seen |= static_cast<uint8_t>(1u << TableValue(input_id));
-                sub = static_cast<uint16_t>((sub - 1) & free_mask);
-            } while (sub != free_mask);
-
-            stats_memo_[bits] = stats;
-            return stats;
-        }
-
-        StatePlan ChoosePlan(SelectedBits bits) {
-            auto cached = plan_memo_.find(bits);
-            if (cached != plan_memo_.end()) {
-                return cached->second;
-            }
-
-            const StateStats stats = Analyze(bits);
-            if (stats.seen != 3) {
-                const StatePlan plan{true, stats.seen == 2, 0, 0, 0};
-                plan_memo_[bits] = plan;
-                return plan;
-            }
-
-            StatePlan best;
-            best.is_leaf = false;
-            best.depth = std::numeric_limits<size_t>::max();
-            best.size = std::numeric_limits<size_t>::max();
-
-            for (uint16_t bit_id = 0; bit_id < bitness_; ++bit_id) {
-                if ((bits.mask & (1u << bit_id)) != 0) {
-                    continue;
-                }
-
-                const StatePlan left = ChoosePlan(WithBit(bits, bit_id, false));
-                const StatePlan right = ChoosePlan(WithBit(bits, bit_id, true));
-                const StatePlan candidate{
-                        false, false, bit_id, 1 + std::max(left.depth, right.depth), 1 + left.size + right.size,
-                };
-                if (IsBetterPlan(candidate, best, objective_)) {
-                    best = candidate;
-                }
-            }
-
-            plan_memo_[bits] = best;
-            return best;
-        }
-
-        uint16_t AllBitsMask() const { return static_cast<uint16_t>((uint32_t{1} << bitness_) - 1u); }
-
-        uint16_t ChooseOrderedBit(SelectedBits bits) {
-            uint16_t best_bit_id = bitness_;
-            uint8_t best_mixed_children = std::numeric_limits<uint8_t>::max();
-
-            for (uint16_t bit_id = 0; bit_id < bitness_; ++bit_id) {
-                if ((bits.mask & (1u << bit_id)) != 0) {
-                    continue;
-                }
-
-                const StateStats left = Analyze(WithBit(bits, bit_id, false));
-                const StateStats right = Analyze(WithBit(bits, bit_id, true));
-                const uint8_t mixed_children = static_cast<uint8_t>((left.seen == 3) + (right.seen == 3));
-                if (std::tie(mixed_children, bit_id) < std::tie(best_mixed_children, best_bit_id)) {
-                    best_mixed_children = mixed_children;
-                    best_bit_id = bit_id;
-                }
-            }
-
-            assert(best_bit_id != bitness_);
-            return best_bit_id;
-        }
-
-        bool TableValue(uint16_t input_id) const { return truth_table_[input_id]; }
-
-        uint16_t bitness_;
-        std::vector<bool> truth_table_;
-        TruthTableObjective objective_;
-        DecisionTree tree_;
-        std::unordered_map<SelectedBits, StateStats, SelectedBitsHash> stats_memo_;
-        std::unordered_map<SelectedBits, StatePlan, SelectedBitsHash> plan_memo_;
-    };
 
     size_t RandomUnusedBit(const std::vector<bool> &path_used_bits, size_t free_bits, std::mt19937 &rng) {
         assert(free_bits > 0);
@@ -253,15 +50,6 @@ namespace {
             return 0;
         }
         return 1 + std::max(ComputeDepth(nodes, division->child0), ComputeDepth(nodes, division->child1));
-    }
-
-    std::vector<bool> TruthTableVector(uint16_t bitness, uint64_t truth_table) {
-        assert(bitness <= 6);
-        std::vector<bool> values(size_t{1} << bitness);
-        for (uint16_t input_id = 0; input_id < values.size(); ++input_id) {
-            values[input_id] = ((truth_table >> input_id) & 1ull) != 0;
-        }
-        return values;
     }
 
 } // namespace
@@ -338,18 +126,6 @@ void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, float *out) const
 void DecisionTree::FillRestrictionsTensor(size_t reps, uint64_t seed, float *out) const {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
     FillGeneratedRestrictionsTensor(bitness_, reps, seed, out, evaluate);
-}
-
-DecisionTree BuildDepthOptimalDecisionTree(uint16_t bitness, uint64_t truth_table) {
-    return TruthTableTreeBuilder(bitness, TruthTableVector(bitness, truth_table), TruthTableObjective::Depth).Build();
-}
-
-DecisionTree BuildSizeOptimalDecisionTree(uint16_t bitness, uint64_t truth_table) {
-    return TruthTableTreeBuilder(bitness, TruthTableVector(bitness, truth_table), TruthTableObjective::Size).Build();
-}
-
-DecisionTree BuildDepthOptimalDecisionTree(uint16_t bitness, const std::vector<bool> &truth_table) {
-    return TruthTableTreeBuilder(bitness, truth_table, TruthTableObjective::Depth).Build();
 }
 
 namespace {

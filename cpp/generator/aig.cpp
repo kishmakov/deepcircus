@@ -40,9 +40,6 @@ namespace {
         uint32_t outputs = 0;
         uint32_t primary_outputs = 0;
         uint32_t bads = 0;
-        uint32_t constraints = 0;
-        uint32_t justice = 0;
-        uint32_t fairness = 0;
         uint32_t ands = 0;
         uint32_t max_var = 0;
     };
@@ -135,9 +132,6 @@ namespace {
         meta.outputs = header.outputs + header.bads;
         meta.primary_outputs = header.outputs;
         meta.bads = header.bads;
-        meta.constraints = header.constraints;
-        meta.justice = header.justice;
-        meta.fairness = header.fairness;
         meta.ands = header.ands;
         meta.max_var = header.max_var;
         return meta;
@@ -202,13 +196,11 @@ namespace {
         return circuit;
     }
 
-    const CircuitCatalog &GetCircuitCatalog() { return kCircuitCatalog; }
-
     const CircuitMeta &GetCircuitMeta(const char *set_name, const char *case_name) {
         assert(set_name != nullptr);
         assert(case_name != nullptr);
 
-        const CircuitCatalog &catalog = GetCircuitCatalog();
+        const CircuitCatalog &catalog = kCircuitCatalog;
         const auto set_it = catalog.sets.find(set_name);
         assert(set_it != catalog.sets.end());
         const auto case_it = set_it->second.find(case_name);
@@ -279,14 +271,13 @@ namespace {
 
 } // namespace
 
-const std::vector<std::string> &CircuitSets() { return GetCircuitCatalog().set_names; }
+const std::vector<std::string> &CircuitSets() { return kCircuitCatalog.set_names; }
 
 const std::vector<std::string> &CircuitCases(const char *set_name) {
     assert(set_name != nullptr);
 
-    const CircuitCatalog &catalog = GetCircuitCatalog();
-    const auto it = catalog.cases.find(set_name);
-    assert(it != catalog.cases.end());
+    const auto it = kCircuitCatalog.cases.find(set_name);
+    assert(it != kCircuitCatalog.cases.end());
     return it->second;
 }
 

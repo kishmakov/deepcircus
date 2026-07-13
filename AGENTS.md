@@ -24,8 +24,8 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/generator/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
 - `cpp/generator/generator.h` declares the public synchronous C API
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
-- `cpp/generator/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
-- `cpp/generator/dataset.cpp` owns deterministic case-ID sampling and compact generated data/restriction handles
+- `cpp/generator/utils.{h,cpp}` owns SplitMix64-based value-input generation, deterministic case-ID sampling (`SampleCaseIds`/`DomainSeed`), and `FlippingSampler`
+- `cpp/generator/generator.cpp` owns the compact bit-packed `BitMatrix` (`gen::Values`/`gen::Restrictions`) and the circuit forwarding; `tree.cpp`/`table.cpp` own their `*SampleCaseIds`/`*ForCases` batch entry points
 - `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types and the task queue; coordinates are produced strictly sequentially, chunking each coordinate's case ids across the thread pool and merging the chunks with `gen::Values::Concat`/`gen::Restrictions::Concat`
 - `cpp/producer/thread_pool.{h,cpp}` owns the FIFO worker pool used to generate a coordinate's case-id chunks in parallel
 - `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns `main` and wires the daemon to a `TaskQueue`

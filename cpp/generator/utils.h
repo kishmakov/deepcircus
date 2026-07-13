@@ -7,11 +7,22 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <vector>
 
 std::mt19937 PrepRNG(uint16_t bitness, size_t case_id);
 
+// SplitMix64 output finalizer over an already-advanced state.
+uint64_t Mix64(uint64_t value);
 uint64_t SplitMix64(uint64_t &state);
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
+uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
+
+// Deterministic, chunk-order-independent sample of `cases` distinct ids from
+// [0, population).
+std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed);
+
+// Generated +/-1 values stay bit-packed until a caller requests float output.
+void StoreBits(std::vector<bool> &destination, const std::vector<float> &source);
 
 class RandomBoolGenerator {
 public:
@@ -73,3 +84,7 @@ public:
 private:
     uint16_t bitness_ = 0;
 };
+
+// One full flip sample as a 0/1 string of length 2 * bitness + 1.
+std::string SampledValueString(uint16_t bitness, std::string_view input,
+                               const std::function<bool(std::string_view)> &evaluate);

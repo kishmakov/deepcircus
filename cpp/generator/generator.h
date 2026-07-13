@@ -9,13 +9,15 @@
 
 namespace gen {
 
-// Dense, bit-packed value matrix. Rows are cases and columns contain all
-// generated repetitions for one case.
-class Values {
+// Dense, bit-packed matrix. Rows are cases and columns contain all generated
+// repetitions (and, for restrictions, all restrictions) for one case. Tagged
+// so value and restriction matrices stay distinct types.
+template<typename Tag>
+class BitMatrix {
 public:
-    explicit Values(std::vector<std::vector<bool>> data);
+    explicit BitMatrix(std::vector<std::vector<bool>> data);
 
-    static Values Concat(std::vector<Values> chunks);
+    static BitMatrix Concat(std::vector<BitMatrix> chunks);
 
     size_t Rows() const { return data_.size(); }
     size_t Columns() const { return data_.front().size(); }
@@ -26,22 +28,11 @@ private:
     std::vector<std::vector<bool>> data_;
 };
 
-// Dense, bit-packed restriction matrix. Rows are cases and columns contain all
-// restrictions and repetitions for one case.
-class Restrictions {
-public:
-    explicit Restrictions(std::vector<std::vector<bool>> data);
+struct ValuesTag;
+struct RestrictionsTag;
 
-    static Restrictions Concat(std::vector<Restrictions> chunks);
-
-    size_t Rows() const { return data_.size(); }
-    size_t Columns() const { return data_.front().size(); }
-    size_t ValueCount() const { return Rows() * Columns(); }
-    void WriteValues(float *output) const;
-
-private:
-    std::vector<std::vector<bool>> data_;
-};
+using Values = BitMatrix<ValuesTag>;
+using Restrictions = BitMatrix<RestrictionsTag>;
 
 struct GeneratedValues {
     Values values;

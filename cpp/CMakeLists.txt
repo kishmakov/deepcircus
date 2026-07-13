@@ -32,7 +32,6 @@ add_library(gen
     generator/aig.h
     generator/decision_tree.cpp
     generator/decision_tree.h
-    generator/dataset.cpp
     generator/generator.cpp
     generator/generator.h
     generator/libgen.cpp

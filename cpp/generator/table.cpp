@@ -8,20 +8,22 @@
 #include <random>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
 
     constexpr size_t kTableCasesNumber = size_t{1} << 32;
 
-    constexpr uint16_t kMinSmallBitness = 4;
+    // Seed-domain tag for table value-input streams, shared by dataset
+    // generation and sparse table evaluation.
+    constexpr uint64_t kTableValueDomain = 0x7461626c655f7661ull;
+    constexpr uint64_t kTableSelectionDomain = 0x7461626c655f7365ull;
+    constexpr uint64_t kRestrictionDomain = 0x7265737472696374ull;
+
     constexpr uint16_t kMaxSmallBitness = 6;
 
-    constexpr uint16_t kMinMediumBitness = 7;
-    constexpr uint16_t kMaxMediumBitness = 16;
-
-
-    bool IsSmallBitness(uint16_t bitness) { return kMinSmallBitness <= bitness && bitness <= kMaxSmallBitness; }
+    bool IsSmallBitness(uint16_t bitness) { return kMinTableBitness <= bitness && bitness <= kMaxSmallBitness; }
 
     size_t SmallBitnessCasesNumber(uint16_t bitness) {
         assert(IsSmallBitness(bitness));
@@ -38,16 +40,11 @@ namespace {
         }
     }
 
-    bool IsMediumBitness(uint16_t bitness) { return kMinMediumBitness <= bitness && bitness <= kMaxMediumBitness; }
-
-    size_t MediumBitnessCasesNumber(uint16_t bitness) {
-        assert(IsMediumBitness(bitness));
-        return kTableCasesNumber;
-    }
+    bool IsMediumBitness(uint16_t bitness) { return kMaxSmallBitness < bitness && bitness <= kSolvableTableBitness; }
 
     std::vector<bool> MediumBitnessTruthTable(uint16_t bitness, size_t case_id) {
         assert(IsMediumBitness(bitness));
-        assert(case_id < MediumBitnessCasesNumber(bitness));
+        assert(case_id < kTableCasesNumber);
 
         std::vector<bool> truth_table(size_t{1} << bitness);
         std::seed_seq seed{
@@ -101,15 +98,9 @@ namespace {
         return MediumBitnessTruthTable(bitness, case_id);
     }
 
-    uint64_t Mix64(uint64_t value) {
-        value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
-        value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
-        return value ^ (value >> 31);
-    }
-
     bool SparseTableValue(uint16_t bitness, size_t case_id, std::string_view input) {
         assert(input.size() == bitness);
-        uint64_t value = CaseInputSeed(0x7461626c655f7661ull, bitness, case_id);
+        uint64_t value = CaseInputSeed(kTableValueDomain, bitness, case_id);
         for (char bit: input) {
             assert(bit == '0' || bit == '1');
             value ^= static_cast<uint64_t>(bit);
@@ -158,9 +149,6 @@ size_t TableCasesNumber(uint16_t bitness) {
     if (IsSmallBitness(bitness)) {
         return SmallBitnessCasesNumber(bitness);
     }
-    if (IsMediumBitness(bitness)) {
-        return MediumBitnessCasesNumber(bitness);
-    }
     return kTableCasesNumber;
 }
 
@@ -171,15 +159,71 @@ std::string TableValue(uint16_t bitness, size_t case_id, std::string_view input)
     assert(case_id < TableCasesNumber(bitness));
     assert(input.size() >= bitness);
 
-    std::string value(2 * bitness + 1, '0');
-    FlippingSampler sampler(bitness, input.substr(0, bitness));
-
     const TableCase table(bitness, case_id);
     const auto evaluate = [&table](std::string_view point) { return table.Evaluate(point); };
-    sampler.Fill(value,
-                 /*sample_offset=*/0, bitness, evaluate);
+    return SampledValueString(bitness, input.substr(0, bitness), evaluate);
+}
 
-    return value;
+std::vector<size_t> TableSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed) {
+    return SampleCaseIds(TableCasesNumber(bitness), cases, DomainSeed(seed, kTableSelectionDomain, bitness));
+}
+
+GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
+                                    uint64_t seed) {
+    const size_t cases = case_ids.size();
+    assert(cases > 0);
+    assert(reps > 0);
+    assert(reps % 2 == 0);
+    assert(bitness >= kMinTableBitness);
+    assert(bitness <= kSolvableTableBitness);
+
+    const size_t sample_size = 2 * bitness + 1;
+    std::vector<std::vector<bool>> values(cases, std::vector<bool>(reps * sample_size));
+    std::vector<float> targets(cases);
+    const uint64_t value_seed = DomainSeed(seed, kTableValueDomain, bitness);
+
+    std::vector<float> case_values(reps * sample_size);
+    for (size_t case_index = 0; case_index < cases; ++case_index) {
+        const size_t case_id = case_ids[case_index];
+        TableCase table(bitness, case_id);
+        table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
+        const size_t depth = SolveForDepth(bitness, table.TruthTable());
+        targets[case_index] = static_cast<float>(bitness - depth);
+        StoreBits(values[case_index], case_values);
+    }
+
+    return GeneratedValues{Values(std::move(values)), std::move(targets)};
+}
+
+GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
+                                                 uint64_t seed) {
+    const size_t cases = case_ids.size();
+    assert(cases > 0);
+    assert(reps > 0);
+    assert(reps % 2 == 0);
+    assert(bitness > kSolvableTableBitness);
+    assert(bitness <= kMaxTableBitness);
+
+    const size_t sample_size = 2 * bitness + 1;
+    const size_t restriction_size = 2 * bitness * reps * (2 * bitness - 1);
+    std::vector<std::vector<bool>> values(cases, std::vector<bool>(reps * sample_size));
+    std::vector<std::vector<bool>> restrictions(cases, std::vector<bool>(restriction_size));
+    const uint64_t value_seed = DomainSeed(seed, kTableValueDomain, bitness);
+    const uint64_t restriction_seed = DomainSeed(seed, kRestrictionDomain, bitness);
+
+    std::vector<float> case_values(reps * sample_size);
+    std::vector<float> restriction_values(restriction_size);
+    for (size_t case_index = 0; case_index < cases; ++case_index) {
+        const size_t case_id = case_ids[case_index];
+        TableCase table(bitness, case_id);
+        table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
+        table.FillRestrictionsTensor(reps, CaseInputSeed(restriction_seed, bitness, case_id),
+                                     restriction_values.data());
+        StoreBits(values[case_index], case_values);
+        StoreBits(restrictions[case_index], restriction_values);
+    }
+
+    return GeneratedRestrictions{Values(std::move(values)), Restrictions(std::move(restrictions))};
 }
 
 } // namespace gen
