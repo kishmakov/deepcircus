@@ -74,7 +74,7 @@ class Sampler:
             assert (task.iteration, task.bitness) == (0, bitness), task
             self._validation_datasets[bitness] = torch.utils.data.TensorDataset(
                 torch.tensor(task.validation_values),
-                torch.tensor(task.validation_targets).reshape(-1, 1),
+                torch.tensor(task.validation_targets),
             )
             task.release()
 
@@ -96,7 +96,7 @@ class Sampler:
             targets.append(torch.from_numpy(self._approximate_targets(previous_model, task)))
         train_dataset = torch.utils.data.TensorDataset(
             torch.cat(values),
-            torch.cat(targets).reshape(-1, 1),
+            torch.cat(targets),
         )
         task.release()
         return Stage(iteration, bitness, train_dataset)
@@ -132,7 +132,7 @@ class Sampler:
         bitness = task.bitness
         assert task.approx_values is not None
         cases = len(task.approx_values)
-        targets = np.empty(cases, dtype=np.float32)
+        targets = np.empty((cases, 2), dtype=np.float32)
         start = 0
 
         with tqdm(
@@ -146,10 +146,14 @@ class Sampler:
                     chunk.reshape(chunk_cases * bitness * 2, reps, point_dim),
                     self.training.batch_size,
                 )
-                predictions = predictions.reshape(chunk_cases, bitness, 2)
+                predictions = predictions.reshape(chunk_cases, bitness, 2, 2)
                 predictions = np.clip(predictions, 0.0, float(bitness - 1))
-                split_targets = predictions.min(axis=2)
-                targets[start : start + chunk_cases] = split_targets.max(axis=1)
+                depth_scores = predictions[..., 0].min(axis=2)
+                targets[start : start + chunk_cases, 0] = depth_scores.max(axis=1)
+                # The parent's remaining size budget 2^bitness - size for a
+                # split is the children's budgets combined: 2^y0 + 2^y1 - 1.
+                size_budgets = np.exp2(predictions[..., 1]).sum(axis=2) - 1.0
+                targets[start : start + chunk_cases, 1] = np.log2(size_budgets.max(axis=1))
                 start += chunk_cases
                 progress.update(chunk_cases)
 

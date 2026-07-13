@@ -41,7 +41,7 @@ class DeepSetPredictor(nn.Module):
             nn.ReLU(),
             nn.Dropout(dropout),
 
-            nn.Linear(rho_hidden, 1),
+            nn.Linear(rho_hidden, 2),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -51,7 +51,7 @@ class DeepSetPredictor(nn.Module):
         h = self.phi(x.reshape(b * n, d)).reshape(b, n, -1)  # (batch, n, phi_out)
         # symmetric pooling over the point dimension
         pooled = torch.cat([h.sum(dim=1), h.max(dim=1).values], dim=-1)
-        return self.rho(pooled)  # raw logits, (batch, 1)
+        return self.rho(pooled)  # (batch, 2): depth score, size score
 
 
 def predict_values(
@@ -70,24 +70,7 @@ def predict_values(
                 dtype=torch.float32,
                 device=DEVICE,
             )
-            predictions.append(model(xb).cpu().numpy().ravel())
+            predictions.append(model(xb).cpu().numpy())
 
     return np.concatenate(predictions).astype(np.float32)
 
-
-def regression_metrics(predictions: np.ndarray, targets: np.ndarray) -> dict[str, float]:
-    errors = predictions - targets
-    absolute_errors = np.abs(errors)
-    return {
-        "rmse": float(np.sqrt(np.mean(np.square(errors)))),
-        "mad": float(np.mean(absolute_errors)),
-    }
-
-
-def evaluate_regression(
-    model: nn.Module,
-    x: np.ndarray,
-    y: np.ndarray,
-    predict_batch_size: int,
-) -> dict[str, float]:
-    return regression_metrics(predict_values(model, x, predict_batch_size), y)

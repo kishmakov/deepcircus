@@ -39,6 +39,10 @@ private:
 
 size_t FullBitId(size_t bit_id, size_t fixed_id);
 
+// Size training target: log2(2^bitness - tree_size), where tree_size counts
+// internal nodes. A constant function scores bitness, a full tree scores 0.
+float SizeScore(uint16_t bitness, size_t tree_size);
+
 uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id);
 
 class InputGenerator {

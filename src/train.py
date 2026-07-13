@@ -157,7 +157,7 @@ def train_epoch(
 
         errors = prediction.detach() - yb
         squared_error_sum += float(torch.sum(errors.square()).item())
-        count += len(xb)
+        count += yb.numel()
 
     rmse = float((squared_error_sum / count) ** 0.5)
     scheduler.step(rmse)
@@ -178,7 +178,7 @@ def evaluate_epoch(
             prediction = model(xb)
             errors = prediction - yb
             squared_error_sum += float(torch.sum(errors.square()).item())
-            count += len(xb)
+            count += yb.numel()
 
     return float((squared_error_sum / count) ** 0.5)
 

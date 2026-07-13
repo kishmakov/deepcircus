@@ -34,6 +34,11 @@ struct RestrictionsTag;
 using Values = BitMatrix<ValuesTag>;
 using Restrictions = BitMatrix<RestrictionsTag>;
 
+// Exact targets per case, interleaved: (bitness - depth, log2(2^bitness - size)),
+// where size counts internal nodes. Both score 0 for the worst case (full
+// tree) and bitness for the best (constant function).
+inline constexpr size_t kTargetsPerCase = 2;
+
 struct GeneratedValues {
     Values values;
     std::vector<float> targets;

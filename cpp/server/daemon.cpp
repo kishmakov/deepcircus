@@ -153,7 +153,7 @@ std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id
         size += descriptor.value_count * sizeof(float);
         descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
         if (targets != nullptr) {
-            assert(targets->size() == values.Rows());
+            assert(targets->size() == gen::kTargetsPerCase * values.Rows());
             descriptor.target_count = targets->size();
             descriptor.targets_offset = size;
             size += descriptor.target_count * sizeof(float);

@@ -113,9 +113,9 @@ def consume_tasks(
                 )
                 if target_count:
                     assert targets_offset != NO_OFFSET, targets_offset
-                    assert target_count == cases, (target_count, cases)
+                    assert target_count == 2 * cases, (target_count, cases)
                     targets = np.ndarray(
-                        (cases,),
+                        (cases, 2),
                         dtype=np.float32,
                         buffer=memory.buf,
                         offset=targets_offset,

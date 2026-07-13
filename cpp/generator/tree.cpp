@@ -60,7 +60,7 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t> &
 
     const size_t sample_size = 2 * bitness + 1;
     std::vector<std::vector<bool>> values(cases, std::vector<bool>(reps * sample_size));
-    std::vector<float> targets(cases);
+    std::vector<float> targets(gen::kTargetsPerCase * cases);
     const uint64_t value_seed = DomainSeed(seed, kTreeValueDomain, bitness);
 
     std::vector<float> case_values(reps * sample_size);
@@ -68,7 +68,9 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t> &
         const size_t case_id = case_ids[case_index];
         DecisionTree tree = BuildTreeCase(bitness, case_id);
         tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
-        targets[case_index] = static_cast<float>(bitness - tree.depth);
+        const size_t size = tree.nodes.size() - tree.num_leafs;
+        targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.depth);
+        targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);
         StoreBits(values[case_index], case_values);
     }
 

@@ -56,8 +56,9 @@ class GeneratedTask:
     task with iteration 0, ahead of every training task for that bitness;
     training tasks (iteration >= 1) carry only the train fields. Arrays are
     zero-copy views into shared memory: the training tensor comes with exact
-    targets, while `approx_values` (present above the solvable bitness) comes
-    with `restrictions` chunks instead of targets. All views die at release().
+    (cases, 2) target pairs (depth score, size score), while `approx_values`
+    (present above the solvable bitness) comes with `restrictions` chunks
+    instead of targets. All views die at release().
     """
 
     generator: Generator
@@ -180,8 +181,8 @@ class Generator:
             values = np.ndarray(shape, dtype=np.float32, buffer=memory.buf, offset=values_offset)
             targets = None
             if target_count:
-                assert target_count == cases, (target_count, cases)
-                targets = np.ndarray((cases,), dtype=np.float32, buffer=memory.buf, offset=targets_offset)
+                assert target_count == 2 * cases, (target_count, cases)
+                targets = np.ndarray((cases, 2), dtype=np.float32, buffer=memory.buf, offset=targets_offset)
             else:
                 assert targets_offset == _NO_OFFSET, targets_offset
 

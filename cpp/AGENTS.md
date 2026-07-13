@@ -8,7 +8,9 @@ boundaries: `cpp/generator/`, `cpp/producer/`, and `cpp/server/`.
 `cpp/generator/` is synchronous and contains no worker pool. Each call runs to
 completion on its calling thread. Independent calls are safe from different
 producer threads. `Values` and `Restrictions` are dense, bit-packed matrices
-whose rows are cases; exact depth targets remain separate float vectors.
+whose rows are cases; exact targets remain separate float vectors holding
+`gen::kTargetsPerCase` interleaved values per case: the depth score
+`bitness - depth` and the size score `log2(2^bitness - size)`.
 
 Case-ID sampling is split from generation: `TreeSampleCaseIds`/
 `TableSampleCaseIds` deterministically sample a bitness x cases pair once, and

@@ -32,7 +32,7 @@ TEST(TaskQueueTest, PublishesValidationTaskBeforeTrainingTasks) {
     EXPECT_TRUE(validation->restrictions.empty());
     EXPECT_EQ(validation->values[0].values.Rows(), 2u);
     EXPECT_EQ(validation->values[0].values.Columns(), 2u * (2 * 4 + 1));
-    EXPECT_EQ(validation->values[0].targets.size(), 2u);
+    EXPECT_EQ(validation->values[0].targets.size(), gen::kTargetsPerCase * 2u);
 }
 
 TEST(TaskQueueTest, PublishesTrainingTasksInIterationOrder) {
@@ -47,7 +47,7 @@ TEST(TaskQueueTest, PublishesTrainingTasksInIterationOrder) {
         ASSERT_EQ(result->values.size(), 1u);
         EXPECT_TRUE(result->restrictions.empty());
         EXPECT_EQ(result->values[0].values.Rows(), 4u);
-        EXPECT_EQ(result->values[0].targets.size(), 4u);
+        EXPECT_EQ(result->values[0].targets.size(), gen::kTargetsPerCase * 4u);
     }
 }
 
@@ -143,7 +143,7 @@ TEST(TaskQueueTest, RecursiveBitnessMergesRestrictionChunks) {
     ASSERT_EQ(train->values.size(), 1u);  // exact tree values
     ASSERT_EQ(train->restrictions.size(), 1u);  // merged across worker chunks
     EXPECT_EQ(train->values[0].values.Rows(), 4u);
-    EXPECT_EQ(train->values[0].targets.size(), 4u);
+    EXPECT_EQ(train->values[0].targets.size(), gen::kTargetsPerCase * 4u);
 
     const gen::GeneratedRestrictions& merged = train->restrictions[0];
     EXPECT_EQ(merged.values.Rows(), 4u);

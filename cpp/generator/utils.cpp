@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cmath>
 #include <cstdint>
 #include <unordered_set>
 #include <utility>
@@ -88,6 +89,12 @@ void StoreBits(std::vector<bool> &destination, const std::vector<float> &source)
 }
 
 size_t FullBitId(size_t bit_id, size_t fixed_id) { return bit_id < fixed_id ? bit_id : bit_id + 1; }
+
+float SizeScore(uint16_t bitness, size_t tree_size) {
+    const double max_size = std::exp2(static_cast<double>(bitness));
+    assert(static_cast<double>(tree_size) < max_size);
+    return static_cast<float>(std::log2(max_size - static_cast<double>(tree_size)));
+}
 
 std::mt19937 PrepRNG(uint16_t bitness, size_t case_id) {
     std::seed_seq seed{

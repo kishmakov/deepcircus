@@ -179,7 +179,7 @@ GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t> 
 
     const size_t sample_size = 2 * bitness + 1;
     std::vector<std::vector<bool>> values(cases, std::vector<bool>(reps * sample_size));
-    std::vector<float> targets(cases);
+    std::vector<float> targets(gen::kTargetsPerCase * cases);
     const uint64_t value_seed = DomainSeed(seed, kTableValueDomain, bitness);
 
     std::vector<float> case_values(reps * sample_size);
@@ -188,7 +188,9 @@ GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t> 
         TableCase table(bitness, case_id);
         table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
         const size_t depth = SolveForDepth(bitness, table.TruthTable());
-        targets[case_index] = static_cast<float>(bitness - depth);
+        const size_t size = SolveForSize(bitness, table.TruthTable());
+        targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - depth);
+        targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);
         StoreBits(values[case_index], case_values);
     }
 
