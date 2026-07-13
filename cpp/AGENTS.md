@@ -26,11 +26,14 @@ task queue (`TaskQueue`), and the task types (`TrainingShape`, `Task`,
 `TaskResult`) that the daemon later publishes. Wire-level tensor kinds belong to
 the daemon.
 
-Coordinates (`iteration` x `bitness` pairs) are produced strictly sequentially,
-on demand, from `TaskQueue::Take()` — there is no cross-coordinate prefetch
-pipeline. Parallelism lives inside a single coordinate instead: `Take()` samples
-that tensor's case ids once, splits them evenly across `ThreadPool::WorkerCount()`
-into contiguous chunks, and fans them out via the synchronous generator calls.
+Coordinates (`iteration` x `bitness` pairs) are produced strictly sequentially
+by a dedicated producer thread inside `TaskQueue`, which prefetches finished
+results into a bounded buffer (`TaskQueue::kPrefetchDepth`, currently 8) ahead
+of consumption; `Take()` blocks until the next result in task order is ready,
+pops it, and thereby unblocks the producer to top the buffer back up. Within a
+coordinate, the producer samples that tensor's case ids once, splits them
+evenly across `ThreadPool::WorkerCount()` into contiguous chunks, and fans
+them out via the synchronous generator calls.
 Exact-target value rows are merged back into one `gen::Values`; for recursive
 tables, the worker chunks are likewise merged (`Values::Concat` plus
 `Restrictions::Concat`) into a single `gen::GeneratedRestrictions` pairing

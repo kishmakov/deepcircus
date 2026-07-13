@@ -141,6 +141,11 @@ std::unique_ptr<TaskResult> GenerateValidationTask(const TrainingShape& shape, c
     return result;
 }
 
+std::unique_ptr<TaskResult> GenerateTask(const TrainingShape& shape, const Task& task, ThreadPool& pool) {
+    return task.iteration == kValidationIteration ? GenerateValidationTask(shape, task, pool)
+                                                  : GenerateTrainTask(shape, task, pool);
+}
+
 }  // namespace
 
 TaskQueue::TaskQueue(TrainingShape shape, size_t workers) : shape_(shape), pool_(workers) {
@@ -154,13 +159,49 @@ TaskQueue::TaskQueue(TrainingShape shape, size_t workers) : shape_(shape), pool_
                                   TaskSeed(shape.seed, static_cast<uint16_t>(bitness), iteration)});
         }
     }
+    producer_ = std::thread([this] { Produce(); });
+}
+
+TaskQueue::~TaskQueue() {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        stopping_ = true;
+    }
+    space_.notify_all();
+    producer_.join();
+}
+
+void TaskQueue::Produce() {
+    for (const Task& task : tasks_) {
+        {
+            std::unique_lock<std::mutex> lock(mutex_);
+            space_.wait(lock, [this] { return buffer_.size() < kPrefetchDepth || stopping_; });
+            if (stopping_) {
+                return;
+            }
+        }
+        std::unique_ptr<TaskResult> result = GenerateTask(shape_, task, pool_);
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            buffer_.push_back(std::move(result));
+        }
+        ready_.notify_one();
+    }
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        produced_all_ = true;
+    }
+    ready_.notify_all();
 }
 
 std::unique_ptr<TaskResult> TaskQueue::Take() {
-    if (next_ == tasks_.size()) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    ready_.wait(lock, [this] { return !buffer_.empty() || produced_all_; });
+    if (buffer_.empty()) {
         return nullptr;
     }
-    const Task task = tasks_[next_++];
-    return task.iteration == kValidationIteration ? GenerateValidationTask(shape_, task, pool_)
-                                                  : GenerateTrainTask(shape_, task, pool_);
+    std::unique_ptr<TaskResult> result = std::move(buffer_.front());
+    buffer_.pop_front();
+    space_.notify_one();
+    return result;
 }

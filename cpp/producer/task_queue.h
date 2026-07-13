@@ -1,8 +1,12 @@
 #pragma once
 
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 #include "generator.h"
@@ -34,18 +38,33 @@ struct TaskResult {
 };
 
 // Generates the bitness x iteration task grid up front, then produces each
-// coordinate strictly sequentially and on demand: Take() samples that
-// coordinate's case ids once, splits them into chunks, and fans the chunks
-// out across the FIFO thread pool before merging them back into one batch.
+// coordinate strictly sequentially on a dedicated producer thread: the
+// producer samples that coordinate's case ids once, splits them into chunks,
+// and fans the chunks out across the FIFO thread pool before merging them
+// back into one batch. Finished coordinates are buffered up to kPrefetchDepth
+// ahead of consumption, so Take() hands out a ready result and generation of
+// the next one is already underway.
 class TaskQueue {
 public:
+    static constexpr size_t kPrefetchDepth = 8;
+
     TaskQueue(TrainingShape shape, size_t workers);
+    ~TaskQueue();
 
     std::unique_ptr<TaskResult> Take();
 
 private:
+    void Produce();
+
     TrainingShape shape_;
     std::vector<Task> tasks_;
-    size_t next_ = 0;
     ThreadPool pool_;
+
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::condition_variable space_;
+    std::deque<std::unique_ptr<TaskResult>> buffer_;
+    bool produced_all_ = false;
+    bool stopping_ = false;
+    std::thread producer_;
 };
