@@ -48,14 +48,25 @@ add_library(gen
 target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
 target_link_libraries(gen PRIVATE aiger)
 
+add_library(producer
+    producer/task_queue.cpp
+    producer/task_queue.h
+    producer/thread_pool.cpp
+    producer/thread_pool.h
+)
+target_include_directories(producer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/producer")
+target_link_libraries(producer PUBLIC gen Threads::Threads)
+
 add_executable(generator_server
     server/daemon.cpp
     server/daemon.h
     server/server.cpp
-    server/task_queue.cpp
-    server/task_queue.h
-    server/thread_pool.cpp
-    server/thread_pool.h
 )
 target_include_directories(generator_server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/server")
-target_link_libraries(generator_server PRIVATE gen Threads::Threads)
+target_link_libraries(generator_server PRIVATE producer Threads::Threads)
+
+option(DEEPCIRCUS_BUILD_TESTS "Build the Google Test suite" ON)
+if(DEEPCIRCUS_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(test)
+endif()

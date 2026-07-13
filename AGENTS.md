@@ -18,15 +18,18 @@ This is a research project to study ML approach to handle decision trees.
 
 - `tmp` is the directory not indexed by git
 - `cpp/generator/` holds synchronous generation sources and the public C API
-- `cpp/server/` holds the daemon, task orchestration, shared-memory publication, and thread pool
+- `cpp/producer/` holds the task queue, thread pool, and generator orchestration; it is a library independent of the daemon and is covered by `cpp/test`
+- `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
+- `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), currently exercising `cpp/producer`
 - `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
 - `cpp/generator/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
 - `cpp/generator/generator.h` declares the public synchronous C API
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
 - `cpp/generator/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
 - `cpp/generator/dataset.cpp` owns deterministic case-ID sampling and compact generated data/restriction handles
-- `cpp/server/thread_pool.{h,cpp}` owns the FIFO coordinate worker pool
-- `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns task generation, the task queue, and `main`
+- `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types, task generation, and the ordered task queue
+- `cpp/producer/thread_pool.{h,cpp}` owns the FIFO coordinate worker pool
+- `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns `main` and wires the daemon to a `TaskQueue`
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `src/generator.py` owns the generator daemon client: server spawning, the task protocol, and shared-memory task views
 - Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads

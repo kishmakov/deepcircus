@@ -10,6 +10,8 @@
 #include <optional>
 #include <thread>
 
+constexpr size_t workers = 16;
+
 inline uint16_t ParsePort(const char *value) {
     const unsigned long port = std::strtoul(value, nullptr, 10);
     assert(port <= 65535);
@@ -18,8 +20,6 @@ inline uint16_t ParsePort(const char *value) {
 
 int main(int argc, char **argv) {
     uint16_t port = 7788;
-    size_t workers = 16;
-    assert(workers > 0);
     for (int index = 1; index < argc; index += 2) {
         assert(index + 1 < argc);
         if (std::strcmp(argv[index], "--port") == 0) {
