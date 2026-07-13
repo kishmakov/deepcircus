@@ -67,7 +67,7 @@ def run_training(generator: GeneratorProxy) -> None:
             desc=f"iteration={iteration:03d} bitness={bitness:02d}",
             unit="epoch",
         )
-        validation_loader = sampler.validation_loader(stage)
+        validation_loader = sampler.validation_loader(bitness)
 
         for epoch in epoch_progress:
             train_loader = sampler.train_loader(stage, epoch)

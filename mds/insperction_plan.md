@@ -6,9 +6,16 @@ This plan is for auditing:
 uv run scripts/run.py
 ```
 
-The script creates `GeneratorProxy(16)`, calls `run_training`, uses a persistent
-process-backed worker fleet, calls C++ through `libgen.so` via ctypes, builds
-NumPy/PyTorch tensors, and trains/evaluates a PyTorch model.
+The script creates `GeneratorProxy(16)`, which spawns the C++ daemon
+`cpp/build/generator_server` as a child process. The daemon generates task
+data eagerly on a thread pool, publishes each task's tensors through POSIX
+shared memory, and the Python side (`src/generator.py`) borrows zero-copy
+NumPy views over a socket protocol. Training (`src/train.py`) consumes one
+`(iteration, bitness)` stage at a time, builds PyTorch tensors, and
+trains/evaluates a DeepSet model.
+
+There is no Python worker fleet anymore: all native generation lives in the
+single `generator_server` process and its worker threads.
 
 ## 1. Establish a Baseline
 
@@ -26,80 +33,106 @@ Look at:
 - voluntary and involuntary context switches
 - major/minor page faults
 
+Note that shared-memory segments show up in both the daemon's and the Python
+process's RSS; don't double-count them.
+
 Repeat this before and after every meaningful change.
 
 ## 2. Profile Python Orchestration
 
 Use `py-spy` first because it can observe Python without modifying code.
+Only the main process is Python now, so no `--subprocesses` is needed.
 
 ```bash
-py-spy top --subprocesses -- uv run scripts/run.py
-py-spy record --rate 20 --subprocesses -o tmp/profile.svg -- uv run scripts/run.py
+py-spy top -- uv run scripts/run.py
+py-spy record --rate 20 -o tmp/profile.svg -- uv run scripts/run.py
 ```
-
-Use `--subprocesses` because `src/generator_proxy.py` creates worker processes.
 
 This should show whether time is going into:
 
-- `Sampler._set_train`
-- `Sampler._approximate_recursive_targets`
-- `GeneratorProxy._dispatch`
-- result collection from worker pools
+- `Generator.next_task` / `_receive_exact` (blocked waiting on the daemon —
+  a generation-side bottleneck, not a Python one)
+- `Sampler.take_stage` (tensor construction, `torch.cat`)
+- `Sampler._approximate_targets` (inference over restriction chunks)
 - `predict_values`
 - `train_epoch`
 - `evaluate_epoch`
 
+Time spent inside socket reads in `next_task` means training outpaces the
+daemon; time spent everywhere else means the daemon's eager generation keeps
+up and Python/PyTorch is the bottleneck.
+
 ## 3. Profile Native C++ Work
 
-The ctypes calls into `libgen.so` are native work, so use `perf`.
+Generation runs inside the `generator_server` child process, so profile that
+process, not the Python driver. The record/report flow is scripted:
 
 ```bash
-perf record -g --call-graph dwarf -- uv run scripts/run.py
-perf report
+scripts/perf_binary_run.sh [duration-seconds]   # default 30
+scripts/perf_binary_inspect.sh [perf-report-args]
 ```
 
-If the C++ stack traces are poor, rebuild `bool-bench` with debug symbols and
-frame pointers while keeping optimization enabled:
+`perf_binary_run.sh` builds a `cpp/build-perf` tree with debug symbols and
+frame pointers (the Release `cpp/build` stays untouched), launches
+`scripts/run.py` against it via `GENERATOR_SERVER`, waits until the daemon
+starts burning CPU, records DWARF call graphs into `/tmp/circus/perf.data`,
+and tears the run down. `perf_binary_inspect.sh` opens that recording in
+`perf report`.
+
+One-time prerequisite: this machine ships with
+`kernel.perf_event_paranoid = 4`, which blocks perf entirely for
+unprivileged users. Allow self-profiling with:
 
 ```bash
-CXXFLAGS="-O3 -g -fno-omit-frame-pointer" bool-bench/build.sh
+sudo sysctl kernel.perf_event_paranoid=1
+# optional, resolves kernel symbols in call graphs:
+sudo sysctl kernel.kptr_restrict=0
+# persist across reboots:
+echo 'kernel.perf_event_paranoid = 1' | sudo tee /etc/sysctl.d/60-perf.conf
 ```
-
-Then rerun `perf`.
 
 Look especially for hot functions in:
 
-- `bool-bench/decision_tree.cpp`
-- `bool-bench/small_bitness.cpp`
-- `bool-bench/generator.cpp`
+- `cpp/generator/decision_tree.cpp` (tree building, evaluation, exact solving)
+- `cpp/generator/dataset.cpp` (case-ID sampling, data/restriction handles)
+- `cpp/generator/utils.cpp` (value-input generation, `FlippingSampler`)
+- `cpp/producer/task_queue.cpp` (chunking, `Concat` merges)
+- `cpp/server/daemon.cpp` (socket writes, shared-memory publication)
 
-## 4. Inspect Multiprocessing Behavior
-
-`GeneratorProxy` routes each `(bitness, case_id)` pair to a fixed worker. Audit:
-
-- whether all 16 workers are busy
-- whether buckets are balanced
-- whether parent process waits on slow workers
-- whether result payloads are too large to pickle/copy cheaply
-- whether `apply_async(...).get()` causes serialization bottlenecks
-
-Useful commands:
+For ad-hoc checks against an already-running daemon (`pgrep` needs `-f`
+because the kernel truncates process names to 15 characters):
 
 ```bash
-htop
-pidstat -dur -p ALL 1
+perf top -p "$(pgrep -n -f generator_server)"                # live view
+perf stat -p "$(pgrep -n -f generator_server)" -- sleep 30   # hw counters
 ```
 
-For process-level detail during a run:
+## 4. Inspect Daemon Concurrency
+
+`cpp/producer` produces coordinates strictly sequentially, chunking each
+coordinate's case ids across the thread pool and merging the chunks. Audit:
+
+- whether all worker threads are busy during generation
+- whether the sequential merge (`gen::Values::Concat` /
+  `gen::Restrictions::Concat`) serializes a meaningful share of the time
+- whether the daemon idles once it has generated ahead of training
+  (fine), or training stalls in `next_task` waiting on it (not fine)
+
+`perf` only shows on-CPU time, so cross-check with per-thread utilization:
 
 ```bash
-ps -o pid,ppid,pcpu,pmem,rss,stat,comm,args -C python
+pidstat -t -p "$(pgrep -n -f generator_server)" 1
+htop   # tree view: python + generator_server threads
 ```
+
+If per-thread CPU% is well below 100 per worker while training waits, the
+bottleneck is queueing/merging, not the code `perf report` shows.
 
 ## 5. Profile PyTorch Training
 
 Use the PyTorch profiler around `train_epoch`, `evaluate_epoch`, and the
-recursive-target inference path in `predict_values`.
+recursive-target inference path (`Sampler._approximate_targets` →
+`predict_values`).
 
 Capture CPU, CUDA, shapes, and memory:
 
@@ -140,8 +173,9 @@ nvidia-smi dmon
 nvidia-smi pmon
 ```
 
-If the GPU is mostly idle while the run is slow, focus on generation, IPC,
-NumPy allocation, and host-to-device transfer.
+If the GPU is mostly idle while the run is slow, focus on generation,
+shared-memory materialization, NumPy-to-tensor conversion, and
+host-to-device transfer.
 
 For a deeper timeline:
 
@@ -151,7 +185,9 @@ nsys profile -o tmp/nsys_run uv run scripts/run.py
 
 ## 7. Inspect Memory Allocation and Copies
 
-For mixed Python/native time and memory pressure:
+Task arrays arrive as zero-copy views into shared memory, but every
+`torch.tensor(...)` call in `Sampler` copies them out. For mixed
+Python/native time and memory pressure:
 
 ```bash
 scalene scripts/run.py
@@ -166,23 +202,22 @@ memray flamegraph tmp/memray.bin
 
 Pay attention to:
 
-- large `np.empty` allocations in `GeneratorProxy`
-- concatenation in `Sampler._set_train`
-- copies from worker results into parent arrays
-- `torch.as_tensor(..., device=DEVICE)` transfers
-- `.cpu().numpy()` in `predict_values`
+- `torch.tensor(task.train_values)` / `torch.cat` copies in
+  `Sampler.take_stage` and `_take_validation_datasets`
+- the `chunk.reshape(...)` and `np.empty` in `_approximate_targets`
+- `torch.as_tensor(..., device=DEVICE)` transfers inside `predict_values`
+- `.cpu().numpy()` on the way back from inference
+- shared-memory segment lifetime (each task's segment must die at
+  `task.release()`; leaked segments show up in `/dev/shm`)
 
 ## 8. Add Lightweight Phase Timers
 
 Profilers are useful, but this project also needs experiment-aware timers.
 Add timing around these boundaries:
 
-- `sampler.val_loader(bitness)`
-- `sampler.reset_train(bitness, iteration, previous_model)`
-- `Sampler._approximate_recursive_targets`
-- `GeneratorProxy._dispatch`
-- `_worker`
-- `GeneratorProxy.restrictions_tensors`
+- `Generator.next_task` (time blocked = daemon behind training)
+- `Sampler.take_stage` (excluding `next_task`: tensor build cost)
+- `Sampler._approximate_targets`
 - `predict_values`
 - `train_epoch`
 - `evaluate_epoch`
@@ -197,9 +232,9 @@ Log at least:
 - input/output tensor shape
 - elapsed seconds
 
-The `table_restrictions` path is a prime suspect because it combines C++
-generation, multiprocessing IPC, NumPy allocation, CPU-to-GPU transfer, and
-model inference.
+The restrictions path is a prime suspect because it combines C++ generation,
+shared-memory publication, chunked model inference in
+`_approximate_targets`, and CPU-to-GPU transfer.
 
 ## 9. First Recommended Audit Run
 
@@ -207,9 +242,13 @@ Run these in order:
 
 ```bash
 /usr/bin/time -v uv run scripts/run.py
-py-spy record --subprocesses -o tmp/profile.svg -- uv run scripts/run.py
-perf record -g --call-graph dwarf -- uv run scripts/run.py
+py-spy record --rate 20 -o tmp/profile.svg -- uv run scripts/run.py
+scripts/perf_binary_run.sh 30
 ```
 
-After that, add phase timers to the hottest code paths and repeat the baseline.
+The py-spy flamegraph decides where to look next: if the main process is
+blocked in `next_task`, go deep on sections 3–4 (daemon); otherwise go deep
+on sections 5–7 (training and copies).
 
+After that, add phase timers to the hottest code paths and repeat the
+baseline.

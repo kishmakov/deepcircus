@@ -34,7 +34,6 @@ class Stage:
     iteration: int
     bitness: int
     train_dataset: torch.utils.data.Dataset
-    validation_dataset: torch.utils.data.Dataset
 
 
 class Sampler:
@@ -100,7 +99,7 @@ class Sampler:
             torch.cat(targets).reshape(-1, 1),
         )
         task.release()
-        return Stage(iteration, bitness, train_dataset, self._validation_datasets[bitness])
+        return Stage(iteration, bitness, train_dataset)
 
     def train_loader(self, stage: Stage, epoch: int) -> torch.utils.data.DataLoader:
         seed = (
@@ -118,9 +117,9 @@ class Sampler:
             generator=generator,
         )
 
-    def validation_loader(self, stage: Stage) -> torch.utils.data.DataLoader:
+    def validation_loader(self, bitness: int) -> torch.utils.data.DataLoader:
         return torch.utils.data.DataLoader(
-            stage.validation_dataset,
+            self._validation_datasets[bitness],
             batch_size=self.training.batch_size,
             shuffle=False,
         )

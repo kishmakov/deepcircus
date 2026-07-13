@@ -1,6 +1,7 @@
 # Build artifacts
 build
 build-asan
+build-perf
 cmake-build-*/
 
 # Execution artifacts
