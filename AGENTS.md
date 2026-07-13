@@ -6,9 +6,8 @@ This is a research project to study ML approach to handle decision trees.
 
 - Keep assertion checks simple `assert foo, bar`, don't use ifs
 - In C++ use plain asserts `assert(condition)`
-- Keep C++ generation deterministic from `(bitness, case_id)`
-- Keep value-tensor input generation deterministic from `(seed, bitness, case_id)`
-  and independent of case ordering or Python worker partitioning
+- Keep C++ generation deterministic from `(bitness, case_id, seed)`
+- Prefer to fail on assert than quiet ignoring of error
 - Do not add package-presence guards (e.g. `assert torch is not None`)
 - Do not generalize code for running in other environments, it is only run on this machine
 - The generator API is bitness-based: use `uint16_t bitness`, not series ids or bit masks
@@ -17,7 +16,7 @@ This is a research project to study ML approach to handle decision trees.
 # Code Layout
 
 - `tmp` is the directory not indexed by git
-- `cpp/generator/` holds synchronous generation sources and the public C API
+- `cpp/generator/` holds synchronous generation sources and C API for `scripts/test.py`
 - `cpp/producer/` holds the task queue, thread pool, and generator orchestration; it is a library independent of the daemon and is covered by `cpp/test`
 - `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
 - `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), currently exercising `cpp/producer`
@@ -27,9 +26,10 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
 - `cpp/generator/utils.{h,cpp}` owns SplitMix64-based value-input generation and `FlippingSampler`
 - `cpp/generator/dataset.cpp` owns deterministic case-ID sampling and compact generated data/restriction handles
-- `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types, task generation, and the ordered task queue
-- `cpp/producer/thread_pool.{h,cpp}` owns the FIFO coordinate worker pool
+- `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types and the task queue; coordinates are produced strictly sequentially, chunking each coordinate's case ids across the thread pool and merging the chunks with `gen::Values::Concat`/`gen::Restrictions::Concat`
+- `cpp/producer/thread_pool.{h,cpp}` owns the FIFO worker pool used to generate a coordinate's case-id chunks in parallel
 - `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns `main` and wires the daemon to a `TaskQueue`
+- `scripts/test.sh` builds `cpp/test` under AddressSanitizer/UndefinedBehaviorSanitizer (in `cpp/build-asan`, separate from the Release `cpp/build`) and runs it with leak detection on
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `src/generator.py` owns the generator daemon client: server spawning, the task protocol, and shared-memory task views
 - Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
@@ -37,7 +37,7 @@ This is a research project to study ML approach to handle decision trees.
 - `src/sampler.py` owns the thin generator wrapper and pipelined dataset orchestration; do not restore Python multiprocessing or case routing
 - Python chooses table/tree batch counts from bitness, while C++ samples case IDs and generates each typed batch
 - `src/train.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
-- `src/config.py` owns bitness config parsing plus snapshot/state/resume details; bitness training should use config methods instead of reading snapshot internals
+- `src/config.py` owns config parsing plus snapshot/state/resume details; training should use config methods instead of reading snapshot internals
 - `src/experiment_*.py` should contain experiment logic only; do not put ctypes or shared-library details there
 - `scripts/*.py` should stay thin entrypoints over experiment/generator helpers
 

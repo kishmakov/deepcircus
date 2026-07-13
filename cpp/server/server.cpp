@@ -1,6 +1,3 @@
-#include "daemon.h"
-#include "task_queue.h"
-
 #include <unistd.h>
 
 #include <cassert>
@@ -10,15 +7,18 @@
 #include <optional>
 #include <thread>
 
+#include "daemon.h"
+#include "task_queue.h"
+
 constexpr size_t workers = 16;
 
-inline uint16_t ParsePort(const char *value) {
+inline uint16_t ParsePort(const char* value) {
     const unsigned long port = std::strtoul(value, nullptr, 10);
     assert(port <= 65535);
     return static_cast<uint16_t>(port);
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
     uint16_t port = 7788;
     for (int index = 1; index < argc; index += 2) {
         assert(index + 1 < argc);

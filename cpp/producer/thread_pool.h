@@ -14,11 +14,12 @@ public:
     explicit ThreadPool(size_t workers);
     ~ThreadPool();
 
-    ThreadPool(const ThreadPool &) = delete;
-    ThreadPool &operator=(const ThreadPool &) = delete;
+    ThreadPool(const ThreadPool&) = delete;
+    ThreadPool& operator=(const ThreadPool&) = delete;
 
     void Enqueue(std::function<void()> task);
     void WaitIdle();
+    size_t WorkerCount() const { return threads_.size(); }
 
 private:
     void Run();

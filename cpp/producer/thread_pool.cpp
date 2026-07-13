@@ -18,7 +18,7 @@ ThreadPool::~ThreadPool() {
         stopping_ = true;
     }
     work_.notify_all();
-    for (std::thread &thread: threads_) {
+    for (std::thread& thread : threads_) {
         thread.join();
     }
 }

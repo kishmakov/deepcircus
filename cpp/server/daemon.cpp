@@ -8,6 +8,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cerrno>
 #include <cstring>
@@ -19,206 +20,224 @@
 
 namespace {
 
-    enum class Command : uint32_t {
-        Initialize = 1,
-        Next = 2,
-        Release = 3,
+enum class Command : uint32_t {
+    Initialize = 1,
+    Next = 2,
+    Release = 3,
+};
+
+enum class TensorKind : uint8_t {
+    Values = 1,
+    Restrictions = 2,
+};
+
+struct TensorDescriptor {
+    TensorKind kind;
+    uint16_t bitness;
+    uint64_t cases;
+    uint64_t reps;
+    uint64_t values_offset;
+    uint64_t value_count;
+    uint64_t targets_offset;
+    uint64_t target_count;
+};
+
+struct TensorSource {
+    const gen::Values* values = nullptr;
+    const gen::Restrictions* restrictions = nullptr;
+    const std::vector<float>* targets = nullptr;
+};
+
+struct SharedTask {
+    // At most the coordinate currently borrowed by Python has this form.
+    ~SharedTask() {
+        if (mapping != MAP_FAILED) {
+            munmap(mapping, size);
+        }
+        if (file >= 0) {
+            close(file);
+        }
+        if (!name.empty()) {
+            shm_unlink(name.c_str());
+        }
+    }
+
+    Task task;
+    std::string name;
+    int file = -1;
+    void* mapping = MAP_FAILED;
+    uint64_t size = 0;
+    std::vector<TensorDescriptor> tensors;
+};
+
+bool ReadExact(int socket, void* destination, size_t size) {
+    char* output = static_cast<char*>(destination);
+    while (size > 0) {
+        const ssize_t count = recv(socket, output, size, 0);
+        if (count == 0) {
+            return false;
+        }
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        assert(count > 0);
+        output += count;
+        size -= static_cast<size_t>(count);
+    }
+    return true;
+}
+
+bool WriteExact(int socket, const void* source, size_t size) {
+    const char* input = static_cast<const char*>(source);
+    while (size > 0) {
+        const ssize_t count = send(socket, input, size, MSG_NOSIGNAL);
+        if (count < 0 && errno == EINTR) {
+            continue;
+        }
+        assert(count > 0);
+        input += count;
+        size -= static_cast<size_t>(count);
+    }
+    return true;
+}
+
+template <typename T>
+T ReadValue(int socket) {
+    T value;
+    const bool read = ReadExact(socket, &value, sizeof(value));
+    assert(read);
+    return value;
+}
+
+template <typename T>
+void Append(std::vector<char>& output, T value) {
+    const size_t offset = output.size();
+    output.resize(offset + sizeof(value));
+    std::memcpy(output.data() + offset, &value, sizeof(value));
+}
+
+void AppendString(std::vector<char>& output, const std::string& value) {
+    Append<uint32_t>(output, value.size());
+    output.insert(output.end(), value.begin(), value.end());
+}
+
+void WriteResponse(int socket, const std::vector<char>& payload = {}) {
+    constexpr uint32_t status = 0;
+    const uint64_t payload_size = payload.size();
+    const bool status_written = WriteExact(socket, &status, sizeof(status));
+    assert(status_written);
+    const bool size_written = WriteExact(socket, &payload_size, sizeof(payload_size));
+    assert(size_written);
+    const bool payload_written = WriteExact(socket, payload.data(), payload.size());
+    assert(payload_written);
+}
+
+// Expand one compact coordinate directly into its final shared-memory layout.
+std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id) {
+    auto shared = std::make_unique<SharedTask>();
+    shared->task = result.task;
+    shared->name = "/deepcircus_" + std::to_string(getpid()) + "_" + std::to_string(task_id);
+    std::vector<TensorSource> sources;
+
+    uint64_t size = 0;
+    const auto append_values = [&](const gen::Values& values, const std::vector<float>* targets) {
+        const size_t point_size = 2 * result.task.bitness + 1;
+        assert(values.Columns() % point_size == 0);
+        TensorDescriptor descriptor{};
+        descriptor.kind = TensorKind::Values;
+        descriptor.bitness = result.task.bitness;
+        descriptor.cases = values.Rows();
+        descriptor.reps = values.Columns() / point_size;
+        descriptor.values_offset = size;
+        descriptor.value_count = values.ValueCount();
+        size += descriptor.value_count * sizeof(float);
+        descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
+        if (targets != nullptr) {
+            assert(targets->size() == values.Rows());
+            descriptor.target_count = targets->size();
+            descriptor.targets_offset = size;
+            size += descriptor.target_count * sizeof(float);
+        }
+        shared->tensors.push_back(descriptor);
+        sources.push_back(TensorSource{&values, nullptr, targets});
     };
-
-    struct TensorDescriptor {
-        TensorKind kind;
-        uint16_t bitness;
-        uint64_t cases;
-        uint64_t reps;
-        uint64_t values_offset;
-        uint64_t value_count;
-        uint64_t targets_offset;
-        uint64_t target_count;
+    const auto append_restrictions = [&](const gen::Restrictions& restrictions) {
+        const size_t point_size = 2 * result.task.bitness * (2 * result.task.bitness - 1);
+        assert(restrictions.Columns() % point_size == 0);
+        TensorDescriptor descriptor{};
+        descriptor.kind = TensorKind::Restrictions;
+        descriptor.bitness = result.task.bitness;
+        descriptor.cases = restrictions.Rows();
+        descriptor.reps = restrictions.Columns() / point_size;
+        descriptor.values_offset = size;
+        descriptor.value_count = restrictions.ValueCount();
+        size += descriptor.value_count * sizeof(float);
+        descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
+        shared->tensors.push_back(descriptor);
+        sources.push_back(TensorSource{{}, &restrictions, nullptr});
     };
-
-    struct TensorSource {
-        const gen::Data *data = nullptr;
-        const gen::Tensor *tensor = nullptr;
-    };
-
-    struct SharedTask {
-        // At most the coordinate currently borrowed by Python has this form.
-        ~SharedTask() {
-            if (mapping != MAP_FAILED) {
-                munmap(mapping, size);
-            }
-            if (file >= 0) {
-                close(file);
-            }
-            if (!name.empty()) {
-                shm_unlink(name.c_str());
-            }
-        }
-
-        Task task;
-        std::string name;
-        int file = -1;
-        void *mapping = MAP_FAILED;
-        uint64_t size = 0;
-        std::vector<TensorDescriptor> tensors;
-    };
-
-    bool ReadExact(int socket, void *destination, size_t size) {
-        char *output = static_cast<char *>(destination);
-        while (size > 0) {
-            const ssize_t count = recv(socket, output, size, 0);
-            if (count == 0) {
-                return false;
-            }
-            if (count < 0 && errno == EINTR) {
-                continue;
-            }
-            assert(count > 0);
-            output += count;
-            size -= static_cast<size_t>(count);
-        }
-        return true;
+    for (const gen::GeneratedValues& generated : result.values) {
+        append_values(generated.values, &generated.targets);
+    }
+    for (const gen::GeneratedRestrictions& generated : result.restrictions) {
+        append_values(generated.values, nullptr);
+        append_restrictions(generated.restrictions);
     }
 
-    bool WriteExact(int socket, const void *source, size_t size) {
-        const char *input = static_cast<const char *>(source);
-        while (size > 0) {
-            const ssize_t count = send(socket, input, size, MSG_NOSIGNAL);
-            if (count < 0 && errno == EINTR) {
-                continue;
-            }
-            assert(count > 0);
-            input += count;
-            size -= static_cast<size_t>(count);
+    shared->size = size;
+    shared->file = shm_open(shared->name.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
+    assert(shared->file >= 0);
+    const int truncate_result = ftruncate(shared->file, size);
+    assert(truncate_result == 0);
+    shared->mapping = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, shared->file, 0);
+    assert(shared->mapping != MAP_FAILED);
+
+    char* destination = static_cast<char*>(shared->mapping);
+    for (size_t index = 0; index < sources.size(); ++index) {
+        const TensorSource& source = sources[index];
+        const TensorDescriptor& descriptor = shared->tensors[index];
+        float* values = reinterpret_cast<float*>(destination + descriptor.values_offset);
+        if (source.restrictions != nullptr) {
+            source.restrictions->WriteValues(values);
+            continue;
         }
-        return true;
-    }
-
-    template<typename T>
-    T ReadValue(int socket) {
-        T value;
-        const bool read = ReadExact(socket, &value, sizeof(value));
-        assert(read);
-        return value;
-    }
-
-    template<typename T>
-    void Append(std::vector<char> &output, T value) {
-        const size_t offset = output.size();
-        output.resize(offset + sizeof(value));
-        std::memcpy(output.data() + offset, &value, sizeof(value));
-    }
-
-    void AppendString(std::vector<char> &output, const std::string &value) {
-        Append<uint32_t>(output, value.size());
-        output.insert(output.end(), value.begin(), value.end());
-    }
-
-    void WriteResponse(int socket, const std::vector<char> &payload = {}) {
-        constexpr uint32_t status = 0;
-        const uint64_t payload_size = payload.size();
-        const bool status_written = WriteExact(socket, &status, sizeof(status));
-        assert(status_written);
-        const bool size_written = WriteExact(socket, &payload_size, sizeof(payload_size));
-        assert(size_written);
-        const bool payload_written = WriteExact(socket, payload.data(), payload.size());
-        assert(payload_written);
-    }
-
-    // Expand one compact coordinate directly into its final shared-memory layout.
-    std::unique_ptr<SharedTask> ShareTask(const TaskResult &result, uint64_t task_id) {
-        auto shared = std::make_unique<SharedTask>();
-        shared->task = result.task;
-        shared->name = "/deepcircus_" + std::to_string(getpid()) + "_" + std::to_string(task_id);
-        std::vector<TensorSource> sources;
-
-        uint64_t size = 0;
-        for (const TaskData &task_data: result.data) {
-            const gen::Data &data = task_data.data;
-            TensorDescriptor descriptor{};
-            descriptor.kind = task_data.kind;
-            descriptor.bitness = data.Bitness();
-            descriptor.cases = data.Cases();
-            descriptor.reps = data.Reps();
-            descriptor.values_offset = size;
-            descriptor.value_count = data.ValueCount();
-            size += descriptor.value_count * sizeof(float);
-            descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
-            descriptor.target_count = data.TargetCount();
-            if (descriptor.target_count > 0) {
-                descriptor.targets_offset = size;
-                size += descriptor.target_count * sizeof(float);
-            }
-            shared->tensors.push_back(descriptor);
-            sources.push_back(TensorSource{&data, nullptr});
-
-            for (const gen::Tensor &tensor: data.Restrictions()) {
-                TensorDescriptor restriction{};
-                restriction.kind = TensorKind::Restrictions;
-                restriction.bitness = tensor.Bitness();
-                restriction.cases = tensor.Cases();
-                restriction.reps = tensor.Reps();
-                restriction.values_offset = size;
-                restriction.value_count = tensor.ValueCount();
-                size += restriction.value_count * sizeof(float);
-                restriction.targets_offset = std::numeric_limits<uint64_t>::max();
-                shared->tensors.push_back(restriction);
-                sources.push_back(TensorSource{nullptr, &tensor});
-            }
+        assert(source.values != nullptr);
+        source.values->WriteValues(values);
+        if (descriptor.target_count > 0) {
+            assert(source.targets != nullptr);
+            float* targets = reinterpret_cast<float*>(destination + descriptor.targets_offset);
+            std::copy(source.targets->begin(), source.targets->end(), targets);
         }
-
-        shared->size = size;
-        shared->file = shm_open(shared->name.c_str(), O_CREAT | O_EXCL | O_RDWR, 0600);
-        assert(shared->file >= 0);
-        const int truncate_result = ftruncate(shared->file, size);
-        assert(truncate_result == 0);
-        shared->mapping = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, shared->file, 0);
-        assert(shared->mapping != MAP_FAILED);
-
-        char *destination = static_cast<char *>(shared->mapping);
-        for (size_t index = 0; index < sources.size(); ++index) {
-            const TensorSource &source = sources[index];
-            const TensorDescriptor &descriptor = shared->tensors[index];
-            float *values = reinterpret_cast<float *>(destination + descriptor.values_offset);
-            if (source.data != nullptr) {
-                source.data->WriteValues(values);
-                if (descriptor.target_count > 0) {
-                    float *targets = reinterpret_cast<float *>(destination + descriptor.targets_offset);
-                    source.data->WriteTargets(targets);
-                }
-            } else {
-                source.tensor->WriteValues(values);
-            }
-        }
-        return shared;
     }
+    return shared;
+}
 
-    std::vector<char> DescribeTask(const SharedTask *task) {
-        std::vector<char> response;
-        Append<uint8_t>(response, task == nullptr ? 1 : 0);
-        if (task == nullptr) {
-            return response;
-        }
-        Append<uint64_t>(response, task->task.iteration);
-        Append<uint16_t>(response, task->task.bitness);
-        Append<uint64_t>(response, task->task.seed);
-        Append<uint64_t>(response, task->size);
-        AppendString(response, task->name.substr(1));
-        Append<uint32_t>(response, task->tensors.size());
-        for (const TensorDescriptor &tensor: task->tensors) {
-            Append<uint8_t>(response, static_cast<uint8_t>(tensor.kind));
-            Append<uint16_t>(response, tensor.bitness);
-            Append<uint64_t>(response, tensor.cases);
-            Append<uint64_t>(response, tensor.reps);
-            Append<uint64_t>(response, tensor.values_offset);
-            Append<uint64_t>(response, tensor.value_count);
-            Append<uint64_t>(response, tensor.targets_offset);
-            Append<uint64_t>(response, tensor.target_count);
-        }
+std::vector<char> DescribeTask(const SharedTask* task) {
+    std::vector<char> response;
+    Append<uint8_t>(response, task == nullptr ? 1 : 0);
+    if (task == nullptr) {
         return response;
     }
+    Append<uint64_t>(response, task->task.iteration);
+    Append<uint16_t>(response, task->task.bitness);
+    Append<uint64_t>(response, task->task.seed);
+    Append<uint64_t>(response, task->size);
+    AppendString(response, task->name.substr(1));
+    Append<uint32_t>(response, task->tensors.size());
+    for (const TensorDescriptor& tensor : task->tensors) {
+        Append<uint8_t>(response, static_cast<uint8_t>(tensor.kind));
+        Append<uint16_t>(response, tensor.bitness);
+        Append<uint64_t>(response, tensor.cases);
+        Append<uint64_t>(response, tensor.reps);
+        Append<uint64_t>(response, tensor.values_offset);
+        Append<uint64_t>(response, tensor.value_count);
+        Append<uint64_t>(response, tensor.targets_offset);
+        Append<uint64_t>(response, tensor.target_count);
+    }
+    return response;
+}
 
-} // namespace
+}  // namespace
 
 int AcceptClient(uint16_t port) {
     const int listener = socket(AF_INET, SOCK_STREAM, 0);
@@ -230,12 +249,12 @@ int AcceptClient(uint16_t port) {
     address.sin_family = AF_INET;
     address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     address.sin_port = htons(port);
-    const int bind_result = bind(listener, reinterpret_cast<sockaddr *>(&address), sizeof(address));
+    const int bind_result = bind(listener, reinterpret_cast<sockaddr*>(&address), sizeof(address));
     assert(bind_result == 0);
     const int listen_result = listen(listener, 1);
     assert(listen_result == 0);
     socklen_t address_size = sizeof(address);
-    const int name_result = getsockname(listener, reinterpret_cast<sockaddr *>(&address), &address_size);
+    const int name_result = getsockname(listener, reinterpret_cast<sockaddr*>(&address), &address_size);
     assert(name_result == 0);
     std::cout << "PORT " << ntohs(address.sin_port) << std::endl;
 
@@ -251,11 +270,12 @@ int AcceptClient(uint16_t port) {
 
 TrainingShape ReadTrainingShape(int client) {
     uint32_t command_value;
-    assert(ReadExact(client, &command_value, sizeof(command_value)));
+    const bool command_read = ReadExact(client, &command_value, sizeof(command_value));
+    assert(command_read);
     const Command command = static_cast<Command>(command_value);
     const uint64_t payload_size = ReadValue<uint64_t>(client);
     assert(command == Command::Initialize);
-    constexpr uint64_t expected_size = sizeof(uint64_t) * 7 + sizeof(uint16_t) * 2;
+    constexpr uint64_t expected_size = sizeof(uint64_t) * 6 + sizeof(uint16_t) * 2;
     assert(payload_size == expected_size);
 
     TrainingShape shape{};
@@ -267,7 +287,6 @@ TrainingShape ReadTrainingShape(int client) {
     shape.train_samples = ReadValue<uint64_t>(client);
     shape.validation_samples = ReadValue<uint64_t>(client);
     shape.points_per_sample = ReadValue<uint64_t>(client);
-    shape.batch_size = ReadValue<uint64_t>(client);
 
     assert(shape.first_iteration <= shape.last_iteration);
     assert(shape.bitness_from > 0);
@@ -276,11 +295,10 @@ TrainingShape ReadTrainingShape(int client) {
     assert(shape.validation_samples > 0);
     assert(shape.points_per_sample > 0);
     assert(shape.points_per_sample % 2 == 0);
-    assert(shape.batch_size > 0);
     return shape;
 }
 
-void ServeTasks(int client, const std::function<std::unique_ptr<TaskResult>()> &take) {
+void ServeTasks(int client, const std::function<std::unique_ptr<TaskResult>()>& take) {
     WriteResponse(client);
 
     std::unique_ptr<SharedTask> current;

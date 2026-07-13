@@ -10,6 +10,9 @@
 
 std::mt19937 PrepRNG(uint16_t bitness, size_t case_id);
 
+uint64_t SplitMix64(uint64_t &state);
+uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
+
 class RandomBoolGenerator {
 public:
     explicit RandomBoolGenerator(std::mt19937 rng);

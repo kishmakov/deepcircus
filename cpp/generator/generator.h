@@ -9,48 +9,48 @@
 
 namespace gen {
 
-// Bit-packed +/-1 restriction tensor. Values stay packed until a caller
-// materializes them into a provided float buffer.
-class Tensor {
+// Dense, bit-packed value matrix. Rows are cases and columns contain all
+// generated repetitions for one case.
+class Values {
 public:
-    Tensor(uint16_t bitness, size_t cases, size_t reps, std::vector<bool> values);
+    explicit Values(std::vector<std::vector<bool>> data);
 
-    uint16_t Bitness() const { return bitness_; }
-    size_t Cases() const { return cases_; }
-    size_t Reps() const { return reps_; }
-    size_t ValueCount() const { return values_.size(); }
+    static Values Concat(std::vector<Values> chunks);
+
+    size_t Rows() const { return data_.size(); }
+    size_t Columns() const { return data_.front().size(); }
+    size_t ValueCount() const { return Rows() * Columns(); }
     void WriteValues(float *output) const;
 
 private:
-    uint16_t bitness_;
-    size_t cases_;
-    size_t reps_;
-    std::vector<bool> values_;
+    std::vector<std::vector<bool>> data_;
 };
 
-// Synchronously generated, ready-to-read batch. Values remain bit-packed and
-// recursive table restrictions are complete and owned here.
-class Data {
+// Dense, bit-packed restriction matrix. Rows are cases and columns contain all
+// restrictions and repetitions for one case.
+class Restrictions {
 public:
-    Data(uint16_t bitness, size_t cases, size_t reps, std::vector<bool> values, std::vector<float> targets,
-         std::vector<Tensor> restrictions);
+    explicit Restrictions(std::vector<std::vector<bool>> data);
 
-    uint16_t Bitness() const { return bitness_; }
-    size_t Cases() const { return cases_; }
-    size_t Reps() const { return reps_; }
-    size_t ValueCount() const { return values_.size(); }
-    size_t TargetCount() const { return targets_.size(); }
+    static Restrictions Concat(std::vector<Restrictions> chunks);
+
+    size_t Rows() const { return data_.size(); }
+    size_t Columns() const { return data_.front().size(); }
+    size_t ValueCount() const { return Rows() * Columns(); }
     void WriteValues(float *output) const;
-    void WriteTargets(float *output) const;
-    const std::vector<Tensor> &Restrictions() const { return restrictions_; }
 
 private:
-    uint16_t bitness_;
-    size_t cases_;
-    size_t reps_;
-    std::vector<bool> values_;
-    std::vector<float> targets_;
-    std::vector<Tensor> restrictions_;
+    std::vector<std::vector<bool>> data_;
+};
+
+struct GeneratedValues {
+    Values values;
+    std::vector<float> targets;
+};
+
+struct GeneratedRestrictions {
+    Values values;
+    Restrictions restrictions;
 };
 
 /********************************* tree **************************************/
@@ -61,8 +61,15 @@ size_t TreeCasesNumber(uint16_t bitness);
 // Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
 std::string TreeValue(uint16_t bitness, size_t case_id, std::string_view input);
 
-// Synchronously generates a compact, ready-to-read batch.
-Data TreeValueTensor(uint16_t bitness, size_t cases, size_t reps, uint64_t seed);
+// Deterministic, chunk-order-independent case-id sample: splitting the result
+// into contiguous groups and generating each with TreeValuesForCases
+// reproduces exactly what a single call over the full list would produce.
+std::vector<size_t> TreeSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
+
+// Synchronously generates a compact, ready-to-read batch for an explicit,
+// pre-sampled chunk of case ids (see TreeSampleCaseIds).
+GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
+                                   uint64_t seed);
 
 /********************************* table *************************************/
 
@@ -72,9 +79,15 @@ size_t TableCasesNumber(uint16_t bitness);
 // Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
 std::string TableValue(uint16_t bitness, size_t case_id, std::string_view input);
 
-// For recursive tables, all restriction chunks are generated synchronously
-// and owned by the returned data.
-Data TableValueTensor(uint16_t bitness, size_t cases, size_t reps, size_t restriction_chunk_cases, uint64_t seed);
+std::vector<size_t> TableSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
+
+GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
+                                    uint64_t seed);
+
+// Synchronously generates recursive table values and one dense restriction
+// matrix for an explicit, pre-sampled chunk of case ids.
+GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
+                                                 uint64_t seed);
 
 /******************************** circuit ************************************/
 

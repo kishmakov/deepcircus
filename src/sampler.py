@@ -59,7 +59,6 @@ class Sampler:
                 train_samples=self.training.train_samples,
                 validation_samples=self.training.validation_samples,
                 points_per_sample=self.training.points_per_sample,
-                batch_size=self.training.batch_size,
             )
             self._take_validation_datasets()
 

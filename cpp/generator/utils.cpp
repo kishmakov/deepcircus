@@ -9,14 +9,19 @@ namespace {
 
     constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
 
-    uint64_t SplitMix64(uint64_t &state) {
-        uint64_t value = (state += kSplitMixIncrement);
-        value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
-        value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
-        return value ^ (value >> 31);
-    }
-
 } // namespace
+
+uint64_t SplitMix64(uint64_t &state) {
+    uint64_t value = (state += kSplitMixIncrement);
+    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
+    value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
+    return value ^ (value >> 31);
+}
+
+uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration) {
+    uint64_t state = seed ^ (static_cast<uint64_t>(bitness) << 48) ^ iteration;
+    return SplitMix64(state);
+}
 
 size_t FullBitId(size_t bit_id, size_t fixed_id) { return bit_id < fixed_id ? bit_id : bit_id + 1; }
 

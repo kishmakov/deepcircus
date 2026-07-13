@@ -1,5 +1,3 @@
-#include "thread_pool.h"
-
 #include <gtest/gtest.h>
 
 #include <atomic>
@@ -7,6 +5,8 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+
+#include "thread_pool.h"
 
 TEST(ThreadPoolTest, RunsAllEnqueuedTasks) {
     ThreadPool pool(4);

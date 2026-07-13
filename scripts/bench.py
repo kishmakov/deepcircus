@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 HEADER = struct.Struct("<IQ")
-INITIALIZATION = struct.Struct("<QQHHQQQQQ")
+INITIALIZATION = struct.Struct("<QQHHQQQQ")
 TASK_PREFIX = struct.Struct("<QHQQ")
 TENSOR_DESCRIPTOR = struct.Struct("<BHQQQQQQ")
 INITIALIZE = 1
@@ -168,7 +168,6 @@ def main() -> None:
             config.training.train_samples,
             config.training.validation_samples,
             config.training.points_per_sample,
-            config.training.batch_size,
         )
         initialization_started = perf_counter()
         response = request(connection, INITIALIZE, payload)
