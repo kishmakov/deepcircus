@@ -46,7 +46,7 @@ struct TaskResult {
 // the next one is already underway.
 class TaskQueue {
 public:
-    static constexpr size_t kPrefetchDepth = 8;
+    static constexpr size_t kPrefetchDepth = 4;
 
     TaskQueue(TrainingShape shape, size_t workers);
     ~TaskQueue();

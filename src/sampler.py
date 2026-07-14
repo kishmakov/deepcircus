@@ -73,8 +73,8 @@ class Sampler:
             assert task is not None, bitness
             assert (task.iteration, task.bitness) == (0, bitness), task
             self._validation_datasets[bitness] = torch.utils.data.TensorDataset(
-                torch.tensor(task.validation_values),
-                torch.tensor(task.validation_targets),
+                torch.from_numpy(task.validation_values),
+                torch.from_numpy(task.validation_targets),
             )
             task.release()
 
@@ -88,11 +88,11 @@ class Sampler:
         assert task is not None, (iteration, bitness)
         assert (task.iteration, task.bitness) == (iteration, bitness), task
 
-        values = [torch.tensor(task.train_values)]
-        targets = [torch.tensor(task.train_targets)]
+        values = [torch.from_numpy(task.train_values)]
+        targets = [torch.from_numpy(task.train_targets)]
         if task.approx_values is not None:
             assert previous_model is not None, bitness
-            values.append(torch.tensor(task.approx_values))
+            values.append(torch.from_numpy(task.approx_values))
             targets.append(torch.from_numpy(self._approximate_targets(previous_model, task)))
         train_dataset = torch.utils.data.TensorDataset(
             torch.cat(values),
@@ -139,7 +139,7 @@ class Sampler:
             total=cases,
             desc=f"train:table_restrictions b={bitness}",
         ) as progress:
-            for chunk in task.restrictions:
+            for chunk in task.restriction_chunks():
                 chunk_cases, _, reps, point_dim = chunk.shape
                 predictions = predict_values(
                     previous_model,

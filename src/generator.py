@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import ctypes
 import os
 import socket
 import struct
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from multiprocessing import shared_memory
 from pathlib import Path
 
@@ -40,6 +41,21 @@ def _find_server() -> Path:
 SERVER = _find_server()
 
 
+def _load_library() -> ctypes.CDLL:
+    library = ctypes.CDLL(str(SERVER.parent / "libgen.so"))
+    library.gen_unpack_rows.argtypes = [
+        ctypes.POINTER(ctypes.c_uint8),
+        ctypes.c_uint64,
+        ctypes.c_uint64,
+        ctypes.POINTER(ctypes.c_float),
+    ]
+    library.gen_unpack_rows.restype = None
+    return library
+
+
+_LIBRARY = _load_library()
+
+
 def sample_point_dim(bitness: int) -> int:
     return 2 * bitness + 1
 
@@ -48,17 +64,45 @@ def restriction_point_dim(bitness: int) -> int:
     return sample_point_dim(bitness - 1)
 
 
+def _row_bytes(columns: int) -> int:
+    return (columns + 7) // 8
+
+
+def _unpack_rows(packed: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
+    """Unpacks (rows, row_bytes) little-endian bits into float32 of `shape`.
+
+    The daemon publishes tensors bit-packed, one padded row of bytes per
+    case; bit b carries the value 2*b - 1. The expansion runs in C++
+    (gen_unpack_rows from libgen.so).
+    """
+    rows, columns = shape[0], int(np.prod(shape[1:]))
+    assert packed.shape == (rows, _row_bytes(columns)), (packed.shape, shape)
+    assert packed.flags["C_CONTIGUOUS"], packed.shape
+    values = np.empty(shape, dtype=np.float32)
+    _LIBRARY.gen_unpack_rows(
+        packed.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
+        rows,
+        columns,
+        values.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+    )
+    return values
+
+
 @dataclass
 class GeneratedTask:
     """One (iteration, bitness) coordinate borrowed from the daemon.
 
     Validation depends only on bitness, so it arrives once per bitness in a
     task with iteration 0, ahead of every training task for that bitness;
-    training tasks (iteration >= 1) carry only the train fields. Arrays are
-    zero-copy views into shared memory: the training tensor comes with exact
-    (cases, 2) target pairs (depth score, size score), while `approx_values`
-    (present above the solvable bitness) comes with `restrictions` chunks
-    instead of targets. All views die at release().
+    training tasks (iteration >= 1) carry only the train fields. The daemon
+    publishes tensors bit-packed; value and target arrays are unpacked into
+    owned float32 copies at parse time, so they stay valid after release().
+    The restrictions matrix is too large to unpack whole: it stays a packed
+    view into shared memory, streamed as float32 case chunks through
+    restriction_chunks(), which must be consumed before release(). The
+    training tensor comes with exact (cases, 2) target pairs (depth score,
+    size score), while `approx_values` (present above the solvable bitness)
+    comes with restrictions instead of targets.
     """
 
     generator: Generator
@@ -69,17 +113,22 @@ class GeneratedTask:
     train_values: np.ndarray | None = None
     train_targets: np.ndarray | None = None
     approx_values: np.ndarray | None = None
-    restrictions: list[np.ndarray] = field(default_factory=list)
     validation_values: np.ndarray | None = None
     validation_targets: np.ndarray | None = None
+    _restrictions_packed: np.ndarray | None = None
+    _restrictions_shape: tuple[int, ...] | None = None
+
+    def restriction_chunks(self, chunk_cases: int = 256):
+        assert self._restrictions_packed is not None, "restrictions missing or already released"
+        cases = self._restrictions_shape[0]
+        for start in range(0, cases, chunk_cases):
+            stop = min(start + chunk_cases, cases)
+            chunk_shape = (stop - start, *self._restrictions_shape[1:])
+            yield _unpack_rows(self._restrictions_packed[start:stop], chunk_shape)
 
     def release(self) -> None:
-        self.train_values = None
-        self.train_targets = None
-        self.approx_values = None
-        self.restrictions = []
-        self.validation_values = None
-        self.validation_targets = None
+        self._restrictions_packed = None
+        self._restrictions_shape = None
         self.memory.close()
         self.memory.unlink()
         self.generator._release_task(self)
@@ -178,27 +227,34 @@ class Generator:
             else:
                 shape = (cases, reps, sample_point_dim(bitness))
             assert int(np.prod(shape)) == value_count, (shape, value_count)
-            values = np.ndarray(shape, dtype=np.float32, buffer=memory.buf, offset=values_offset)
+            packed = np.ndarray(
+                (cases, _row_bytes(value_count // cases)),
+                dtype=np.uint8,
+                buffer=memory.buf,
+                offset=values_offset,
+            )
             targets = None
             if target_count:
                 assert target_count == 2 * cases, (target_count, cases)
-                targets = np.ndarray((cases, 2), dtype=np.float32, buffer=memory.buf, offset=targets_offset)
+                targets = np.array(np.ndarray((cases, 2), dtype=np.float32, buffer=memory.buf, offset=targets_offset))
             else:
                 assert targets_offset == _NO_OFFSET, targets_offset
 
             if kind == _KIND_RESTRICTIONS:
                 assert task.approx_values is not None, kind
-                task.restrictions.append(values)
+                assert task._restrictions_packed is None
+                task._restrictions_packed = packed
+                task._restrictions_shape = shape
             elif targets is None:
                 assert task.approx_values is None
-                task.approx_values = values
+                task.approx_values = _unpack_rows(packed, shape)
             elif iteration == 0:
                 assert task.validation_values is None
-                task.validation_values = values
+                task.validation_values = _unpack_rows(packed, shape)
                 task.validation_targets = targets
             else:
                 assert task.train_values is None
-                task.train_values = values
+                task.train_values = _unpack_rows(packed, shape)
                 task.train_targets = targets
         assert offset == len(payload), (offset, len(payload))
         is_validation = task.validation_values is not None

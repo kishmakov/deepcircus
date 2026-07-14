@@ -21,7 +21,11 @@ public:
     size_t Rows() const { return data_.size(); }
     size_t Columns() const { return data_.front().size(); }
     size_t ValueCount() const { return Rows() * Columns(); }
-    void WriteValues(float* output) const;
+    size_t RowBytes() const { return (Columns() + 7) / 8; }
+    size_t ByteCount() const { return Rows() * RowBytes(); }
+    // Bit-packs the matrix, each row padded to a whole number of bytes and
+    // filled little-endian bit order; bit b unpacks to the value 2*b - 1.
+    void WritePacked(uint8_t* output) const;
 
 private:
     std::vector<std::vector<bool>> data_;
@@ -32,6 +36,10 @@ struct RestrictionsTag;
 
 using Values = BitMatrix<ValuesTag>;
 using Restrictions = BitMatrix<RestrictionsTag>;
+
+// Inverse of BitMatrix::WritePacked: expands `rows` byte-padded rows of
+// `columns` little-endian bits into floats 2*b - 1, row-major into output.
+void UnpackRows(const uint8_t* packed, size_t rows, size_t columns, float* output);
 
 // Exact targets per case, interleaved: (bitness - depth, log2(2^bitness - size)),
 // where size counts internal nodes. Both score 0 for the worst case (full

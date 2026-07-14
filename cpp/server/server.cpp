@@ -10,8 +10,6 @@
 #include "daemon.h"
 #include "task_queue.h"
 
-constexpr size_t workers = 16;
-
 inline uint16_t ParsePort(const char* value) {
     const unsigned long port = std::strtoul(value, nullptr, 10);
     assert(port <= 65535);
@@ -20,10 +18,16 @@ inline uint16_t ParsePort(const char* value) {
 
 int main(int argc, char** argv) {
     uint16_t port = 7788;
+    size_t workers = 16;
     for (int index = 1; index < argc; index += 2) {
         assert(index + 1 < argc);
         if (std::strcmp(argv[index], "--port") == 0) {
             port = ParsePort(argv[index + 1]);
+        } else if (std::strcmp(argv[index], "--workers") == 0) {
+            workers = std::strtoull(argv[index + 1], nullptr, 10);
+            assert(workers > 0);
+        } else {
+            assert(false);
         }
     }
 

@@ -1,23 +1,10 @@
 #include "generator.h"
 
 #include <cassert>
+#include <cstring>
 #include <utility>
 
 #include "aig.h"
-
-namespace {
-
-void WriteBits(const std::vector<std::vector<bool>>& data, float* output) {
-    assert(output != nullptr);
-    size_t offset = 0;
-    for (const std::vector<bool>& row : data) {
-        for (bool value : row) {
-            output[offset++] = value ? 1.0f : -1.0f;
-        }
-    }
-}
-
-}  // namespace
 
 namespace gen {
 
@@ -51,12 +38,34 @@ BitMatrix<Tag> BitMatrix<Tag>::Concat(std::vector<BitMatrix> chunks) {
 }
 
 template <typename Tag>
-void BitMatrix<Tag>::WriteValues(float* output) const {
-    WriteBits(data_, output);
+void BitMatrix<Tag>::WritePacked(uint8_t* output) const {
+    assert(output != nullptr);
+    std::memset(output, 0, ByteCount());
+    const size_t row_bytes = RowBytes();
+    for (size_t row = 0; row < data_.size(); ++row) {
+        uint8_t* bytes = output + row * row_bytes;
+        const std::vector<bool>& bits = data_[row];
+        for (size_t bit = 0; bit < bits.size(); ++bit) {
+            bytes[bit / 8] |= static_cast<uint8_t>(bits[bit]) << (bit % 8);
+        }
+    }
 }
 
 template class BitMatrix<ValuesTag>;
 template class BitMatrix<RestrictionsTag>;
+
+void UnpackRows(const uint8_t* packed, size_t rows, size_t columns, float* output) {
+    assert(packed != nullptr);
+    assert(output != nullptr);
+    const size_t row_bytes = (columns + 7) / 8;
+    for (size_t row = 0; row < rows; ++row) {
+        const uint8_t* bytes = packed + row * row_bytes;
+        float* values = output + row * columns;
+        for (size_t bit = 0; bit < columns; ++bit) {
+            values[bit] = (bytes[bit / 8] >> (bit % 8)) & 1 ? 1.0f : -1.0f;
+        }
+    }
+}
 
 const std::vector<std::string>& CircuitSets() { return ::CircuitSets(); }
 

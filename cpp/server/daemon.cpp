@@ -132,7 +132,10 @@ void WriteResponse(int socket, const std::vector<char>& payload = {}) {
     assert(payload_written);
 }
 
-// Expand one compact coordinate directly into its final shared-memory layout.
+// Publish one compact coordinate into its shared-memory layout: value and
+// restriction bits stay bit-packed (rows padded to whole bytes, little-endian
+// bit order; the client unpacks bit b to the value 2*b - 1), while exact
+// targets are written as float32.
 std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id) {
     auto shared = std::make_unique<SharedTask>();
     shared->task = result.task;
@@ -140,6 +143,7 @@ std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id
     std::vector<TensorSource> sources;
 
     uint64_t size = 0;
+    const auto align_floats = [&size] { size = (size + alignof(float) - 1) / alignof(float) * alignof(float); };
     const auto append_values = [&](const gen::Values& values, const std::vector<float>* targets) {
         const size_t point_size = 2 * result.task.bitness + 1;
         assert(values.Columns() % point_size == 0);
@@ -150,11 +154,12 @@ std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id
         descriptor.reps = values.Columns() / point_size;
         descriptor.values_offset = size;
         descriptor.value_count = values.ValueCount();
-        size += descriptor.value_count * sizeof(float);
+        size += values.ByteCount();
         descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
         if (targets != nullptr) {
             assert(targets->size() == gen::kTargetsPerCase * values.Rows());
             descriptor.target_count = targets->size();
+            align_floats();
             descriptor.targets_offset = size;
             size += descriptor.target_count * sizeof(float);
         }
@@ -171,7 +176,7 @@ std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id
         descriptor.reps = restrictions.Columns() / point_size;
         descriptor.values_offset = size;
         descriptor.value_count = restrictions.ValueCount();
-        size += descriptor.value_count * sizeof(float);
+        size += restrictions.ByteCount();
         descriptor.targets_offset = std::numeric_limits<uint64_t>::max();
         shared->tensors.push_back(descriptor);
         sources.push_back(TensorSource{{}, &restrictions, nullptr});
@@ -196,13 +201,13 @@ std::unique_ptr<SharedTask> ShareTask(const TaskResult& result, uint64_t task_id
     for (size_t index = 0; index < sources.size(); ++index) {
         const TensorSource& source = sources[index];
         const TensorDescriptor& descriptor = shared->tensors[index];
-        float* values = reinterpret_cast<float*>(destination + descriptor.values_offset);
+        uint8_t* values = reinterpret_cast<uint8_t*>(destination + descriptor.values_offset);
         if (source.restrictions != nullptr) {
-            source.restrictions->WriteValues(values);
+            source.restrictions->WritePacked(values);
             continue;
         }
         assert(source.values != nullptr);
-        source.values->WriteValues(values);
+        source.values->WritePacked(values);
         if (descriptor.target_count > 0) {
             assert(source.targets != nullptr);
             float* targets = reinterpret_cast<float*>(destination + descriptor.targets_offset);

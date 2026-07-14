@@ -104,10 +104,10 @@ TEST(TaskQueueTest, DataIsIdenticalAcrossDifferentWorkerCounts) {
     ASSERT_EQ(single_data.values.ValueCount(), many_data.values.ValueCount());
     ASSERT_EQ(single_data.targets.size(), many_data.targets.size());
 
-    std::vector<float> single_values(single_data.values.ValueCount());
-    std::vector<float> many_values(many_data.values.ValueCount());
-    single_data.values.WriteValues(single_values.data());
-    many_data.values.WriteValues(many_values.data());
+    std::vector<uint8_t> single_values(single_data.values.ByteCount());
+    std::vector<uint8_t> many_values(many_data.values.ByteCount());
+    single_data.values.WritePacked(single_values.data());
+    many_data.values.WritePacked(many_values.data());
     EXPECT_EQ(single_values, many_values);
     EXPECT_EQ(single_data.targets, many_data.targets);
 }
@@ -155,10 +155,10 @@ TEST(TaskQueueTest, RecursiveBitnessMergesRestrictionChunks) {
 namespace {
 
 template <typename Tensor>
-std::vector<float> TensorFloats(const Tensor& tensor) {
-    std::vector<float> values(tensor.ValueCount());
-    tensor.WriteValues(values.data());
-    return values;
+std::vector<uint8_t> TensorBytes(const Tensor& tensor) {
+    std::vector<uint8_t> packed(tensor.ByteCount());
+    tensor.WritePacked(packed.data());
+    return packed;
 }
 
 }  // namespace
@@ -181,7 +181,7 @@ TEST(TaskQueueTest, RecursiveDataIsIdenticalAcrossDifferentWorkerCounts) {
     ASSERT_EQ(from_single->restrictions.size(), 1u);
     ASSERT_EQ(from_many->restrictions.size(), 1u);
 
-    EXPECT_EQ(TensorFloats(from_single->restrictions[0].values), TensorFloats(from_many->restrictions[0].values));
-    EXPECT_EQ(TensorFloats(from_single->restrictions[0].restrictions),
-              TensorFloats(from_many->restrictions[0].restrictions));
+    EXPECT_EQ(TensorBytes(from_single->restrictions[0].values), TensorBytes(from_many->restrictions[0].values));
+    EXPECT_EQ(TensorBytes(from_single->restrictions[0].restrictions),
+              TensorBytes(from_many->restrictions[0].restrictions));
 }

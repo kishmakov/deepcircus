@@ -105,9 +105,12 @@ def consume_tasks(
                 else:
                     shape = (cases, reps, 2 * bitness + 1)
                 assert int(np.prod(shape)) == value_count, (shape, value_count)
+                # Tensors are published bit-packed: one padded row of bytes
+                # per case, little-endian bit order.
+                row_bytes = (value_count // cases + 7) // 8
                 values = np.ndarray(
-                    shape,
-                    dtype=np.float32,
+                    (cases, row_bytes),
+                    dtype=np.uint8,
                     buffer=memory.buf,
                     offset=values_offset,
                 )

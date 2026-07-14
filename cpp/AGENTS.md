@@ -55,7 +55,11 @@ with restrictions instead of targets.
 ## Server
 
 `cpp/server/` owns the socket protocol, command loop, and POSIX shared-memory
-publication; only the current coordinate is expanded to float32 shared memory.
+publication; only the current coordinate is published, and its value and
+restriction tensors stay bit-packed (rows padded to whole bytes, little-endian
+bit order, bit `b` standing for the float `2*b - 1`) while exact targets are
+written as float32. The Python client unpacks the bits on its side, which
+keeps a task's segment ~32x smaller than a float32 expansion.
 `server.cpp` owns `main`, constructing a `TaskQueue` and handing it to the
 daemon as the task source. Both `scripts/bench.py` and the training client
 (`src/generator.py`) speak this protocol.

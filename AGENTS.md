@@ -32,8 +32,8 @@ This is a research project to study ML approach to handle decision trees.
 - `scripts/test.sh` builds `cpp/test` under AddressSanitizer/UndefinedBehaviorSanitizer (in `cpp/build-asan`, separate from the Release `cpp/build`) and runs it with leak detection on
 - Value-tensor APIs accept `reps` and `seed`; the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `src/generator.py` owns the generator daemon client: server spawning, the task protocol, and shared-memory task views
-- Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation or packed-input payloads
-- Generator values stay bit-packed until materialized into caller-provided float buffers
+- Value and restriction tensor inputs are generated in C++; do not add Python input-bit generation
+- Generator values stay bit-packed end to end: the daemon publishes tensors packed (targets stay float32) and `src/generator.py` expands them to float32 through `gen_unpack_rows` from `libgen.so` -- value tensors eagerly at parse time, the large restrictions tensor lazily through `restriction_chunks()`
 - `src/sampler.py` owns the thin generator wrapper and pipelined dataset orchestration; do not restore Python multiprocessing or case routing
 - Python chooses table/tree batch counts from bitness, while C++ samples case IDs and generates each typed batch
 - `src/train.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
