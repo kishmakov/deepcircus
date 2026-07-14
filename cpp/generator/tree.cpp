@@ -1,7 +1,4 @@
 #include "tree.h"
-#include "decision_tree.h"
-#include "generator.h"
-#include "utils.h"
 
 #include <cassert>
 #include <string>
@@ -9,12 +6,16 @@
 #include <utility>
 #include <vector>
 
+#include "decision_tree.h"
+#include "generator.h"
+#include "utils.h"
+
 namespace {
 
-    constexpr uint64_t kTreeSelectionDomain = 0x747265655f73656cull;
-    constexpr uint64_t kTreeValueDomain = 0x747265655f76616cull;
+constexpr uint64_t kTreeSelectionDomain = 0x747265655f73656cull;
+constexpr uint64_t kTreeValueDomain = 0x747265655f76616cull;
 
-} // namespace
+}  // namespace
 
 DecisionTree BuildTreeCase(uint16_t bitness, size_t case_id) {
     assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
@@ -50,8 +51,7 @@ std::vector<size_t> TreeSampleCaseIds(uint16_t bitness, size_t cases, uint64_t s
     return SampleCaseIds(TreeCasesNumber(bitness), cases, DomainSeed(seed, kTreeSelectionDomain, bitness));
 }
 
-GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
-                                   uint64_t seed) {
+GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps, uint64_t seed) {
     const size_t cases = case_ids.size();
     assert(cases > 0);
     assert(reps > 0);
@@ -77,4 +77,4 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t> &
     return GeneratedValues{Values(std::move(values)), std::move(targets)};
 }
 
-} // namespace gen
+}  // namespace gen

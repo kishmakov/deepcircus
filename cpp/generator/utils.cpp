@@ -10,38 +10,38 @@
 
 namespace {
 
-    constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
+constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
 
-    class SplitMixGenerator {
-    public:
-        explicit SplitMixGenerator(uint64_t seed) : state_(seed) {}
+class SplitMixGenerator {
+public:
+    explicit SplitMixGenerator(uint64_t seed) : state_(seed) {}
 
-        uint64_t Generate() { return SplitMix64(state_); }
+    uint64_t Generate() { return SplitMix64(state_); }
 
-        uint64_t GenerateBelow(uint64_t bound) {
-            assert(bound > 0);
-            const uint64_t threshold = static_cast<uint64_t>(-bound) % bound;
-            while (true) {
-                const uint64_t value = Generate();
-                if (value >= threshold) {
-                    return value % bound;
-                }
+    uint64_t GenerateBelow(uint64_t bound) {
+        assert(bound > 0);
+        const uint64_t threshold = static_cast<uint64_t>(-bound) % bound;
+        while (true) {
+            const uint64_t value = Generate();
+            if (value >= threshold) {
+                return value % bound;
             }
         }
-
-    private:
-        uint64_t state_;
-    };
-
-    bool BitOf(char bit) {
-        assert(bit == '0' || bit == '1');
-        return bit == '1';
     }
 
-    void PutBit(std::string &out, size_t pos, bool bit) { out[pos] = bit ? '1' : '0'; }
-    void PutBit(float *out, size_t pos, bool bit) { out[pos] = bit ? 1.0f : -1.0f; }
+private:
+    uint64_t state_;
+};
 
-} // namespace
+bool BitOf(char bit) {
+    assert(bit == '0' || bit == '1');
+    return bit == '1';
+}
+
+void PutBit(std::string& out, size_t pos, bool bit) { out[pos] = bit ? '1' : '0'; }
+void PutBit(float* out, size_t pos, bool bit) { out[pos] = bit ? 1.0f : -1.0f; }
+
+}  // namespace
 
 uint64_t Mix64(uint64_t value) {
     value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
@@ -49,7 +49,7 @@ uint64_t Mix64(uint64_t value) {
     return value ^ (value >> 31);
 }
 
-uint64_t SplitMix64(uint64_t &state) { return Mix64(state += kSplitMixIncrement); }
+uint64_t SplitMix64(uint64_t& state) { return Mix64(state += kSplitMixIncrement); }
 
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration) {
     uint64_t state = seed ^ (static_cast<uint64_t>(bitness) << 48) ^ iteration;
@@ -71,7 +71,7 @@ std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed
     result.reserve(cases);
 
     for (size_t current = population - cases; current < population; ++current) {
-        const size_t candidate = static_cast<size_t>(rng.GenerateBelow(static_cast<uint64_t>(current) + 1));
+        const size_t candidate = rng.GenerateBelow(static_cast<uint64_t>(current) + 1);
         const size_t case_id = selected.contains(candidate) ? current : candidate;
         const bool inserted = selected.insert(case_id).second;
         assert(inserted);
@@ -80,7 +80,7 @@ std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed
     return result;
 }
 
-void StoreBits(std::vector<bool> &destination, const std::vector<float> &source) {
+void StoreBits(std::vector<bool>& destination, const std::vector<float>& source) {
     assert(destination.size() == source.size());
     for (size_t index = 0; index < source.size(); ++index) {
         assert(source[index] == -1.0f || source[index] == 1.0f);
@@ -98,8 +98,8 @@ float SizeScore(uint16_t bitness, size_t tree_size) {
 
 std::mt19937 PrepRNG(uint16_t bitness, size_t case_id) {
     std::seed_seq seed{
-            static_cast<uint32_t>(bitness),
-            static_cast<uint32_t>(case_id),
+        static_cast<uint32_t>(bitness),
+        static_cast<uint32_t>(case_id),
     };
     return std::mt19937(seed);
 }
@@ -118,7 +118,7 @@ bool RandomBoolGenerator::Generate() {
     return result;
 }
 
-std::mt19937 &RandomBoolGenerator::RNG() { return rng_; }
+std::mt19937& RandomBoolGenerator::RNG() { return rng_; }
 
 uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id) {
     uint64_t state = seed;
@@ -127,8 +127,8 @@ uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id) {
     return SplitMix64(state);
 }
 
-InputGenerator::InputGenerator(uint16_t bitness, size_t reps, uint64_t seed) :
-    bitness_(bitness), reps_(reps), state_(seed), input_(bitness, '0'), next_rep_(reps) {
+InputGenerator::InputGenerator(uint16_t bitness, size_t reps, uint64_t seed)
+    : bitness_(bitness), reps_(reps), state_(seed), input_(bitness, '0'), next_rep_(reps) {
     assert(bitness_ > 0);
     assert(reps_ > 0);
     assert(reps_ % 2 == 0);
@@ -170,7 +170,7 @@ std::string_view InputGenerator::Generate(size_t rep) {
     return input_;
 }
 
-void InputGenerator::FillRandom(std::string &output) {
+void InputGenerator::FillRandom(std::string& output) {
     size_t offset = 0;
     while (offset < output.size()) {
         if (bits_remaining_ == 0) {
@@ -191,8 +191,8 @@ void InputGenerator::FillRandom(std::string &output) {
     }
 }
 
-void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, float *out,
-                              const std::function<bool(std::string_view)> &evaluate) {
+void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, float* out,
+                              const std::function<bool(std::string_view)>& evaluate) {
     assert(out != nullptr);
 
     const size_t sample_size = 2 * bitness + 1;
@@ -205,8 +205,8 @@ void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, floa
     }
 }
 
-void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, float *out,
-                                     const std::function<bool(std::string_view)> &evaluate) {
+void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, float* out,
+                                     const std::function<bool(std::string_view)>& evaluate) {
     assert(out != nullptr);
     assert(bitness > 1);
     assert(reps > 0);
@@ -247,38 +247,38 @@ void FlippingSampler::Reset(uint16_t bitness, std::string_view input) {
 
 namespace {
 
-    template<typename Output>
-    void FillSample(Output &value, std::string &input, uint16_t bitness, size_t sample_offset, size_t fixed_bit_id,
-                    const std::function<bool(std::string_view)> &evaluate) {
-        const size_t free_bits = fixed_bit_id < bitness ? bitness - 1 : bitness;
+template <typename Output>
+void FillSample(Output& value, std::string& input, uint16_t bitness, size_t sample_offset, size_t fixed_bit_id,
+                const std::function<bool(std::string_view)>& evaluate) {
+    const size_t free_bits = fixed_bit_id < bitness ? bitness - 1 : bitness;
 
-        for (size_t coord = 0; coord < free_bits; ++coord) {
-            PutBit(value, sample_offset + coord, BitOf(input[FullBitId(coord, fixed_bit_id)]));
-        }
-        PutBit(value, sample_offset + free_bits, evaluate({input.data(), bitness}));
-        for (size_t coord = 0; coord < free_bits; ++coord) {
-            char &bit = input[FullBitId(coord, fixed_bit_id)];
-            bit = bit == '1' ? '0' : '1';
-            PutBit(value, sample_offset + free_bits + 1 + coord, evaluate({input.data(), bitness}));
-            bit = bit == '1' ? '0' : '1';
-        }
+    for (size_t coord = 0; coord < free_bits; ++coord) {
+        PutBit(value, sample_offset + coord, BitOf(input[FullBitId(coord, fixed_bit_id)]));
     }
+    PutBit(value, sample_offset + free_bits, evaluate({input.data(), bitness}));
+    for (size_t coord = 0; coord < free_bits; ++coord) {
+        char& bit = input[FullBitId(coord, fixed_bit_id)];
+        bit = bit == '1' ? '0' : '1';
+        PutBit(value, sample_offset + free_bits + 1 + coord, evaluate({input.data(), bitness}));
+        bit = bit == '1' ? '0' : '1';
+    }
+}
 
-} // namespace
+}  // namespace
 
-void FlippingSampler::Fill(std::string &value, size_t sample_offset, size_t fixed_bit_id,
-                           const std::function<bool(std::string_view)> &evaluate) {
+void FlippingSampler::Fill(std::string& value, size_t sample_offset, size_t fixed_bit_id,
+                           const std::function<bool(std::string_view)>& evaluate) {
     FillSample(value, input, bitness_, sample_offset, fixed_bit_id, evaluate);
 }
 
-void FlippingSampler::Fill(float *value, size_t sample_offset, size_t fixed_bit_id,
-                           const std::function<bool(std::string_view)> &evaluate) {
+void FlippingSampler::Fill(float* value, size_t sample_offset, size_t fixed_bit_id,
+                           const std::function<bool(std::string_view)>& evaluate) {
     assert(value != nullptr);
     FillSample(value, input, bitness_, sample_offset, fixed_bit_id, evaluate);
 }
 
 std::string SampledValueString(uint16_t bitness, std::string_view input,
-                               const std::function<bool(std::string_view)> &evaluate) {
+                               const std::function<bool(std::string_view)>& evaluate) {
     std::string value(2 * bitness + 1, '0');
     FlippingSampler sampler(bitness, input);
     sampler.Fill(value, /*sample_offset=*/0, bitness, evaluate);

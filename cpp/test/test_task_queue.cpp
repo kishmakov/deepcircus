@@ -140,7 +140,7 @@ TEST(TaskQueueTest, RecursiveBitnessMergesRestrictionChunks) {
     std::unique_ptr<TaskResult> train = queue.Take();
     ASSERT_NE(train, nullptr);
     ASSERT_EQ(train->task.iteration, 1u);
-    ASSERT_EQ(train->values.size(), 1u);  // exact tree values
+    ASSERT_EQ(train->values.size(), 1u);        // exact tree values
     ASSERT_EQ(train->restrictions.size(), 1u);  // merged across worker chunks
     EXPECT_EQ(train->values[0].values.Rows(), 4u);
     EXPECT_EQ(train->values[0].targets.size(), gen::kTargetsPerCase * 4u);
@@ -181,8 +181,7 @@ TEST(TaskQueueTest, RecursiveDataIsIdenticalAcrossDifferentWorkerCounts) {
     ASSERT_EQ(from_single->restrictions.size(), 1u);
     ASSERT_EQ(from_many->restrictions.size(), 1u);
 
-    EXPECT_EQ(TensorFloats(from_single->restrictions[0].values),
-              TensorFloats(from_many->restrictions[0].values));
+    EXPECT_EQ(TensorFloats(from_single->restrictions[0].values), TensorFloats(from_many->restrictions[0].values));
     EXPECT_EQ(TensorFloats(from_single->restrictions[0].restrictions),
               TensorFloats(from_many->restrictions[0].restrictions));
 }

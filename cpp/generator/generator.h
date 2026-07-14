@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <cstdint>
-
 #include <string>
 #include <string_view>
 #include <vector>
@@ -12,7 +11,7 @@ namespace gen {
 // Dense, bit-packed matrix. Rows are cases and columns contain all generated
 // repetitions (and, for restrictions, all restrictions) for one case. Tagged
 // so value and restriction matrices stay distinct types.
-template<typename Tag>
+template <typename Tag>
 class BitMatrix {
 public:
     explicit BitMatrix(std::vector<std::vector<bool>> data);
@@ -22,7 +21,7 @@ public:
     size_t Rows() const { return data_.size(); }
     size_t Columns() const { return data_.front().size(); }
     size_t ValueCount() const { return Rows() * Columns(); }
-    void WriteValues(float *output) const;
+    void WriteValues(float* output) const;
 
 private:
     std::vector<std::vector<bool>> data_;
@@ -64,8 +63,7 @@ std::vector<size_t> TreeSampleCaseIds(uint16_t bitness, size_t cases, uint64_t s
 
 // Synchronously generates a compact, ready-to-read batch for an explicit,
 // pre-sampled chunk of case ids (see TreeSampleCaseIds).
-GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
-                                   uint64_t seed);
+GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps, uint64_t seed);
 
 /********************************* table *************************************/
 
@@ -77,29 +75,28 @@ std::string TableValue(uint16_t bitness, size_t case_id, std::string_view input)
 
 std::vector<size_t> TableSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
 
-GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
-                                    uint64_t seed);
+GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps, uint64_t seed);
 
 // Synchronously generates recursive table values and one dense restriction
 // matrix for an explicit, pre-sampled chunk of case ids.
-GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t> &case_ids, size_t reps,
-                                                 uint64_t seed);
+GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps,
+                                                uint64_t seed);
 
 /******************************** circuit ************************************/
 
 // Sorted circuit set names discovered under circuits/.
-const std::vector<std::string> &CircuitSets();
+const std::vector<std::string>& CircuitSets();
 
 // Sorted circuit case names for the given set.
-const std::vector<std::string> &CircuitCases(const std::string &set_name);
+const std::vector<std::string>& CircuitCases(const std::string& set_name);
 
 // Number of inputs (primary inputs + latches) for a circuit case.
-size_t CircuitInputs(const std::string &set_name, const std::string &case_name);
+size_t CircuitInputs(const std::string& set_name, const std::string& case_name);
 
 // Number of outputs (primary outputs + bad-state signals) for a circuit case.
-size_t CircuitOutputs(const std::string &set_name, const std::string &case_name);
+size_t CircuitOutputs(const std::string& set_name, const std::string& case_name);
 
 // Value samples for an AIG circuit as a 0/1 string.
-std::string CircuitValue(const std::string &set_name, const std::string &case_name, const std::string &input_state);
+std::string CircuitValue(const std::string& set_name, const std::string& case_name, const std::string& input_state);
 
-} // namespace gen
+}  // namespace gen

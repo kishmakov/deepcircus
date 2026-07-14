@@ -30,20 +30,20 @@ struct DecisionTree {
 
     size_t AddLeaf(bool value);
 
-    size_t BuildSubtree(size_t budget, std::vector<bool> &path_used_bits, size_t path_used_count, bool required_value,
-                        RandomBoolGenerator &rng);
+    size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value,
+                        RandomBoolGenerator& rng);
 
     void Finalize();
 
     bool Evaluate(std::string_view input) const;
 
-    void FillValueTensor(size_t reps, uint64_t seed, float *out) const;
+    void FillValueTensor(size_t reps, uint64_t seed, float* out) const;
 
-    void FillRestrictionsTensor(size_t reps, uint64_t seed, float *out) const;
+    void FillRestrictionsTensor(size_t reps, uint64_t seed, float* out) const;
 
 private:
     uint16_t bitness_;
 };
 
-size_t SolveForDepth(uint16_t bitness, const std::vector<bool> &truth_table);
-size_t SolveForSize(uint16_t bitness, const std::vector<bool> &truth_table);
+size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table);
+size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table);

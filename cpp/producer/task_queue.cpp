@@ -27,9 +27,7 @@ auto GenerateParallel(ThreadPool& pool, const std::vector<size_t>& case_ids, Gen
         const size_t first = chunk_index * chunk_cases;
         const size_t count = std::min(chunk_cases, case_ids.size() - first);
         std::vector<size_t> ids(case_ids.begin() + first, case_ids.begin() + first + count);
-        pool.Enqueue([&chunks, chunk_index, generator, ids = std::move(ids)] {
-            chunks[chunk_index] = generator(ids);
-        });
+        pool.Enqueue([&chunks, chunk_index, generator, ids = std::move(ids)] { chunks[chunk_index] = generator(ids); });
     }
     pool.WaitIdle();
 
@@ -68,8 +66,7 @@ gen::GeneratedRestrictions ConcatRestrictions(std::vector<gen::GeneratedRestrict
                                       gen::Restrictions::Concat(std::move(restrictions))};
 }
 
-gen::GeneratedValues GenerateTreeValues(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps,
-                                        uint64_t seed) {
+gen::GeneratedValues GenerateTreeValues(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps, uint64_t seed) {
     assert(cases > 0);
     const std::vector<size_t> case_ids = gen::TreeSampleCaseIds(bitness, cases, seed);
     return ConcatValues(GenerateParallel(pool, case_ids, [bitness, reps, seed](const std::vector<size_t>& ids) {
@@ -77,8 +74,7 @@ gen::GeneratedValues GenerateTreeValues(ThreadPool& pool, uint16_t bitness, size
     }));
 }
 
-gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps,
-                                         uint64_t seed) {
+gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps, uint64_t seed) {
     assert(cases > 0);
     assert(bitness <= gen::TableSolvableBitness());
     const std::vector<size_t> case_ids = gen::TableSampleCaseIds(bitness, cases, seed);
@@ -87,8 +83,8 @@ gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, siz
     }));
 }
 
-gen::GeneratedRestrictions GenerateTableRestrictions(ThreadPool& pool, uint16_t bitness, size_t cases,
-                                                     size_t reps, uint64_t seed) {
+gen::GeneratedRestrictions GenerateTableRestrictions(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps,
+                                                     uint64_t seed) {
     assert(cases > 0);
     assert(bitness > gen::TableSolvableBitness());
     const std::vector<size_t> case_ids = gen::TableSampleCaseIds(bitness, cases, seed);
@@ -112,14 +108,14 @@ std::unique_ptr<TaskResult> GenerateTrainTask(const TrainingShape& shape, const 
     assert(gen::MinTreeBitness() <= solvable);
 
     if (task.bitness <= solvable) {
-        result->values.push_back(GenerateTableValues(pool, task.bitness, shape.train_samples,
-                                                     shape.points_per_sample, task.seed ^ 0x1001));
+        result->values.push_back(
+            GenerateTableValues(pool, task.bitness, shape.train_samples, shape.points_per_sample, task.seed ^ 0x1001));
     } else {
         assert(shape.train_samples % 2 == 0);
-        result->values.push_back(GenerateTreeValues(pool, task.bitness, shape.train_samples / 2,
-                                                    shape.points_per_sample, task.seed));
-        result->restrictions.push_back(GenerateTableRestrictions(pool, task.bitness, shape.train_samples / 2,
-                                                                 shape.points_per_sample, task.seed));
+        result->values.push_back(
+            GenerateTreeValues(pool, task.bitness, shape.train_samples / 2, shape.points_per_sample, task.seed));
+        result->restrictions.push_back(
+            GenerateTableRestrictions(pool, task.bitness, shape.train_samples / 2, shape.points_per_sample, task.seed));
     }
     return result;
 }
