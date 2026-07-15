@@ -93,7 +93,7 @@ echo 'kernel.perf_event_paranoid = 1' | sudo tee /etc/sysctl.d/60-perf.conf
 
 Look especially for hot functions in:
 
-- `cpp/generator/decision_tree.cpp` (tree building, evaluation, exact solving)
+- `cpp/generator/tree.cpp` (tree building, evaluation, exact solving)
 - `cpp/generator/dataset.cpp` (case-ID sampling, data/restriction handles)
 - `cpp/generator/utils.cpp` (value-input generation, `FlippingSampler`)
 - `cpp/producer/task_queue.cpp` (chunking, `Concat` merges)

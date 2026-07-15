@@ -8,8 +8,8 @@
 #include <utility>
 #include <vector>
 
-#include "decision_tree.h"
 #include "generator.h"
+#include "tree.h"
 #include "utils.h"
 
 namespace {

@@ -21,7 +21,7 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
 - `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), currently exercising `cpp/producer`
 - `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
-- `cpp/generator/decision_tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
+- `cpp/generator/tree.{h,cpp}` owns `DecisionTree`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
 - `cpp/generator/generator.h` declares the public synchronous C API
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
 - `cpp/generator/utils.{h,cpp}` owns SplitMix64-based value-input generation, deterministic case-ID sampling (`SampleCaseIds`/`DomainSeed`), and `FlippingSampler`
