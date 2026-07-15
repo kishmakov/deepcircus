@@ -15,10 +15,13 @@ sys.path.insert(0, str(DEEPCIRCUS_DIR))
 
 MODEL_DIR = Path("/tmp/circus")
 SAMPLES = 256
+RANDOM_SAMPLES = 256
 SEED = 239
 
 
-def parity_inputs(bitness: int, points_per_sample: int, rng: np.random.Generator) -> np.ndarray:
+def sample_inputs(
+    bitness: int, points_per_sample: int, samples: int, rng: np.random.Generator
+) -> np.ndarray:
     # Mirrors InputGenerator (cpp/generator/utils.cpp): per sample, the first
     # half of the points are block modifications of one base input (rep's bits
     # choose which blocks to flip), the second half are fully random.
@@ -33,9 +36,9 @@ def parity_inputs(bitness: int, points_per_sample: int, rng: np.random.Generator
         block_start += block_size
     assert block_start == bitness, (block_start, bitness)
 
-    base = rng.integers(0, 2, size=(SAMPLES, 1, bitness))
+    base = rng.integers(0, 2, size=(samples, 1, bitness))
     block_half = base ^ flip_masks[None, :, :]
-    random_half = rng.integers(0, 2, size=(SAMPLES, points_per_sample - block_reps, bitness))
+    random_half = rng.integers(0, 2, size=(samples, points_per_sample - block_reps, bitness))
     return np.concatenate([block_half, random_half], axis=1)
 
 
@@ -44,10 +47,20 @@ def parity_samples(bitness: int, points_per_sample: int, rng: np.random.Generato
     # input bits, f(input), then f(input with bit j flipped) for each j,
     # every coordinate encoded as -1/+1 (PutBit for float writes -1.0f/1.0f).
     # Parity flips under any single-bit flip, so the flipped block is 1 - parity.
-    bits = parity_inputs(bitness, points_per_sample, rng)
+    bits = sample_inputs(bitness, points_per_sample, SAMPLES, rng)
     parity = bits.sum(axis=-1, keepdims=True) % 2
     flipped = np.broadcast_to(1 - parity, bits.shape)
     sample = np.concatenate([bits, parity, flipped], axis=-1)
+    return (2 * sample - 1).astype(np.float32)
+
+
+def random_samples(bitness: int, points_per_sample: int, rng: np.random.Generator) -> np.ndarray:
+    # Baseline: inputs follow the same block-alteration scheme as parity, but
+    # f(input) and the flipped-bit block are random bits with no consistency,
+    # showing the model's average output level on structureless values.
+    bits = sample_inputs(bitness, points_per_sample, RANDOM_SAMPLES, rng)
+    values = rng.integers(0, 2, size=(RANDOM_SAMPLES, points_per_sample, bitness + 1))
+    sample = np.concatenate([bits, values], axis=-1)
     return (2 * sample - 1).astype(np.float32)
 
 
@@ -67,7 +80,8 @@ def main() -> None:
     assert bitnesses, MODEL_DIR
 
     rng = np.random.default_rng(SEED)
-    predictions = {}
+    parity_predictions = {}
+    random_predictions = {}
     for bitness in bitnesses:
         model = DeepSetPredictor(
             point_dim=2 * bitness + 1,
@@ -83,8 +97,13 @@ def main() -> None:
             weights_only=True,
         ))
         x = parity_samples(bitness, config.training.points_per_sample, rng)
-        predictions[bitness] = predict_values(model, x, config.training.batch_size)
-        print(f"bitness={bitness:02d} mean prediction: {predictions[bitness].mean(axis=0)}")
+        parity_predictions[bitness] = predict_values(model, x, config.training.batch_size)
+        r = random_samples(bitness, config.training.points_per_sample, rng)
+        random_predictions[bitness] = predict_values(model, r, config.training.batch_size)
+        print(
+            f"bitness={bitness:02d} mean parity: {parity_predictions[bitness].mean(axis=0)}"
+            f" random: {random_predictions[bitness].mean(axis=0)}"
+        )
 
     import matplotlib
     matplotlib.use("Agg")
@@ -94,10 +113,22 @@ def main() -> None:
     titles = ("depth score (bitness - depth)", "size score (log2(2^bitness - size))")
     for target, (axis, title) in enumerate(zip(axes, titles)):
         for bitness in bitnesses:
-            values = predictions[bitness][:, target]
+            values = parity_predictions[bitness][:, target]
             axis.scatter([bitness] * len(values), values, s=8, alpha=0.15, color="#0072B2")
-        means = [float(predictions[bitness][:, target].mean()) for bitness in bitnesses]
-        axis.plot(bitnesses, means, color="#D55E00", linewidth=2, marker="o", label="mean")
+        parity_means = [float(parity_predictions[bitness][:, target].mean()) for bitness in bitnesses]
+        axis.plot(bitnesses, parity_means, color="#D55E00", linewidth=2, marker="o", label="parity mean")
+        boxes = axis.boxplot(
+            [random_predictions[bitness][:, target] for bitness in bitnesses],
+            positions=bitnesses,
+            widths=0.5,
+            manage_ticks=False,
+            boxprops={"color": "#009E73"},
+            whiskerprops={"color": "#009E73"},
+            capprops={"color": "#009E73"},
+            medianprops={"color": "#009E73", "linewidth": 2},
+            flierprops={"marker": ".", "markeredgecolor": "#009E73"},
+        )
+        boxes["boxes"][0].set_label("random distribution")
         axis.set_title(title)
         axis.set_xlabel("bitness")
         axis.set_ylabel("prediction")

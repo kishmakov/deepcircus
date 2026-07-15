@@ -147,12 +147,15 @@ class Sampler:
                     self.training.batch_size,
                 )
                 predictions = predictions.reshape(chunk_cases, bitness, 2, 2)
+                # child's target values belong to [0, bitness−1]
                 predictions = np.clip(predictions, 0.0, float(bitness - 1))
-                depth_scores = predictions[..., 0].min(axis=2)
-                targets[start : start + chunk_cases, 0] = depth_scores.max(axis=1)
-                # The parent's remaining size budget 2^bitness - size for a
-                # split is the children's budgets combined: 2^y0 + 2^y1 - 1.
-                size_budgets = np.exp2(predictions[..., 1]).sum(axis=2) - 1.0
+                depth_scores = predictions[..., 0].min(axis=2)  # (chunk_cases, bitness)
+                # parent's residual bitness - height is computed from children's residual
+                # as p = max(y0, y1)
+                targets[start : start + chunk_cases, 0] = depth_scores.max(axis=1) # (chunk_cases,)
+                # parent's budget 2^bitness - size is computed from children's budgets
+                # as: 2^p = 2^y0 + 2^y1 - 1.
+                size_budgets = np.exp2(predictions[..., 1]).sum(axis=2) - 1.0  # (chunk_cases, bitness)
                 targets[start : start + chunk_cases, 1] = np.log2(size_budgets.max(axis=1))
                 start += chunk_cases
                 progress.update(chunk_cases)
