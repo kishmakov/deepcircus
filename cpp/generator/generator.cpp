@@ -9,12 +9,11 @@
 namespace gen {
 
 template <typename Tag>
-BitMatrix<Tag>::BitMatrix(std::vector<std::vector<bool>> data) : data_(std::move(data)) {
-    assert(!data_.empty());
-    assert(!data_.front().empty());
-    for (const std::vector<bool>& row : data_) {
-        assert(row.size() == data_.front().size());
-    }
+BitMatrix<Tag>::BitMatrix(size_t rows, size_t columns, std::vector<bool> data)
+    : rows_(rows), columns_(columns), data_(std::move(data)) {
+    assert(rows_ > 0);
+    assert(columns_ > 0);
+    assert(data_.size() == rows_ * columns_);
 }
 
 template <typename Tag>
@@ -27,14 +26,12 @@ BitMatrix<Tag> BitMatrix<Tag>::Concat(std::vector<BitMatrix> chunks) {
         rows += chunk.Rows();
     }
 
-    std::vector<std::vector<bool>> data;
-    data.reserve(rows);
+    std::vector<bool> data;
+    data.reserve(rows * columns);
     for (BitMatrix& chunk : chunks) {
-        for (std::vector<bool>& row : chunk.data_) {
-            data.push_back(std::move(row));
-        }
+        data.insert(data.end(), chunk.data_.begin(), chunk.data_.end());
     }
-    return BitMatrix(std::move(data));
+    return BitMatrix(rows, columns, std::move(data));
 }
 
 template <typename Tag>
@@ -42,11 +39,11 @@ void BitMatrix<Tag>::WritePacked(uint8_t* output) const {
     assert(output != nullptr);
     std::memset(output, 0, ByteCount());
     const size_t row_bytes = RowBytes();
-    for (size_t row = 0; row < data_.size(); ++row) {
+    for (size_t row = 0; row < rows_; ++row) {
         uint8_t* bytes = output + row * row_bytes;
-        const std::vector<bool>& bits = data_[row];
-        for (size_t bit = 0; bit < bits.size(); ++bit) {
-            bytes[bit / 8] |= static_cast<uint8_t>(bits[bit]) << (bit % 8);
+        const size_t base = row * columns_;
+        for (size_t bit = 0; bit < columns_; ++bit) {
+            bytes[bit / 8] |= static_cast<uint8_t>(data_[base + bit]) << (bit % 8);
         }
     }
 }

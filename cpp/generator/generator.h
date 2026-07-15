@@ -9,26 +9,30 @@
 namespace gen {
 
 // Dense, bit-packed matrix. Rows are cases and columns contain all generated
-// repetitions (and, for restrictions, all restrictions) for one case. Tagged
-// so value and restriction matrices stay distinct types.
+// repetitions (and, for restrictions, all restrictions) for one case. The bits
+// live in one contiguous, row-major buffer; Rows()/Columns() are the only
+// helpers that split it into independent rows. Tagged so value and restriction
+// matrices stay distinct types.
 template <typename Tag>
 class BitMatrix {
 public:
-    explicit BitMatrix(std::vector<std::vector<bool>> data);
+    BitMatrix(size_t rows, size_t columns, std::vector<bool> data);
 
     static BitMatrix Concat(std::vector<BitMatrix> chunks);
 
-    size_t Rows() const { return data_.size(); }
-    size_t Columns() const { return data_.front().size(); }
-    size_t ValueCount() const { return Rows() * Columns(); }
-    size_t RowBytes() const { return (Columns() + 7) / 8; }
-    size_t ByteCount() const { return Rows() * RowBytes(); }
+    size_t Rows() const { return rows_; }
+    size_t Columns() const { return columns_; }
+    size_t ValueCount() const { return rows_ * columns_; }
+    size_t RowBytes() const { return (columns_ + 7) / 8; }
+    size_t ByteCount() const { return rows_ * RowBytes(); }
     // Bit-packs the matrix, each row padded to a whole number of bytes and
     // filled little-endian bit order; bit b unpacks to the value 2*b - 1.
     void WritePacked(uint8_t* output) const;
 
 private:
-    std::vector<std::vector<bool>> data_;
+    size_t rows_;
+    size_t columns_;
+    std::vector<bool> data_;
 };
 
 struct ValuesTag;

@@ -37,7 +37,7 @@ struct DecisionTree : Case {
 
     bool Evaluate(std::string_view input) const;
 
-    void FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const;
+    void FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out, size_t base) const;
 
 private:
     size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value);

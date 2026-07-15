@@ -5,6 +5,22 @@
 
 #include "generator.h"
 
+namespace {
+
+// Flattens row literals into the matrix's contiguous, row-major buffer so the
+// tests can keep writing bits row by row.
+gen::Values MakeValues(const std::vector<std::vector<bool>>& rows) {
+    const size_t columns = rows.front().size();
+    std::vector<bool> data;
+    data.reserve(rows.size() * columns);
+    for (const std::vector<bool>& row : rows) {
+        data.insert(data.end(), row.begin(), row.end());
+    }
+    return gen::Values(rows.size(), columns, std::move(data));
+}
+
+}  // namespace
+
 // The packed export is the daemon's publication format: each row padded to
 // whole bytes, little-endian bit order, bit b standing for the value
 // 2*b - 1. The byte layout is pinned here because the Python client decodes
@@ -15,7 +31,7 @@ TEST(BitMatrixTest, PackedLayoutIsRowPaddedLittleEndian) {
         {false, true, false, false, true, true, false, true, false, true},
         {true, true, true, false, false, false, false, false, true, true},
     };
-    const gen::Values matrix(data);
+    const gen::Values matrix = MakeValues(data);
     EXPECT_EQ(matrix.RowBytes(), 2u);
     EXPECT_EQ(matrix.ByteCount(), 6u);
 
@@ -33,7 +49,7 @@ TEST(BitMatrixTest, UnpackRowsRoundTripsWritePacked) {
         {false, true, false, false, true, true, false, true, false},
         {true, true, false, true, false, true, false, false, true},
     };
-    const gen::Values matrix(data);
+    const gen::Values matrix = MakeValues(data);
 
     std::vector<uint8_t> packed(matrix.ByteCount());
     matrix.WritePacked(packed.data());
@@ -54,7 +70,7 @@ TEST(BitMatrixTest, PackedRowsAreByteAligned) {
         {true, true, true, true, true, true, true, true},
         {true, false, false, false, false, false, false, false},
     };
-    const gen::Values matrix(data);
+    const gen::Values matrix = MakeValues(data);
     EXPECT_EQ(matrix.RowBytes(), 1u);
 
     std::vector<uint8_t> packed(matrix.ByteCount());

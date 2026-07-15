@@ -190,20 +190,20 @@ void InputGenerator::FillRandom(std::string& output) {
     }
 }
 
-void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
+void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out, size_t base,
                               const std::function<bool(std::string_view)>& evaluate) {
     const size_t sample_size = 2 * bitness + 1;
-    assert(out.size() == reps * sample_size);
+    assert(base + reps * sample_size <= out.size());
     InputGenerator inputs(bitness, reps, seed);
     inputs.StartSample();
     FlippingSampler sampler;
     for (size_t rep = 0; rep < reps; ++rep) {
         sampler.Reset(bitness, inputs.Generate(rep));
-        sampler.Fill(out, rep * sample_size, bitness, evaluate);
+        sampler.Fill(out, base + rep * sample_size, bitness, evaluate);
     }
 }
 
-void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
+void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out, size_t base,
                                      const std::function<bool(std::string_view)>& evaluate) {
     assert(bitness > 1);
     assert(reps > 0);
@@ -212,7 +212,7 @@ void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t see
     const size_t free_bits = bitness - 1;
     const size_t sample_size = 2 * free_bits + 1;
     const size_t restrictions = bitness * 2;
-    assert(out.size() == restrictions * reps * sample_size);
+    assert(base + restrictions * reps * sample_size <= out.size());
     std::string sample_input(bitness, '0');
     InputGenerator inputs(free_bits, reps, seed);
     FlippingSampler sampler;
@@ -230,7 +230,7 @@ void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t see
                 }
 
                 sampler.Reset(bitness, sample_input);
-                sampler.Fill(out, (restriction_id * reps + rep) * sample_size, fixed_bit_id, evaluate);
+                sampler.Fill(out, base + (restriction_id * reps + rep) * sample_size, fixed_bit_id, evaluate);
             }
         }
     }

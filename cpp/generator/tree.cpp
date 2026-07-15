@@ -130,9 +130,9 @@ bool DecisionTree::Evaluate(std::string_view input) const {
     }
 }
 
-void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const {
+void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out, size_t base) const {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
-    FillGeneratedValueTensor(bitness_, reps, seed, out, evaluate);
+    FillGeneratedValueTensor(bitness_, reps, seed, out, base, evaluate);
 }
 
 size_t TreeCasesNumber(uint16_t bitness) {
@@ -161,20 +161,21 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
     assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
 
     const size_t sample_size = 2 * bitness + 1;
-    std::vector<std::vector<bool>> values(cases, std::vector<bool>(reps * sample_size));
+    const size_t columns = reps * sample_size;
+    std::vector<bool> values(cases * columns);
     std::vector<float> targets(gen::kTargetsPerCase * cases);
     const uint64_t value_seed = DomainSeed(seed, kTreeValueDomain, bitness);
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
         DecisionTree tree(bitness, case_id, seed);
-        tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values[case_index]);
+        tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values, case_index * columns);
         const size_t size = tree.nodes.size() - tree.num_leafs;
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.depth);
         targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);
     }
 
-    return GeneratedValues{Values(std::move(values)), std::move(targets)};
+    return GeneratedValues{Values(cases, columns, std::move(values)), std::move(targets)};
 }
 
 }  // namespace gen

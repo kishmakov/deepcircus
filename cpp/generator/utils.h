@@ -55,10 +55,12 @@ private:
 };
 
 // Generated +/-1 values are written bit-packed: bit set means +1, cleared -1.
-void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
+// Writing starts at `base` bits into `out`, so one contiguous buffer can hold
+// many rows back to back.
+void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out, size_t base,
                               const std::function<bool(std::string_view)>& evaluate);
 
-void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
+void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out, size_t base,
                                      const std::function<bool(std::string_view)>& evaluate);
 
 class FlippingSampler {
