@@ -1,5 +1,7 @@
 #include "case.h"
 
+namespace gen {
+
 Case::Case(uint16_t bitness, size_t case_id, uint64_t seed) : bitness_(bitness), case_id_(case_id) {
     std::seed_seq seq{
         static_cast<uint32_t>(bitness),
@@ -27,3 +29,5 @@ bool Case::Generate() {
 }
 
 std::mt19937& Case::RNG() { return rng_; }
+
+}  // namespace gen

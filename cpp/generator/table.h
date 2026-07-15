@@ -8,6 +8,8 @@
 
 #include "case.h"
 
+namespace gen {
+
 inline constexpr uint16_t kMinTableBitness = 4;
 inline constexpr uint16_t kMaxTableBitness = 256;  // technical limitation for a while
 inline constexpr uint16_t kSolvableTableBitness = 12;
@@ -25,3 +27,9 @@ private:
     std::vector<bool> truth_table_;
     uint64_t sparse_seed_ = 0;
 };
+
+size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table);
+size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table);
+
+}  // namespace gen
+

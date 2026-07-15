@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+namespace gen {
+
 namespace {
 
 constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
@@ -268,3 +270,5 @@ std::string SampledValueString(uint16_t bitness, std::string_view input,
     sampler.Fill(value, /*sample_offset=*/0, bitness, evaluate);
     return value;
 }
+
+}  // namespace gen

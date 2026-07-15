@@ -9,6 +9,8 @@
 #include <string_view>
 #include <vector>
 
+namespace gen {
+
 // SplitMix64 output finalizer over an already-advanced state.
 uint64_t Mix64(uint64_t value);
 uint64_t SplitMix64(uint64_t& state);
@@ -82,3 +84,5 @@ private:
 // One full flip sample as a 0/1 string of length 2 * bitness + 1.
 std::string SampledValueString(uint16_t bitness, std::string_view input,
                                const std::function<bool(std::string_view)>& evaluate);
+
+}  // namespace gen

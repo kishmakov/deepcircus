@@ -12,7 +12,7 @@ TEST(UtilsTest, SplitBitsInGroups) {
     const std::vector<uint16_t> way1 = {4, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4};
     const std::vector<uint16_t> way2 = {4, 4, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
 
-    EXPECT_EQ(SplitBitsInGroups(20, 5, 0), way0);
-    EXPECT_EQ(SplitBitsInGroups(20, 5, 1), way1);
-    EXPECT_EQ(SplitBitsInGroups(20, 5, 2), way2);
+    EXPECT_EQ(gen::SplitBitsInGroups(20, 5, 0), way0);
+    EXPECT_EQ(gen::SplitBitsInGroups(20, 5, 1), way1);
+    EXPECT_EQ(gen::SplitBitsInGroups(20, 5, 2), way2);
 }

@@ -8,6 +8,8 @@
 #include <utility>
 
 #include "generator.h"
+#include "table.h"
+#include "tree.h"
 #include "utils.h"
 
 namespace {
@@ -76,7 +78,7 @@ gen::GeneratedValues GenerateTreeValues(ThreadPool& pool, uint16_t bitness, size
 
 gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps, uint64_t seed) {
     assert(cases > 0);
-    assert(bitness <= gen::TableSolvableBitness());
+    assert(bitness <= gen::kSolvableTableBitness);
     const std::vector<size_t> case_ids = gen::TableSampleCaseIds(bitness, cases, seed);
     return ConcatValues(GenerateParallel(pool, case_ids, [bitness, reps, seed](const std::vector<size_t>& ids) {
         return gen::TableValuesForCases(bitness, ids, reps, seed);
@@ -86,7 +88,7 @@ gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, siz
 gen::GeneratedRestrictions GenerateTableRestrictions(ThreadPool& pool, uint16_t bitness, size_t cases, size_t reps,
                                                      uint64_t seed) {
     assert(cases > 0);
-    assert(bitness > gen::TableSolvableBitness());
+    assert(bitness > gen::kSolvableTableBitness);
     const std::vector<size_t> case_ids = gen::TableSampleCaseIds(bitness, cases, seed);
     return ConcatRestrictions(GenerateParallel(pool, case_ids, [bitness, reps, seed](const std::vector<size_t>& ids) {
         return gen::TableRestrictionsForCases(bitness, ids, reps, seed);
@@ -104,10 +106,9 @@ constexpr uint64_t kValidationIteration = 0;
 std::unique_ptr<TaskResult> GenerateTrainTask(const TrainingShape& shape, const Task& task, ThreadPool& pool) {
     auto result = std::make_unique<TaskResult>();
     result->task = task;
-    const uint16_t solvable = gen::TableSolvableBitness();
-    assert(gen::MinTreeBitness() <= solvable);
+    assert(gen::kMinTreeBitness <= gen::kSolvableTableBitness);
 
-    if (task.bitness <= solvable) {
+    if (task.bitness <= gen::kSolvableTableBitness) {
         result->values.push_back(
             GenerateTableValues(pool, task.bitness, shape.train_samples, shape.points_per_sample, task.seed ^ 0x1001));
     } else {
@@ -147,12 +148,12 @@ std::unique_ptr<TaskResult> GenerateTask(const TrainingShape& shape, const Task&
 TaskQueue::TaskQueue(TrainingShape shape, size_t workers) : shape_(shape), pool_(workers) {
     for (uint32_t bitness = shape.bitness_from; bitness <= shape.bitness_to; ++bitness) {
         tasks_.push_back(Task{kValidationIteration, static_cast<uint16_t>(bitness),
-                              TaskSeed(shape.seed, static_cast<uint16_t>(bitness), kValidationIteration)});
+                              gen::TaskSeed(shape.seed, static_cast<uint16_t>(bitness), kValidationIteration)});
     }
     for (uint64_t iteration = shape.first_iteration; iteration <= shape.last_iteration; ++iteration) {
         for (uint32_t bitness = shape.bitness_from; bitness <= shape.bitness_to; ++bitness) {
             tasks_.push_back(Task{iteration, static_cast<uint16_t>(bitness),
-                                  TaskSeed(shape.seed, static_cast<uint16_t>(bitness), iteration)});
+                                  gen::TaskSeed(shape.seed, static_cast<uint16_t>(bitness), iteration)});
         }
     }
     producer_ = std::thread([this] { Produce(); });

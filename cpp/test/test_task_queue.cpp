@@ -118,7 +118,7 @@ TrainingShape MakeRecursiveShape() {
     TrainingShape shape{};
     shape.first_iteration = 1;
     shape.last_iteration = 1;
-    shape.bitness_from = 17;  // one above TableSolvableBitness(): recursive table path
+    shape.bitness_from = 17;  // one above kSolvableTableBitness: recursive table path
     shape.bitness_to = 17;
     shape.seed = 7;
     shape.train_samples = 8;

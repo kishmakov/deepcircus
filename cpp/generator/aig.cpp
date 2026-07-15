@@ -270,6 +270,8 @@ void WriteAigOutputs(std::string& value, size_t offset, const AigCircuit& circui
 
 }  // namespace
 
+namespace gen::aig {
+
 const std::vector<std::string>& CircuitSets() { return kCircuitCatalog.set_names; }
 
 const std::vector<std::string>& CircuitCases(const char* set_name) {
@@ -310,3 +312,5 @@ const char* CircuitValue(const char* set_name, const char* case_name, const char
 
     return value.c_str();
 }
+
+}  // namespace gen::aig

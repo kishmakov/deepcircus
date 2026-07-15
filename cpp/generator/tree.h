@@ -9,6 +9,8 @@
 
 #include "case.h"
 
+namespace gen {
+
 inline constexpr size_t kTreeCasesNumber = size_t{1} << 32;
 inline constexpr uint16_t kMinTreeBitness = 10;
 inline constexpr uint16_t kMaxTreeBitness = 256;
@@ -31,14 +33,15 @@ struct DecisionTree : Case {
 
     size_t AddLeaf(bool value);
 
-    size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value);
-
     void Finalize();
 
     bool Evaluate(std::string_view input) const;
 
     void FillValueTensor(size_t reps, uint64_t seed, float* out) const;
+
+private:
+    size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value);
 };
 
-size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table);
-size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table);
+}  // namespace gen
+

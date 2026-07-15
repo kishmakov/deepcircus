@@ -5,6 +5,8 @@
 
 #include <random>
 
+namespace gen {
+
 // Base class owning a single generated case's deterministic randomness, keyed
 // by (bitness, case_id, seed). Provides the case's mt19937 plus a bit-buffered
 // fair-coin stream shared by table and tree generation.
@@ -27,3 +29,5 @@ private:
     uint32_t bit_buffer_ = 0;
     uint8_t bits_remaining_ = 0;
 };
+
+}  // namespace gen

@@ -58,7 +58,6 @@ struct GeneratedRestrictions {
 
 /********************************* tree **************************************/
 
-uint16_t MinTreeBitness();
 size_t TreeCasesNumber(uint16_t bitness);
 
 // Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
