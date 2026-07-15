@@ -62,7 +62,7 @@ TEST(TreeTest, GoldenValues) {
         const std::string value = TreeValue(c, c.input);
         EXPECT_EQ(value, c.expected_value) << "bitness=" << c.bitness << " case_id=" << c.case_id;
 
-        const gen::DecisionTree tree(c.bitness, c.case_id, kGoldenSeed);
+        const gen::TreeCase tree(c.bitness, c.case_id, kGoldenSeed);
         EXPECT_EQ(tree.depth, c.expected_depth) << "bitness=" << c.bitness << " case_id=" << c.case_id;
         EXPECT_EQ(tree.nodes.size() - tree.num_leafs, c.expected_internal_nodes)
             << "bitness=" << c.bitness << " case_id=" << c.case_id;

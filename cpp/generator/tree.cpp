@@ -60,24 +60,24 @@ size_t ComputeDepth(const std::vector<Node>& nodes, size_t node_id) {
 
 }  // namespace
 
-DecisionTree::DecisionTree(uint16_t bitness, size_t case_id, uint64_t seed)
+TreeCase::TreeCase(uint16_t bitness, size_t case_id, uint64_t seed)
     : Case(bitness, case_id, DomainSeed(seed, kTreeStructureDomain, bitness)), used_bits(bitness, false) {
     assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
     assert(case_id < kTreeCasesNumber);
     std::vector<bool> path_used_bits(bitness, false);
     const bool root_required_value = Generate();
     BuildSubtree(case_id, path_used_bits, /*path_used_count=*/0, root_required_value);
-    Finalize();
+    depth = ComputeDepth(nodes, 0);
 }
 
-size_t DecisionTree::AddLeaf(bool value) {
+size_t TreeCase::AddLeaf(bool value) {
     const size_t node_id = nodes.size();
     nodes.push_back(value);
     ++num_leafs;
     return node_id;
 }
 
-size_t DecisionTree::BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count,
+size_t TreeCase::BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count,
                                   bool required_value) {
     assert(path_used_bits.size() == bitness_);
     assert(path_used_count <= bitness_);
@@ -110,12 +110,7 @@ size_t DecisionTree::BuildSubtree(size_t budget, std::vector<bool>& path_used_bi
     return node_id;
 }
 
-void DecisionTree::Finalize() {
-    assert(!nodes.empty());
-    depth = ComputeDepth(nodes, 0);
-}
-
-bool DecisionTree::Evaluate(std::string_view input) const {
+bool TreeCase::Evaluate(std::string_view input) const {
     assert(input.size() == bitness_);
 
     size_t node_id = 0;
@@ -130,7 +125,7 @@ bool DecisionTree::Evaluate(std::string_view input) const {
     }
 }
 
-void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out, size_t base) const {
+void TreeCase::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out, size_t base) const {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
     FillGeneratedValueTensor(bitness_, reps, seed, out, base, evaluate);
 }
@@ -144,7 +139,7 @@ std::string TreeValue(uint16_t bitness, size_t case_id, uint64_t seed, std::stri
     assert(case_id < TreeCasesNumber(bitness));
     assert(input.size() == bitness);
 
-    const DecisionTree tree(bitness, case_id, seed);
+    const TreeCase tree(bitness, case_id, seed);
     const auto evaluate = [&tree](std::string_view point) { return tree.Evaluate(point); };
     return SampledValueString(bitness, input, evaluate);
 }
@@ -168,7 +163,7 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
-        DecisionTree tree(bitness, case_id, seed);
+        TreeCase tree(bitness, case_id, seed);
         tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values, case_index * columns);
         const size_t size = tree.nodes.size() - tree.num_leafs;
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.depth);

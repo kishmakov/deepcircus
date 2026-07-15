@@ -23,8 +23,8 @@ struct Div {
 
 using Node = std::variant<Div, bool>;
 
-struct DecisionTree : Case {
-    DecisionTree(uint16_t bitness, size_t case_id, uint64_t seed);
+struct TreeCase : Case {
+    TreeCase(uint16_t bitness, size_t case_id, uint64_t seed);
 
     std::vector<Node> nodes;
     std::vector<bool> used_bits;
@@ -32,8 +32,6 @@ struct DecisionTree : Case {
     size_t depth = 0;
 
     size_t AddLeaf(bool value);
-
-    void Finalize();
 
     bool Evaluate(std::string_view input) const;
 
