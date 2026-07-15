@@ -82,65 +82,6 @@ TABLE_BIG_CASES = [
     ),
 ]
 
-TREE_CASES = [
-    (
-        17,
-        42,
-        "01010101010101010",
-        "01010101010101010010010100010000010",
-        9,
-        42,
-    ),
-    (
-        24,
-        188,
-        "110010100111000101010011",
-        "1100101001110001010100110000000000010000100001000",
-        17,
-        188,
-    ),
-    (
-        32,
-        320,
-        "01010101010101010101010101010101",
-        "01010101010101010101010101010101111110111101010111101111011111111",
-        18,
-        320,
-    ),
-    (
-        48,
-        480,
-        "110010101100101011001010110010101100101011001010",
-        "1100101011001010110010101100101011001010110010101111111011111011110111111101111111111011111111110",
-        20,
-        480,
-    ),
-    (
-        64,
-        640,
-        "0011010100110101001101010011010100110101001101010011010100110101",
-        "001101010011010100110101001101010011010100110101001101010011010111111111111111111111111111111111111111111111111111111111111111110",
-        20,
-        640,
-    ),
-    (
-        100,
-        1000,
-        "0100110011010011001101001100110100110011010011001101001100110100110011010011001101001100110100110011",
-        "010011001101001100110100110011010011001101001100110100110011010011001101001100110100110011010011001111111111111111001111111111111111111111111111111111011111001111111111111011111110111111111101111111111",
-        20,
-        1000,
-    ),
-    (
-        128,
-        1280,
-        "01101001100101100110100110010110011010011001011001101001100101100110100110010110011010011001011001101001100101100110100110010110",
-        "01101001100101100110100110010110011010011001011001101001100101100110100110010110011010011001011001101001100101100110100110010110111111111111111111111111111111101111111111111100111111111111101111111111111111111111111111111111111111111111101111111111111111110",
-        21,
-        1280,
-    ),
-]
-
 def load_library():
     library = ctypes.CDLL(str(LIBRARY))
 
@@ -149,13 +90,6 @@ def load_library():
 
     library.gen_table_solvable_bitness.argtypes = []
     library.gen_table_solvable_bitness.restype = ctypes.c_uint16
-
-    library.gen_tree_value.argtypes = [
-        ctypes.c_uint16,
-        ctypes.c_size_t,
-        ctypes.c_char_p,
-    ]
-    library.gen_tree_value.restype = ctypes.c_char_p
 
     library.gen_table_value.argtypes = [
         ctypes.c_uint16,
@@ -226,14 +160,6 @@ def circuit_value(library, set_name, case_name, input_state):
     ).decode("ascii")
 
 
-def tree_value(library, bitness, case_id, input_bits):
-    return library.gen_tree_value(
-        bitness,
-        case_id,
-        input_bits.encode("ascii"),
-    ).decode("ascii")
-
-
 def table_value(library, bitness, case_id, input_bits):
     return library.gen_table_value(
         bitness,
@@ -299,49 +225,6 @@ def assert_case_consistent(library, value_func, value_name, bitness, case_id, in
         )
 
     return value
-
-
-def test_tree_cases(library):
-    print(f"Check tree cases ...")
-
-    for case in TREE_CASES:
-        (
-            bitness,
-            case_id,
-            input_bits,
-            expected_value,
-            expected_depth,
-            expected_nodes,
-        ) = case
-        value = assert_case_consistent(
-            library,
-            tree_value,
-            "gen_tree_value",
-            bitness,
-            case_id,
-            input_bits,
-        )
-        assert value == expected_value, (
-            f"gen_tree_value({bitness}, {case_id}, {input_bits}): "
-            f"actual={value}, expected={expected_value}"
-        )
-
-        flipped = list(input_bits)
-        flipped[0] = "1" if flipped[0] == "0" else "0"
-        flipped = "".join(flipped)
-
-        first = tree_value(library, bitness, case_id, input_bits)
-        other = tree_value(library, bitness, case_id, flipped)
-        first_repeat = tree_value(library, bitness, case_id, input_bits)
-        other_repeat = tree_value(library, bitness, case_id, flipped)
-        assert first == first_repeat, (
-            f"gen_tree_value({bitness}, {case_id}, {input_bits}) repeat: "
-            f"first={first}, second={first_repeat}"
-        )
-        assert other == other_repeat, (
-            f"gen_tree_value({bitness}, {case_id}, {flipped}) repeat: "
-            f"first={other}, second={other_repeat}"
-        )
 
 
 def test_table_solvable_cases(library):
@@ -432,7 +315,6 @@ def test_circuit_value(library):
 
 if __name__ == "__main__":
     library = load_library()
-    test_tree_cases(library)
     test_table_solvable_cases(library)
     test_table_big_cases(library)
     test_circuit_discovery(library)

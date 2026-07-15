@@ -13,13 +13,6 @@ void gen_unpack_rows(const uint8_t* packed, uint64_t rows, uint64_t columns, flo
 
 size_t gen_tree_cases_number(uint16_t bitness) { return gen::TreeCasesNumber(bitness); }
 
-const char* gen_tree_value(uint16_t bitness, size_t case_id, const char* input) {
-    assert(input != nullptr);
-    thread_local std::string value;
-    value = gen::TreeValue(bitness, case_id, input);
-    return value.c_str();
-}
-
 uint16_t gen_table_solvable_bitness() { return gen::TableSolvableBitness(); }
 
 const char* gen_table_value(uint16_t bitness, size_t case_id, const char* input) {
