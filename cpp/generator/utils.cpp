@@ -119,13 +119,6 @@ float SizeScore(uint16_t bitness, size_t tree_size) {
     return static_cast<float>(std::log2(max_size - static_cast<double>(tree_size)));
 }
 
-uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id) {
-    uint64_t state = seed;
-    state ^= static_cast<uint64_t>(bitness) << 48;
-    state ^= static_cast<uint64_t>(case_id);
-    return SplitMix64(state);
-}
-
 InputGenerator::InputGenerator(uint16_t bitness, size_t reps, uint64_t seed)
     : bitness_(bitness), reps_(reps), state_(seed), input_(bitness, '0'), next_rep_(reps) {
     assert(bitness_ > 0);

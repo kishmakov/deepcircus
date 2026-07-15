@@ -17,7 +17,6 @@ namespace gen {
 namespace {
 
 constexpr uint64_t kTreeSelectionDomain = 0x747265655f73656cull;
-constexpr uint64_t kTreeValueDomain = 0x747265655f76616cull;
 constexpr uint64_t kTreeStructureDomain = 0x747265655f737472ull;
 
 size_t RandomUnusedBit(const std::vector<bool>& path_used_bits, size_t free_bits, std::mt19937& rng) {
@@ -125,9 +124,9 @@ bool TreeCase::Evaluate(std::string_view input) const {
     }
 }
 
-void TreeCase::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out, size_t base) const {
+void TreeCase::FillValueTensor(size_t reps, std::vector<bool>& out, size_t base) {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
-    FillGeneratedValueTensor(bitness_, reps, seed, out, base, evaluate);
+    FillGeneratedValueTensor(bitness_, reps, NextSeed(), out, base, evaluate);
 }
 
 size_t TreeCasesNumber(uint16_t bitness) {
@@ -159,12 +158,11 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
     const size_t columns = reps * sample_size;
     std::vector<bool> values(cases * columns);
     std::vector<float> targets(gen::kTargetsPerCase * cases);
-    const uint64_t value_seed = DomainSeed(seed, kTreeValueDomain, bitness);
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
         TreeCase tree(bitness, case_id, seed);
-        tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values, case_index * columns);
+        tree.FillValueTensor(reps, values, case_index * columns);
         const size_t size = tree.nodes.size() - tree.num_leafs;
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.depth);
         targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);

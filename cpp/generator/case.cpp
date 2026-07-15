@@ -30,4 +30,10 @@ bool Case::Generate() {
 
 std::mt19937& Case::RNG() { return rng_; }
 
+uint64_t Case::NextSeed() {
+    const uint64_t low = rng_();
+    const uint64_t high = rng_();
+    return low | (high << 32);
+}
+
 }  // namespace gen

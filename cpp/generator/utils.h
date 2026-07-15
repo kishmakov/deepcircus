@@ -32,8 +32,6 @@ size_t FullBitId(size_t bit_id, size_t fixed_id);
 // internal nodes. A constant function scores bitness, a full tree scores 0.
 float SizeScore(uint16_t bitness, size_t tree_size);
 
-uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id);
-
 class InputGenerator {
 public:
     InputGenerator(uint16_t bitness, size_t reps, uint64_t seed);

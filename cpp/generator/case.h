@@ -20,6 +20,10 @@ public:
     bool Generate();
     std::mt19937& RNG();
 
+    // Draws a fresh 64-bit seed from the case's RNG, used to seed derived
+    // sampling streams (e.g. value/restriction input generation).
+    uint64_t NextSeed();
+
 protected:
     uint16_t bitness_;
     size_t case_id_;
