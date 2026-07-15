@@ -21,7 +21,7 @@ TrainingShape MakeShape() {
 
 }  // namespace
 
-TEST(TaskQueueTest, PublishesValidationTaskBeforeTrainingTasks) {
+TEST(TaskQueueTest, ValidationTask) {
     TaskQueue queue(MakeShape(), 2);
 
     std::unique_ptr<TaskResult> validation = queue.Take();
@@ -35,7 +35,7 @@ TEST(TaskQueueTest, PublishesValidationTaskBeforeTrainingTasks) {
     EXPECT_EQ(validation->values[0].targets.size(), gen::kTargetsPerCase * 2u);
 }
 
-TEST(TaskQueueTest, PublishesTrainingTasksInIterationOrder) {
+TEST(TaskQueueTest, TrainingTasks) {
     TaskQueue queue(MakeShape(), 2);
     ASSERT_NE(queue.Take(), nullptr);  // validation task
 
@@ -51,7 +51,7 @@ TEST(TaskQueueTest, PublishesTrainingTasksInIterationOrder) {
     }
 }
 
-TEST(TaskQueueTest, ReturnsNullAfterExhaustingAllTasks) {
+TEST(TaskQueueTest, EndsWithNull) {
     TaskQueue queue(MakeShape(), 2);
     for (int i = 0; i < 3; ++i) {
         ASSERT_NE(queue.Take(), nullptr);
@@ -59,7 +59,7 @@ TEST(TaskQueueTest, ReturnsNullAfterExhaustingAllTasks) {
     EXPECT_EQ(queue.Take(), nullptr);
 }
 
-TEST(TaskQueueTest, SeedsAreDeterministicAcrossInstancesRegardlessOfWorkerCount) {
+TEST(TaskQueueTest, SameSeeds) {
     TaskQueue first(MakeShape(), 2);
     TaskQueue second(MakeShape(), 3);
 
@@ -72,7 +72,7 @@ TEST(TaskQueueTest, SeedsAreDeterministicAcrossInstancesRegardlessOfWorkerCount)
     }
 }
 
-TEST(TaskQueueTest, DistinctCoordinatesGetDistinctSeeds) {
+TEST(TaskQueueTest, SeedsNotRepeated) {
     TaskQueue queue(MakeShape(), 2);
     std::set<uint64_t> seeds;
     for (int i = 0; i < 3; ++i) {
@@ -86,7 +86,7 @@ TEST(TaskQueueTest, DistinctCoordinatesGetDistinctSeeds) {
 // Different worker counts change how a coordinate's case ids are chunked
 // across the pool internally; the merged batch must come out byte-identical
 // regardless, since chunking is an execution detail, not a sampling input.
-TEST(TaskQueueTest, DataIsIdenticalAcrossDifferentWorkerCounts) {
+TEST(TaskQueueTest, WorkersGenerateSameTrees) {
     TaskQueue single(MakeShape(), 1);
     TaskQueue many(MakeShape(), 5);
 
@@ -166,7 +166,7 @@ std::vector<uint8_t> TensorBytes(const Tensor& tensor) {
 // Different worker counts change how a coordinate's case ids are chunked
 // across the pool internally; the merged restriction pair must come out
 // byte-identical regardless, since chunking is an execution detail.
-TEST(TaskQueueTest, RecursiveDataIsIdenticalAcrossDifferentWorkerCounts) {
+TEST(TaskQueueTest, WorkersGenerateSameTables) {
     TaskQueue single(MakeRecursiveShape(), 1);
     TaskQueue many(MakeRecursiveShape(), 4);
     ASSERT_NE(single.Take(), nullptr);  // validation task

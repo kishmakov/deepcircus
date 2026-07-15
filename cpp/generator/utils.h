@@ -17,6 +17,11 @@ uint64_t SplitMix64(uint64_t& state);
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
 uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
 
+// Produces split of `bitness` bits into `groups` roughly equal groups.
+// Approximately [0 .. bitness / groups], [bitness / groups .. 2 * bitness / groups], ...
+// Then shifts this cyclically based on `way`.
+std::vector<uint16_t> SplitBitsInGroups(uint16_t bitness, uint16_t groups, uint16_t way);
+
 // Deterministic, chunk-order-independent sample of `cases` distinct ids from
 // [0, population).
 std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed);

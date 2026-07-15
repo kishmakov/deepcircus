@@ -41,6 +41,23 @@ bool BitOf(char bit) {
 void PutBit(std::string& out, size_t pos, bool bit) { out[pos] = bit ? '1' : '0'; }
 void PutBit(float* out, size_t pos, bool bit) { out[pos] = bit ? 1.0f : -1.0f; }
 
+template <typename Output>
+void FillSample(Output& value, std::string& input, uint16_t bitness, size_t sample_offset, size_t fixed_bit_id,
+                const std::function<bool(std::string_view)>& evaluate) {
+    const size_t free_bits = fixed_bit_id < bitness ? bitness - 1 : bitness;
+
+    for (size_t coord = 0; coord < free_bits; ++coord) {
+        PutBit(value, sample_offset + coord, BitOf(input[FullBitId(coord, fixed_bit_id)]));
+    }
+    PutBit(value, sample_offset + free_bits, evaluate({input.data(), bitness}));
+    for (size_t coord = 0; coord < free_bits; ++coord) {
+        char& bit = input[FullBitId(coord, fixed_bit_id)];
+        bit = bit == '1' ? '0' : '1';
+        PutBit(value, sample_offset + free_bits + 1 + coord, evaluate({input.data(), bitness}));
+        bit = bit == '1' ? '0' : '1';
+    }
+}
+
 }  // namespace
 
 uint64_t Mix64(uint64_t value) {
@@ -59,6 +76,18 @@ uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration) {
 uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness) {
     uint64_t state = seed ^ domain ^ (static_cast<uint64_t>(bitness) << 48);
     return SplitMix64(state);
+}
+
+std::vector<uint16_t> SplitBitsInGroups(uint16_t bitness, uint16_t groups, uint16_t way) {
+    assert(groups > 0);
+    assert(groups <= bitness);
+
+    const size_t shift = way % bitness;
+    std::vector<uint16_t> group_ids(bitness);
+    for (size_t bit_id = 0; bit_id < bitness; ++bit_id) {
+        group_ids[(bit_id + shift) % bitness] = bit_id * groups / bitness;
+    }
+    return group_ids;
 }
 
 std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed) {
@@ -244,27 +273,6 @@ void FlippingSampler::Reset(uint16_t bitness, std::string_view input) {
     bitness_ = bitness;
     this->input.assign(input.data(), input.size());
 }
-
-namespace {
-
-template <typename Output>
-void FillSample(Output& value, std::string& input, uint16_t bitness, size_t sample_offset, size_t fixed_bit_id,
-                const std::function<bool(std::string_view)>& evaluate) {
-    const size_t free_bits = fixed_bit_id < bitness ? bitness - 1 : bitness;
-
-    for (size_t coord = 0; coord < free_bits; ++coord) {
-        PutBit(value, sample_offset + coord, BitOf(input[FullBitId(coord, fixed_bit_id)]));
-    }
-    PutBit(value, sample_offset + free_bits, evaluate({input.data(), bitness}));
-    for (size_t coord = 0; coord < free_bits; ++coord) {
-        char& bit = input[FullBitId(coord, fixed_bit_id)];
-        bit = bit == '1' ? '0' : '1';
-        PutBit(value, sample_offset + free_bits + 1 + coord, evaluate({input.data(), bitness}));
-        bit = bit == '1' ? '0' : '1';
-    }
-}
-
-}  // namespace
 
 void FlippingSampler::Fill(std::string& value, size_t sample_offset, size_t fixed_bit_id,
                            const std::function<bool(std::string_view)>& evaluate) {

@@ -14,3 +14,6 @@ cmake -S "$ROOT/cpp" -B "$BUILD_DIR" \
 cmake --build "$BUILD_DIR" --target deepcircus_tests
 
 ASAN_OPTIONS="detect_leaks=1:${ASAN_OPTIONS:-}" "$BUILD_DIR/test/deepcircus_tests" "$@"
+
+"$ROOT/scripts/build.sh"
+uv run "$ROOT/scripts/test.py"
