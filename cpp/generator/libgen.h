@@ -24,7 +24,7 @@ size_t gen_tree_cases_number(uint16_t bitness);
 uint16_t gen_table_solvable_bitness();
 
 // Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
-const char* gen_table_value(uint16_t bitness, size_t case_id, const char* input);
+const char* gen_table_value(uint16_t bitness, size_t case_id, uint64_t seed, const char* input);
 
 /******************************** circuit ************************************/
 

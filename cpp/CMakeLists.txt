@@ -30,6 +30,8 @@ target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
 add_library(gen
     generator/aig.cpp
     generator/aig.h
+    generator/case.cpp
+    generator/case.h
     generator/generator.cpp
     generator/generator.h
     generator/libgen.cpp

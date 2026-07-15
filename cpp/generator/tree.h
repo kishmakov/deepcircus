@@ -3,12 +3,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <random>
 #include <string_view>
 #include <variant>
 #include <vector>
 
-class RandomBoolGenerator;
+#include "case.h"
 
 inline constexpr size_t kTreeCasesNumber = size_t{1} << 32;
 inline constexpr uint16_t kMinTreeBitness = 10;
@@ -22,10 +21,8 @@ struct Div {
 
 using Node = std::variant<Div, bool>;
 
-struct DecisionTree {
-    explicit DecisionTree(uint16_t bitness);
-
-    uint16_t Bitness() const;
+struct DecisionTree : Case {
+    DecisionTree(uint16_t bitness, size_t case_id, uint64_t seed);
 
     std::vector<Node> nodes;
     std::vector<bool> used_bits;
@@ -34,20 +31,14 @@ struct DecisionTree {
 
     size_t AddLeaf(bool value);
 
-    size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value,
-                        RandomBoolGenerator& rng);
+    size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value);
 
     void Finalize();
 
     bool Evaluate(std::string_view input) const;
 
     void FillValueTensor(size_t reps, uint64_t seed, float* out) const;
-
-private:
-    uint16_t bitness_;
 };
-
-DecisionTree BuildTreeCase(uint16_t bitness, size_t case_id);
 
 size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table);
 size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table);

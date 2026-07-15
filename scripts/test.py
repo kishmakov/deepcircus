@@ -5,6 +5,10 @@ from pathlib import Path
 LIBRARY = Path(__file__).resolve().parents[1] / "cpp" / "build" / "libgen.so"
 CIRCUITS = Path(__file__).resolve().parents[1] / "data" / "circuits"
 
+# Fixed seed the pinned golden values below were generated with; case structure
+# is a function of (bitness, case_id, seed).
+SEED = 0xC0FFEE
+
 TABLE_SOLVABLE_CASES = [
     (4, 0, "0101", "010100000", 0, 0),
     (4, 3190, "0001", "000100100", 4, 7),
@@ -13,15 +17,15 @@ TABLE_SOLVABLE_CASES = [
     (5, 390455940, "01001", "01001101111", 5, 16),
     (6, 2547012052, "110111", "1101110000000", 6, 16),
     (6, 883941716, "011111", "0111110000000", 6, 17),
-    (7, 42, "0101010", "010101000010010", 7, 59),
-    (7, 239, "1010101", "101010110101101", 7, 58),
+    (7, 42, "0101010", "010101000001101", 7, 60),
+    (7, 239, "1010101", "101010110101010", 7, 60),
     (
         11,
         23901,
         "01010101010",
-        "01010101010011100010111",
+        "01010101010100010101011",
         11,
-        842,
+        837,
     ),
 ]
 
@@ -30,55 +34,55 @@ TABLE_BIG_CASES = [
         16,
         42,
         "0101010101010101",
-        "010101010101010111111010001111001",
+        "010101010101010110110100111011000",
     ),
     (
         16,
         239566,
         "1010101010101010",
-        "101010101010101000001010100111101",
+        "101010101010101011101010100001100",
     ),
     (
         17,
         42,
         "01010101010101010",
-        "01010101010101010001000111101010011",
+        "01010101010101010001111011001000100",
     ),
     (
         24,
         188,
         "110010100111000101010011",
-        "1100101001110001010100110111011010001001101100000",
+        "1100101001110001010100110101111000110101011011111",
     ),
     (
         32,
         320,
         "01010101010101010101010101010101",
-        "01010101010101010101010101010101001111001010100111010100100101001",
+        "01010101010101010101010101010101001110110100001111000011100100101",
     ),
     (
         48,
         480,
         "110010101100101011001010110010101100101011001010",
-        "1100101011001010110010101100101011001010110010101000111001110111110010001101100001101111101011101",
+        "1100101011001010110010101100101011001010110010100111000110000111011010111110011000011101100100111",
     ),
     (
         64,
         640,
         "0011010100110101001101010011010100110101001101010011010100110101",
-        "001101010011010100110101001101010011010100110101001101010011010100110001110000001111101000011110110111110001011111000011001001010",
+        "001101010011010100110101001101010011010100110101001101010011010101101010001001100001011010001011101100000110111000010111011000000",
     ),
     (
         100,
         1000,
         "0100110011010011001101001100110100110011010011001101001100110100110011010011001101001100110100110011",
-        "010011001101001100110100110011010011001101001100110100110011010011001101001100110100110011010011001110100010110000101001000010010000110000000010111001011011100010011010011000110011011011110010010110000",
+        "010011001101001100110100110011010011001101001100110100110011010011001101001100110100110011010011001110101110111000001000001000111000010111001110111011010001111111010000011100001000000010011101111010000",
     ),
     (
         128,
         1280,
         "01101001100101100110100110010110011010011001011001101001100101100110100110010110011010011001011001101001100101100110100110010110",
-        "01101001100101100110100110010110011010011001011001101001100101100110100110010110011010011001011001101001100101100110100110010110101001111111111101001011000101100011011100110010110101111001111001110110111111011101110001111011001100000001101010110110000110111",
+        "01101001100101100110100110010110011010011001011001101001100101100110100110010110011010011001011001101001100101100110100110010110011001011011101010000101010000011000011110010110010000111101000001010001100011001011010001110000011010011011101000111011100001110",
     ),
 ]
 
@@ -94,6 +98,7 @@ def load_library():
     library.gen_table_value.argtypes = [
         ctypes.c_uint16,
         ctypes.c_size_t,
+        ctypes.c_uint64,
         ctypes.c_char_p,
     ]
     library.gen_table_value.restype = ctypes.c_char_p
@@ -160,10 +165,11 @@ def circuit_value(library, set_name, case_name, input_state):
     ).decode("ascii")
 
 
-def table_value(library, bitness, case_id, input_bits):
+def table_value(library, bitness, case_id, seed, input_bits):
     return library.gen_table_value(
         bitness,
         case_id,
+        seed,
         input_bits.encode("ascii"),
     ).decode("ascii")
 
@@ -197,8 +203,8 @@ def assert_block_inputs_consistent(generated_inputs, bitness, tensor_name):
         )
 
 
-def assert_case_consistent(library, value_func, value_name, bitness, case_id, input_bits):
-    value = value_func(library, bitness, case_id, input_bits)
+def assert_case_consistent(library, value_func, value_name, bitness, case_id, seed, input_bits):
+    value = value_func(library, bitness, case_id, seed, input_bits)
     assert len(value) == 2 * bitness + 1, (
         f"{value_name}({bitness}, {case_id}, {input_bits}) length: "
         f"actual={len(value)}, expected={2 * bitness + 1}, value={value}"
@@ -208,7 +214,7 @@ def assert_case_consistent(library, value_func, value_name, bitness, case_id, in
         f"actual={value[:bitness]}, expected={input_bits}, value={value}"
     )
 
-    repeat_value = value_func(library, bitness, case_id, input_bits)
+    repeat_value = value_func(library, bitness, case_id, seed, input_bits)
     assert value == repeat_value, (
         f"{value_name}({bitness}, {case_id}, {input_bits}) is not stable: "
         f"first={value}, second={repeat_value}"
@@ -217,7 +223,7 @@ def assert_case_consistent(library, value_func, value_name, bitness, case_id, in
     for bit_id in range(bitness):
         flipped = list(input_bits)
         flipped[bit_id] = "1" if flipped[bit_id] == "0" else "0"
-        flipped_value = value_func(library, bitness, case_id, "".join(flipped))
+        flipped_value = value_func(library, bitness, case_id, seed, "".join(flipped))
         assert value[bitness + 1 + bit_id] == flipped_value[bitness], (
             f"{value_name}({bitness}, {case_id}, {input_bits}) "
             f"flip bit {bit_id}: sampled={value[bitness + 1 + bit_id]}, "
@@ -244,6 +250,7 @@ def test_table_solvable_cases(library):
             "gen_table_value",
             bitness,
             case_id,
+            SEED,
             input_bits,
         )
         assert value == expected_value, (
@@ -262,6 +269,7 @@ def test_table_big_cases(library):
             "gen_table_value",
             bitness,
             case_id,
+            SEED,
             input_bits,
         )
         assert len(value) == 2 * bitness + 1, (bitness, case_id, value)

@@ -15,10 +15,10 @@ size_t gen_tree_cases_number(uint16_t bitness) { return gen::TreeCasesNumber(bit
 
 uint16_t gen_table_solvable_bitness() { return gen::TableSolvableBitness(); }
 
-const char* gen_table_value(uint16_t bitness, size_t case_id, const char* input) {
+const char* gen_table_value(uint16_t bitness, size_t case_id, uint64_t seed, const char* input) {
     assert(input != nullptr);
     thread_local std::string value;
-    value = gen::TableValue(bitness, case_id, input);
+    value = gen::TableValue(bitness, case_id, seed, input);
     return value.c_str();
 }
 

@@ -9,8 +9,6 @@
 #include <string_view>
 #include <vector>
 
-std::mt19937 PrepRNG(uint16_t bitness, size_t case_id);
-
 // SplitMix64 output finalizer over an already-advanced state.
 uint64_t Mix64(uint64_t value);
 uint64_t SplitMix64(uint64_t& state);
@@ -28,19 +26,6 @@ std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed
 
 // Generated +/-1 values stay bit-packed until a caller requests float output.
 void StoreBits(std::vector<bool>& destination, const std::vector<float>& source);
-
-class RandomBoolGenerator {
-public:
-    explicit RandomBoolGenerator(std::mt19937 rng);
-
-    bool Generate();
-    std::mt19937& RNG();
-
-private:
-    std::mt19937 rng_;
-    uint32_t bit_buffer_ = 0;
-    uint8_t bits_remaining_ = 0;
-};
 
 size_t FullBitId(size_t bit_id, size_t fixed_id);
 

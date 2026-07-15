@@ -62,7 +62,7 @@ uint16_t MinTreeBitness();
 size_t TreeCasesNumber(uint16_t bitness);
 
 // Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
-std::string TreeValue(uint16_t bitness, size_t case_id, std::string_view input);
+std::string TreeValue(uint16_t bitness, size_t case_id, uint64_t seed, std::string_view input);
 
 // Deterministic, chunk-order-independent case-id sample: splitting the result
 // into contiguous groups and generating each with TreeValuesForCases
@@ -79,7 +79,7 @@ uint16_t TableSolvableBitness();
 size_t TableCasesNumber(uint16_t bitness);
 
 // Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
-std::string TableValue(uint16_t bitness, size_t case_id, std::string_view input);
+std::string TableValue(uint16_t bitness, size_t case_id, uint64_t seed, std::string_view input);
 
 std::vector<size_t> TableSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
 

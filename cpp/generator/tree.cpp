@@ -17,6 +17,7 @@ namespace {
 
 constexpr uint64_t kTreeSelectionDomain = 0x747265655f73656cull;
 constexpr uint64_t kTreeValueDomain = 0x747265655f76616cull;
+constexpr uint64_t kTreeStructureDomain = 0x747265655f737472ull;
 
 size_t RandomUnusedBit(const std::vector<bool>& path_used_bits, size_t free_bits, std::mt19937& rng) {
     assert(free_bits > 0);
@@ -58,9 +59,15 @@ size_t ComputeDepth(const std::vector<Node>& nodes, size_t node_id) {
 
 }  // namespace
 
-DecisionTree::DecisionTree(uint16_t bitness) : used_bits(bitness, false), bitness_(bitness) {}
-
-uint16_t DecisionTree::Bitness() const { return bitness_; }
+DecisionTree::DecisionTree(uint16_t bitness, size_t case_id, uint64_t seed)
+    : Case(bitness, case_id, DomainSeed(seed, kTreeStructureDomain, bitness)), used_bits(bitness, false) {
+    assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
+    assert(case_id < kTreeCasesNumber);
+    std::vector<bool> path_used_bits(bitness, false);
+    const bool root_required_value = Generate();
+    BuildSubtree(case_id, path_used_bits, /*path_used_count=*/0, root_required_value);
+    Finalize();
+}
 
 size_t DecisionTree::AddLeaf(bool value) {
     const size_t node_id = nodes.size();
@@ -70,7 +77,7 @@ size_t DecisionTree::AddLeaf(bool value) {
 }
 
 size_t DecisionTree::BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count,
-                                  bool required_value, RandomBoolGenerator& rng) {
+                                  bool required_value) {
     assert(path_used_bits.size() == bitness_);
     assert(path_used_count <= bitness_);
 
@@ -82,21 +89,21 @@ size_t DecisionTree::BuildSubtree(size_t budget, std::vector<bool>& path_used_bi
     const size_t node_id = nodes.size();
     nodes.push_back(false);
 
-    const size_t bit_id = RandomUnusedBit(path_used_bits, free_bits, rng.RNG());
+    const size_t bit_id = RandomUnusedBit(path_used_bits, free_bits, RNG());
     used_bits[bit_id] = true;
     path_used_bits[bit_id] = true;
 
-    auto [left_budget, right_budget] = SplitBudget(budget, rng.RNG());
+    auto [left_budget, right_budget] = SplitBudget(budget, RNG());
 
     const size_t max_child_nodes = MaxInternalNodes(free_bits - 1);
     left_budget = std::min(left_budget, max_child_nodes);
     right_budget = std::min(right_budget, max_child_nodes);
 
-    const bool child0_required_value = rng.Generate();
+    const bool child0_required_value = Generate();
     const bool child1_required_value = !child0_required_value;
 
-    const size_t child0 = BuildSubtree(left_budget, path_used_bits, path_used_count + 1, child0_required_value, rng);
-    const size_t child1 = BuildSubtree(right_budget, path_used_bits, path_used_count + 1, child1_required_value, rng);
+    const size_t child0 = BuildSubtree(left_budget, path_used_bits, path_used_count + 1, child0_required_value);
+    const size_t child1 = BuildSubtree(right_budget, path_used_bits, path_used_count + 1, child1_required_value);
     path_used_bits[bit_id] = false;
     nodes[node_id] = Div{bit_id, child0, child1};
     return node_id;
@@ -127,18 +134,6 @@ void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, float* out) const
     FillGeneratedValueTensor(bitness_, reps, seed, out, evaluate);
 }
 
-DecisionTree BuildTreeCase(uint16_t bitness, size_t case_id) {
-    assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
-    assert(case_id < kTreeCasesNumber);
-    RandomBoolGenerator rng(PrepRNG(bitness, case_id));
-    DecisionTree tree(bitness);
-    std::vector<bool> path_used_bits(bitness, false);
-    tree.BuildSubtree(case_id, path_used_bits,
-                      /*path_used_count=*/0, rng.Generate(), rng);
-    tree.Finalize();
-    return tree;
-}
-
 namespace gen {
 
 uint16_t MinTreeBitness() { return kMinTreeBitness; }
@@ -148,11 +143,11 @@ size_t TreeCasesNumber(uint16_t bitness) {
     return kTreeCasesNumber;
 }
 
-std::string TreeValue(uint16_t bitness, size_t case_id, std::string_view input) {
+std::string TreeValue(uint16_t bitness, size_t case_id, uint64_t seed, std::string_view input) {
     assert(case_id < TreeCasesNumber(bitness));
     assert(input.size() == bitness);
 
-    const DecisionTree tree = BuildTreeCase(bitness, case_id);
+    const DecisionTree tree(bitness, case_id, seed);
     const auto evaluate = [&tree](std::string_view point) { return tree.Evaluate(point); };
     return SampledValueString(bitness, input, evaluate);
 }
@@ -176,7 +171,7 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
     std::vector<float> case_values(reps * sample_size);
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
-        DecisionTree tree = BuildTreeCase(bitness, case_id);
+        DecisionTree tree(bitness, case_id, seed);
         tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
         const size_t size = tree.nodes.size() - tree.num_leafs;
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.depth);

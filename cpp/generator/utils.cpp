@@ -125,30 +125,6 @@ float SizeScore(uint16_t bitness, size_t tree_size) {
     return static_cast<float>(std::log2(max_size - static_cast<double>(tree_size)));
 }
 
-std::mt19937 PrepRNG(uint16_t bitness, size_t case_id) {
-    std::seed_seq seed{
-        static_cast<uint32_t>(bitness),
-        static_cast<uint32_t>(case_id),
-    };
-    return std::mt19937(seed);
-}
-
-RandomBoolGenerator::RandomBoolGenerator(std::mt19937 rng) : rng_(std::move(rng)) {}
-
-bool RandomBoolGenerator::Generate() {
-    if (bits_remaining_ == 0) {
-        bit_buffer_ = static_cast<uint32_t>(rng_());
-        bits_remaining_ = 32;
-    }
-
-    const bool result = (bit_buffer_ & 1u) != 0;
-    bit_buffer_ >>= 1;
-    --bits_remaining_;
-    return result;
-}
-
-std::mt19937& RandomBoolGenerator::RNG() { return rng_; }
-
 uint64_t CaseInputSeed(uint64_t seed, uint16_t bitness, size_t case_id) {
     uint64_t state = seed;
     state ^= static_cast<uint64_t>(bitness) << 48;
