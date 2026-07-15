@@ -19,8 +19,8 @@ public:
     TableCase(uint16_t bitness, size_t case_id, uint64_t seed);
 
     bool Evaluate(std::string_view input) const;
-    void FillValueTensor(size_t reps, uint64_t seed, float* out) const;
-    void FillRestrictionsTensor(size_t reps, uint64_t seed, float* out) const;
+    void FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const;
+    void FillRestrictionsTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const;
     const std::vector<bool>& TruthTable() const;
 
 private:

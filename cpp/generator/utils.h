@@ -26,9 +26,6 @@ std::vector<uint16_t> SplitBitsInGroups(uint16_t bitness, uint16_t groups, uint1
 // [0, population).
 std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed);
 
-// Generated +/-1 values stay bit-packed until a caller requests float output.
-void StoreBits(std::vector<bool>& destination, const std::vector<float>& source);
-
 size_t FullBitId(size_t bit_id, size_t fixed_id);
 
 // Size training target: log2(2^bitness - tree_size), where tree_size counts
@@ -57,10 +54,11 @@ private:
     size_t next_rep_;
 };
 
-void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, float* out,
+// Generated +/-1 values are written bit-packed: bit set means +1, cleared -1.
+void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
                               const std::function<bool(std::string_view)>& evaluate);
 
-void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, float* out,
+void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
                                      const std::function<bool(std::string_view)>& evaluate);
 
 class FlippingSampler {
@@ -74,7 +72,7 @@ public:
     void Fill(std::string& value, size_t sample_offset, size_t fixed_bit_id,
               const std::function<bool(std::string_view)>& evaluate);
 
-    void Fill(float* value, size_t sample_offset, size_t fixed_bit_id,
+    void Fill(std::vector<bool>& value, size_t sample_offset, size_t fixed_bit_id,
               const std::function<bool(std::string_view)>& evaluate);
 
 private:

@@ -177,12 +177,12 @@ bool TableCase::Evaluate(std::string_view input) const {
     return SparseTableValue(bitness_, sparse_seed_, input);
 }
 
-void TableCase::FillValueTensor(size_t reps, uint64_t seed, float* out) const {
+void TableCase::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
     FillGeneratedValueTensor(bitness_, reps, seed, out, evaluate);
 }
 
-void TableCase::FillRestrictionsTensor(size_t reps, uint64_t seed, float* out) const {
+void TableCase::FillRestrictionsTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
     FillGeneratedRestrictionsTensor(bitness_, reps, seed, out, evaluate);
 }
@@ -229,16 +229,14 @@ GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t>&
     std::vector<float> targets(gen::kTargetsPerCase * cases);
     const uint64_t value_seed = DomainSeed(seed, kTableValueDomain, bitness);
 
-    std::vector<float> case_values(reps * sample_size);
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
         TableCase table(bitness, case_id, seed);
-        table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
+        table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values[case_index]);
         const size_t depth = SolveForDepth(bitness, table.TruthTable());
         const size_t size = SolveForSize(bitness, table.TruthTable());
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - depth);
         targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);
-        StoreBits(values[case_index], case_values);
     }
 
     return GeneratedValues{Values(std::move(values)), std::move(targets)};
@@ -260,16 +258,12 @@ GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vec
     const uint64_t value_seed = DomainSeed(seed, kTableValueDomain, bitness);
     const uint64_t restriction_seed = DomainSeed(seed, kRestrictionDomain, bitness);
 
-    std::vector<float> case_values(reps * sample_size);
-    std::vector<float> restriction_values(restriction_size);
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
         TableCase table(bitness, case_id, seed);
-        table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
+        table.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values[case_index]);
         table.FillRestrictionsTensor(reps, CaseInputSeed(restriction_seed, bitness, case_id),
-                                     restriction_values.data());
-        StoreBits(values[case_index], case_values);
-        StoreBits(restrictions[case_index], restriction_values);
+                                     restrictions[case_index]);
     }
 
     return GeneratedRestrictions{Values(std::move(values)), Restrictions(std::move(restrictions))};

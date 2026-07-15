@@ -130,7 +130,7 @@ bool DecisionTree::Evaluate(std::string_view input) const {
     }
 }
 
-void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, float* out) const {
+void DecisionTree::FillValueTensor(size_t reps, uint64_t seed, std::vector<bool>& out) const {
     const auto evaluate = [this](std::string_view input) { return Evaluate(input); };
     FillGeneratedValueTensor(bitness_, reps, seed, out, evaluate);
 }
@@ -165,15 +165,13 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
     std::vector<float> targets(gen::kTargetsPerCase * cases);
     const uint64_t value_seed = DomainSeed(seed, kTreeValueDomain, bitness);
 
-    std::vector<float> case_values(reps * sample_size);
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         const size_t case_id = case_ids[case_index];
         DecisionTree tree(bitness, case_id, seed);
-        tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), case_values.data());
+        tree.FillValueTensor(reps, CaseInputSeed(value_seed, bitness, case_id), values[case_index]);
         const size_t size = tree.nodes.size() - tree.num_leafs;
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.depth);
         targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);
-        StoreBits(values[case_index], case_values);
     }
 
     return GeneratedValues{Values(std::move(values)), std::move(targets)};

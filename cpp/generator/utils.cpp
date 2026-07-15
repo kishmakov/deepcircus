@@ -41,7 +41,7 @@ bool BitOf(char bit) {
 }
 
 void PutBit(std::string& out, size_t pos, bool bit) { out[pos] = bit ? '1' : '0'; }
-void PutBit(float* out, size_t pos, bool bit) { out[pos] = bit ? 1.0f : -1.0f; }
+void PutBit(std::vector<bool>& out, size_t pos, bool bit) { out[pos] = bit; }
 
 template <typename Output>
 void FillSample(Output& value, std::string& input, uint16_t bitness, size_t sample_offset, size_t fixed_bit_id,
@@ -109,14 +109,6 @@ std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed
         result.push_back(case_id);
     }
     return result;
-}
-
-void StoreBits(std::vector<bool>& destination, const std::vector<float>& source) {
-    assert(destination.size() == source.size());
-    for (size_t index = 0; index < source.size(); ++index) {
-        assert(source[index] == -1.0f || source[index] == 1.0f);
-        destination[index] = source[index] > 0.0f;
-    }
 }
 
 size_t FullBitId(size_t bit_id, size_t fixed_id) { return bit_id < fixed_id ? bit_id : bit_id + 1; }
@@ -198,11 +190,10 @@ void InputGenerator::FillRandom(std::string& output) {
     }
 }
 
-void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, float* out,
+void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
                               const std::function<bool(std::string_view)>& evaluate) {
-    assert(out != nullptr);
-
     const size_t sample_size = 2 * bitness + 1;
+    assert(out.size() == reps * sample_size);
     InputGenerator inputs(bitness, reps, seed);
     inputs.StartSample();
     FlippingSampler sampler;
@@ -212,9 +203,8 @@ void FillGeneratedValueTensor(uint16_t bitness, size_t reps, uint64_t seed, floa
     }
 }
 
-void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, float* out,
+void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t seed, std::vector<bool>& out,
                                      const std::function<bool(std::string_view)>& evaluate) {
-    assert(out != nullptr);
     assert(bitness > 1);
     assert(reps > 0);
     assert(reps % 2 == 0);
@@ -222,6 +212,7 @@ void FillGeneratedRestrictionsTensor(uint16_t bitness, size_t reps, uint64_t see
     const size_t free_bits = bitness - 1;
     const size_t sample_size = 2 * free_bits + 1;
     const size_t restrictions = bitness * 2;
+    assert(out.size() == restrictions * reps * sample_size);
     std::string sample_input(bitness, '0');
     InputGenerator inputs(free_bits, reps, seed);
     FlippingSampler sampler;
@@ -257,9 +248,8 @@ void FlippingSampler::Fill(std::string& value, size_t sample_offset, size_t fixe
     FillSample(value, input, bitness_, sample_offset, fixed_bit_id, evaluate);
 }
 
-void FlippingSampler::Fill(float* value, size_t sample_offset, size_t fixed_bit_id,
+void FlippingSampler::Fill(std::vector<bool>& value, size_t sample_offset, size_t fixed_bit_id,
                            const std::function<bool(std::string_view)>& evaluate) {
-    assert(value != nullptr);
     FillSample(value, input, bitness_, sample_offset, fixed_bit_id, evaluate);
 }
 
