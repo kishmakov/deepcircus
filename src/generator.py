@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ctypes
 import os
 import socket
 import struct
@@ -41,21 +40,6 @@ def _find_server() -> Path:
 SERVER = _find_server()
 
 
-def _load_library() -> ctypes.CDLL:
-    library = ctypes.CDLL(str(SERVER.parent / "libgen.so"))
-    library.gen_unpack_rows.argtypes = [
-        ctypes.POINTER(ctypes.c_uint8),
-        ctypes.c_uint64,
-        ctypes.c_uint64,
-        ctypes.POINTER(ctypes.c_float),
-    ]
-    library.gen_unpack_rows.restype = None
-    return library
-
-
-_LIBRARY = _load_library()
-
-
 def sample_point_dim(bitness: int) -> int:
     return 2 * bitness + 1
 
@@ -68,41 +52,19 @@ def _row_bytes(columns: int) -> int:
     return (columns + 7) // 8
 
 
-def _unpack_rows(packed: np.ndarray, shape: tuple[int, ...]) -> np.ndarray:
-    """Unpacks (rows, row_bytes) little-endian bits into float32 of `shape`.
-
-    The daemon publishes tensors bit-packed, one padded row of bytes per
-    case; bit b carries the value 2*b - 1. The expansion runs in C++
-    (gen_unpack_rows from libgen.so).
-    """
-    rows, columns = shape[0], int(np.prod(shape[1:]))
-    assert packed.shape == (rows, _row_bytes(columns)), (packed.shape, shape)
-    assert packed.flags["C_CONTIGUOUS"], packed.shape
-    values = np.empty(shape, dtype=np.float32)
-    _LIBRARY.gen_unpack_rows(
-        packed.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)),
-        rows,
-        columns,
-        values.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-    )
-    return values
-
-
 @dataclass
 class GeneratedTask:
     """One (iteration, bitness) coordinate borrowed from the daemon.
 
-    Validation depends only on bitness, so it arrives once per bitness in a
-    task with iteration 0, ahead of every training task for that bitness;
-    training tasks (iteration >= 1) carry only the train fields. The daemon
-    publishes tensors bit-packed; value and target arrays are unpacked into
-    owned float32 copies at parse time, so they stay valid after release().
-    The restrictions matrix is too large to unpack whole: it stays a packed
-    view into shared memory, streamed as float32 case chunks through
-    restriction_chunks(), which must be consumed before release(). The
-    training tensor comes with exact (cases, 2) target pairs (depth score,
-    size score), while `approx_values` (present above the solvable bitness)
-    comes with restrictions instead of targets.
+    Iteration-0 tasks carry validation (which depends only on bitness);
+    iteration >= 1 tasks carry training, with exact (cases, 2) targets (depth
+    and size scores). Above the solvable bitness, training also carries
+    `approx_values` plus a restrictions matrix instead of targets.
+
+    Every tensor is copied out of shared memory at parse time, so the task
+    stays valid after release(). Value/target arrays are expanded to float32
+    eagerly; the large restrictions matrix keeps its compact packed copy and is
+    streamed as float32 chunks through restriction_chunks().
     """
 
     generator: Generator
@@ -120,11 +82,12 @@ class GeneratedTask:
 
     def restriction_chunks(self, chunk_cases: int = 256):
         assert self._restrictions_packed is not None, "restrictions missing or already released"
-        cases = self._restrictions_shape[0]
+        cases, *point_shape = self._restrictions_shape
+        columns = int(np.prod(point_shape))
         for start in range(0, cases, chunk_cases):
             stop = min(start + chunk_cases, cases)
-            chunk_shape = (stop - start, *self._restrictions_shape[1:])
-            yield _unpack_rows(self._restrictions_packed[start:stop], chunk_shape)
+            bits = np.unpackbits(self._restrictions_packed[start:stop], axis=1, bitorder="little", count=columns)
+            yield (bits.astype(np.float32) * 2.0 - 1.0).reshape(stop - start, *point_shape)
 
     def release(self) -> None:
         self._restrictions_packed = None
@@ -243,18 +206,29 @@ class Generator:
             if kind == _KIND_RESTRICTIONS:
                 assert task.approx_values is not None, kind
                 assert task._restrictions_packed is None
-                task._restrictions_packed = packed
+                # Copy the compact packed bytes out of shared memory so the
+                # task owns everything it exposes; the large float32 expansion
+                # still happens lazily per chunk in restriction_chunks().
+                task._restrictions_packed = np.array(packed)
                 task._restrictions_shape = shape
-            elif targets is None:
+                continue
+
+            # Expand this value tensor into an owned float32 array once, here at
+            # parse time; bit b (little-endian within each padded row) stands
+            # for the float 2*b - 1.
+            bits = np.unpackbits(packed, axis=1, bitorder="little", count=int(np.prod(shape[1:])))
+            values = bits.astype(np.float32) * 2.0 - 1.0
+            values = values.reshape(shape)
+            if targets is None:
                 assert task.approx_values is None
-                task.approx_values = _unpack_rows(packed, shape)
+                task.approx_values = values
             elif iteration == 0:
                 assert task.validation_values is None
-                task.validation_values = _unpack_rows(packed, shape)
+                task.validation_values = values
                 task.validation_targets = targets
             else:
                 assert task.train_values is None
-                task.train_values = _unpack_rows(packed, shape)
+                task.train_values = values
                 task.train_targets = targets
         assert offset == len(payload), (offset, len(payload))
         is_validation = task.validation_values is not None

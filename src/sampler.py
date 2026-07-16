@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -27,13 +25,6 @@ class GeneratorProxy:
     @property
     def generator(self) -> Generator:
         return self._generator
-
-
-@dataclass
-class Stage:
-    iteration: int
-    bitness: int
-    train_dataset: torch.utils.data.Dataset
 
 
 class Sampler:
@@ -78,12 +69,12 @@ class Sampler:
             )
             task.release()
 
-    def take_stage(
+    def train_dataset(
         self,
         iteration: int,
         bitness: int,
         previous_model: nn.Module | None,
-    ) -> Stage:
+    ) -> torch.utils.data.Dataset:
         task = self.generator.next_task()
         assert task is not None, (iteration, bitness)
         assert (task.iteration, task.bitness) == (iteration, bitness), task
@@ -94,24 +85,30 @@ class Sampler:
             assert previous_model is not None, bitness
             values.append(torch.from_numpy(task.approx_values))
             targets.append(torch.from_numpy(self._approximate_targets(previous_model, task)))
-        train_dataset = torch.utils.data.TensorDataset(
+        dataset = torch.utils.data.TensorDataset(
             torch.cat(values),
             torch.cat(targets),
         )
         task.release()
-        return Stage(iteration, bitness, train_dataset)
+        return dataset
 
-    def train_loader(self, stage: Stage, epoch: int) -> torch.utils.data.DataLoader:
+    def train_loader(
+        self,
+        iteration: int,
+        bitness: int,
+        dataset: torch.utils.data.Dataset,
+        epoch: int,
+    ) -> torch.utils.data.DataLoader:
         seed = (
             self.training.seed
-            + stage.bitness * 10_000
-            + stage.iteration * 100
+            + bitness * 10_000
+            + iteration * 100
             + epoch
         )
         generator = torch.Generator()
         generator.manual_seed(seed)
         return torch.utils.data.DataLoader(
-            stage.train_dataset,
+            dataset,
             batch_size=self.training.batch_size,
             shuffle=True,
             generator=generator,

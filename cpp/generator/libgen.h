@@ -9,12 +9,6 @@
 extern "C" {
 #endif
 
-/******************************** packing ************************************/
-
-// Expands `rows` byte-padded rows of `columns` little-endian bits into
-// floats 2*b - 1, row-major into output (rows * columns floats).
-void gen_unpack_rows(const uint8_t* packed, uint64_t rows, uint64_t columns, float* output);
-
 /********************************* tree **************************************/
 
 size_t gen_tree_cases_number(uint16_t bitness);

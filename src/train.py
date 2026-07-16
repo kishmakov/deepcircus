@@ -57,7 +57,7 @@ def run_training(generator: GeneratorProxy) -> None:
     for iteration, bitness in sampler.coordinates():
         if iteration != previous_iteration:
             previous_model = None
-        stage = sampler.take_stage(iteration, bitness, previous_model)
+        train_dataset = sampler.train_dataset(iteration, bitness, previous_model)
         progress = IterationProgress(iteration, bitness)
         model = get_or_create_model(models, config, bitness)
         optimizer = create_optimizer(model, config)
@@ -70,7 +70,7 @@ def run_training(generator: GeneratorProxy) -> None:
         validation_loader = sampler.validation_loader(bitness)
 
         for epoch in epoch_progress:
-            train_loader = sampler.train_loader(stage, epoch)
+            train_loader = sampler.train_loader(iteration, bitness, train_dataset, epoch)
             train_rmse = train_epoch(model, optimizer, scheduler, train_loader)
             val_rmse = evaluate_epoch(model, validation_loader)
             progress.record_epoch(epoch, train_rmse, val_rmse)
