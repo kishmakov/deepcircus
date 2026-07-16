@@ -12,14 +12,22 @@ whose rows are cases; exact targets remain separate float vectors holding
 `gen::kTargetsPerCase` interleaved values per case: the depth score
 `bitness - depth` and the size score `log2(2^bitness - size)`.
 
+A `Case` base class (`case.{h,cpp}`) owns each case's deterministic randomness,
+keyed by `(bitness, case_id)`, and the block-and-random `InputShape`
+sampling (`SampleValues`/`SampleRestrictions`, using the Gray-code
+`NextSequence` walk); the concrete `TableCase`/`TreeCase` only supply the
+virtual `Evaluate(std::vector<bool>)`. An `InputShape` is `batches`
+independent samplings, each expanded into `batch_size` (power-of-two) points.
+
 Case-ID sampling is split from generation: `TreeSampleCaseIds`/
 `TableSampleCaseIds` deterministically sample a bitness x cases pair once, and
 `TreeValuesForCases`/`TableValuesForCases`/`TableRestrictionsForCases`
 synchronously generate a batch for an explicit, pre-sampled chunk of those case
-ids. Because each case's computation is deterministic from `(bitness, case_id)`
-alone, generating disjoint chunks of the same sampled list on different threads
-and merging their rows with `Values::Concat` reproduces exactly what one
-non-chunked call over the full list would have produced.
+ids under a given `InputShape`. Because each case's computation is deterministic
+from `(bitness, case_id)` alone, generating disjoint chunks of the same sampled
+list on different threads and merging their rows with `Values::Concat`
+reproduces exactly what one non-chunked call over the full list would have
+produced.
 
 ## Producer
 

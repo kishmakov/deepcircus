@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <string_view>
 #include <vector>
 
 #include "case.h"
@@ -14,13 +13,11 @@ inline constexpr uint16_t kMinTableBitness = 4;
 inline constexpr uint16_t kMaxTableBitness = 256;  // technical limitation for a while
 inline constexpr uint16_t kSolvableTableBitness = 12;
 
-class TableCase : Case {
+class TableCase : public Case {
 public:
-    TableCase(uint16_t bitness, size_t case_id, uint64_t seed);
+    TableCase(uint16_t bitness, size_t case_id);
 
-    bool Evaluate(std::string_view input) const;
-    void FillValueTensor(size_t reps, std::vector<bool>& out, size_t base);
-    void FillRestrictionsTensor(size_t reps, std::vector<bool>& out, size_t base);
+    bool Evaluate(const std::vector<bool>& input) const override;
     const std::vector<bool>& TruthTable() const;
 
 private:

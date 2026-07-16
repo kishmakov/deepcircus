@@ -280,7 +280,7 @@ TrainingShape ReadTrainingShape(int client) {
     const Command command = static_cast<Command>(command_value);
     const uint64_t payload_size = ReadValue<uint64_t>(client);
     assert(command == Command::Initialize);
-    constexpr uint64_t expected_size = sizeof(uint64_t) * 6 + sizeof(uint16_t) * 2;
+    constexpr uint64_t expected_size = sizeof(uint64_t) * 5 + sizeof(uint16_t) * 4;
     assert(payload_size == expected_size);
 
     TrainingShape shape{};
@@ -291,15 +291,15 @@ TrainingShape ReadTrainingShape(int client) {
     shape.seed = ReadValue<uint64_t>(client);
     shape.train_samples = ReadValue<uint64_t>(client);
     shape.validation_samples = ReadValue<uint64_t>(client);
-    shape.points_per_sample = ReadValue<uint64_t>(client);
+    shape.sample_batches = ReadValue<uint64_t>(client);
+    shape.sample_batch_size = ReadValue<uint64_t>(client);
 
     assert(shape.first_iteration <= shape.last_iteration);
     assert(shape.bitness_from > 0);
     assert(shape.bitness_from <= shape.bitness_to);
     assert(shape.train_samples > 0);
     assert(shape.validation_samples > 0);
-    assert(shape.points_per_sample > 0);
-    assert(shape.points_per_sample % 2 == 0);
+    assert(shape.sample_batches > 1);
     return shape;
 }
 

@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -24,7 +23,7 @@ struct Div {
 using Node = std::variant<Div, bool>;
 
 struct TreeCase : Case {
-    TreeCase(uint16_t bitness, size_t case_id, uint64_t seed);
+    TreeCase(uint16_t bitness, size_t case_id);
 
     std::vector<Node> nodes;
     std::vector<bool> used_bits;
@@ -33,9 +32,7 @@ struct TreeCase : Case {
 
     size_t AddLeaf(bool value);
 
-    bool Evaluate(std::string_view input) const;
-
-    void FillValueTensor(size_t reps, std::vector<bool>& out, size_t base);
+    bool Evaluate(const std::vector<bool>& input) const override;
 
 private:
     size_t BuildSubtree(size_t budget, std::vector<bool>& path_used_bits, size_t path_used_count, bool required_value);

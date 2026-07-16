@@ -20,7 +20,8 @@ struct TrainingShape {
     uint64_t seed;
     uint64_t train_samples;
     uint64_t validation_samples;
-    uint64_t points_per_sample;
+    uint16_t sample_batches;
+    uint16_t sample_batch_size;
 };
 
 struct Task {

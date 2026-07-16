@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <string_view>
 #include <vector>
 
 namespace gen {
@@ -60,12 +59,19 @@ struct GeneratedRestrictions {
     Restrictions restrictions;
 };
 
+// Input sampling shape shared by the tree and table value batches: `batches`
+// independent samplings, each expanded into `batch_size` (power-of-two) points.
+struct InputShape {
+    uint16_t batches;
+    uint16_t batch_size;
+};
+
 /********************************* tree **************************************/
 
 size_t TreeCasesNumber(uint16_t bitness);
 
-// Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
-std::string TreeValue(uint16_t bitness, size_t case_id, uint64_t seed, std::string_view input);
+// Input: bitness bits. Output length: 2 * bitness + 1.
+std::string TreeValue(uint16_t bitness, size_t case_id, const std::vector<bool>& input);
 
 // Deterministic, chunk-order-independent case-id sample: splitting the result
 // into contiguous groups and generating each with TreeValuesForCases
@@ -74,24 +80,23 @@ std::vector<size_t> TreeSampleCaseIds(uint16_t bitness, size_t cases, uint64_t s
 
 // Synchronously generates a compact, ready-to-read batch for an explicit,
 // pre-sampled chunk of case ids (see TreeSampleCaseIds).
-GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps, uint64_t seed);
+GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape);
 
 /********************************* table *************************************/
 
 uint16_t TableSolvableBitness();
 size_t TableCasesNumber(uint16_t bitness);
 
-// Input: 0/1 string of length bitness. Output length: 2 * bitness + 1.
-std::string TableValue(uint16_t bitness, size_t case_id, uint64_t seed, std::string_view input);
+// Input: bitness bits. Output length: 2 * bitness + 1.
+std::string TableValue(uint16_t bitness, size_t case_id, const std::vector<bool>& input);
 
 std::vector<size_t> TableSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
 
-GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps, uint64_t seed);
+GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape);
 
 // Synchronously generates recursive table values and one dense restriction
 // matrix for an explicit, pre-sampled chunk of case ids.
-GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t>& case_ids, size_t reps,
-                                                uint64_t seed);
+GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape);
 
 /******************************** circuit ************************************/
 

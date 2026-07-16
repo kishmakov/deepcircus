@@ -15,7 +15,8 @@ TrainingShape MakeShape() {
     shape.seed = 42;
     shape.train_samples = 4;
     shape.validation_samples = 2;
-    shape.points_per_sample = 2;
+    shape.sample_batches = 2;
+    shape.sample_batch_size = 4;
     return shape;
 }
 
@@ -31,7 +32,7 @@ TEST(TaskQueueTest, ValidationTask) {
     ASSERT_EQ(validation->values.size(), 1u);
     EXPECT_TRUE(validation->restrictions.empty());
     EXPECT_EQ(validation->values[0].values.Rows(), 2u);
-    EXPECT_EQ(validation->values[0].values.Columns(), 2u * (2 * 4 + 1));
+    EXPECT_EQ(validation->values[0].values.Columns(), 2u * 4u * (2 * 4 + 1));
     EXPECT_EQ(validation->values[0].targets.size(), gen::kTargetsPerCase * 2u);
 }
 
@@ -123,7 +124,8 @@ TrainingShape MakeRecursiveShape() {
     shape.seed = 7;
     shape.train_samples = 8;
     shape.validation_samples = 6;
-    shape.points_per_sample = 2;
+    shape.sample_batches = 2;
+    shape.sample_batch_size = 4;
     return shape;
 }
 
@@ -148,8 +150,8 @@ TEST(TaskQueueTest, RecursiveBitnessMergesRestrictionChunks) {
     const gen::GeneratedRestrictions& merged = train->restrictions[0];
     EXPECT_EQ(merged.values.Rows(), 4u);
     EXPECT_EQ(merged.values.Rows(), merged.restrictions.Rows());
-    EXPECT_EQ(merged.values.Columns(), 2u * (2 * 17 + 1));
-    EXPECT_EQ(merged.restrictions.Columns(), 2u * 17 * 2 * (2 * 17 - 1));
+    EXPECT_EQ(merged.values.Columns(), 2u * 4u * (2 * 17 + 1));
+    EXPECT_EQ(merged.restrictions.Columns(), 2u * 17 * 2u * 4u * (2 * 17 - 1));
 }
 
 namespace {

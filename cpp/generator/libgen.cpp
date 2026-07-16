@@ -2,8 +2,26 @@
 
 #include <cassert>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "generator.h"
+
+namespace {
+
+// Converts a 0/1 char string coming from Python into a bit vector, one bool
+// per char. The only place this conversion is needed: everywhere else in the
+// generator, function inputs are std::vector<bool> already.
+std::vector<bool> BitsFromChars(std::string_view input) {
+    std::vector<bool> bits(input.size());
+    for (size_t i = 0; i < input.size(); ++i) {
+        assert(input[i] == '0' || input[i] == '1');
+        bits[i] = input[i] == '1';
+    }
+    return bits;
+}
+
+}  // namespace
 
 extern "C" {
 
@@ -11,10 +29,10 @@ size_t gen_tree_cases_number(uint16_t bitness) { return gen::TreeCasesNumber(bit
 
 uint16_t gen_table_solvable_bitness() { return gen::TableSolvableBitness(); }
 
-const char* gen_table_value(uint16_t bitness, size_t case_id, uint64_t seed, const char* input) {
+const char* gen_table_value(uint16_t bitness, size_t case_id, uint64_t /*seed*/, const char* input) {
     assert(input != nullptr);
     thread_local std::string value;
-    value = gen::TableValue(bitness, case_id, seed, input);
+    value = gen::TableValue(bitness, case_id, BitsFromChars(input));
     return value.c_str();
 }
 

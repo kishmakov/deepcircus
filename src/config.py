@@ -42,11 +42,16 @@ class TrainingConfig:
     rmse_threshold: float
     train_samples: int
     validation_samples: int
-    points_per_sample: int
+    points_in_batch: int
+    batches: int
     bitness_from: int
     bitness_to: int
     seed: int
     model_dir: Path
+
+    @property
+    def points_per_sample(self) -> int:
+        return self.points_in_batch * self.batches
 
 
 @dataclass(frozen=True)
@@ -180,6 +185,7 @@ def load_config_file(path: Path) -> dict[str, Any]:
 
 def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
     training = raw["training"]
+    sample_structure = training["sample_structure"]
     return TrainingConfig(
         iterations=int(training["iterations"]),
         epochs=int(training["epochs"]),
@@ -187,7 +193,8 @@ def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
         rmse_threshold=float(training["rmse_threshold"]),
         train_samples=int(training["train_samples"]),
         validation_samples=int(training["validation_samples"]),
-        points_per_sample=int(training["points_per_sample"]),
+        points_in_batch=int(sample_structure["points_in_batch"]),
+        batches=int(sample_structure["batches"]),
         bitness_from=int(training["bitness_from"]),
         bitness_to=int(training["bitness_to"]),
         seed=int(training["seed"]),
