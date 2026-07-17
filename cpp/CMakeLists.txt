@@ -26,6 +26,9 @@ FetchContent_MakeAvailable(aiger)
 
 add_library(aiger STATIC "${aiger_SOURCE_DIR}/aiger.c")
 target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
+# aiger's REALLOCN grows fresh arrays with memcpy(res, NULL, 0), which trips
+# UBSan's nonnull-attribute check; silence it for this vendored file only.
+target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
 add_library(gen
     generator/aig.cpp
@@ -34,8 +37,6 @@ add_library(gen
     generator/case.h
     generator/generator.cpp
     generator/generator.h
-    generator/libgen.cpp
-    generator/libgen.h
     generator/table.h
     generator/table.cpp
     generator/tree.cpp

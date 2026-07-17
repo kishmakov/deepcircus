@@ -8,6 +8,7 @@
 
 #include "generator.h"
 #include "tree.h"
+#include "utils.h"
 
 namespace {
 
@@ -48,16 +49,8 @@ constexpr TreeGoldenCase kTreeGoldenCases[] = {
      21, 1280},
 };
 
-std::vector<bool> BitsFromChars(std::string_view input) {
-    std::vector<bool> bits(input.size());
-    for (size_t i = 0; i < input.size(); ++i) {
-        bits[i] = input[i] == '1';
-    }
-    return bits;
-}
-
 std::string TreeValue(const TreeGoldenCase& c, std::string_view input) {
-    return gen::TreeValue(c.bitness, c.case_id, BitsFromChars(input));
+    return gen::TreeValue(c.bitness, c.case_id, gen::BitsFromChars(input));
 }
 
 }  // namespace

@@ -16,16 +16,16 @@ This is a research project to study ML approach to handle decision trees.
 # Code Layout
 
 - `tmp` is the directory not indexed by git
-- `cpp/generator/` holds synchronous generation sources and C API for `scripts/test.py`
+- `cpp/generator/` holds synchronous generation sources
 - `cpp/producer/` holds the task queue, thread pool, and generator orchestration; it is a library independent of the daemon and is covered by `cpp/test`
 - `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
-- `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), currently exercising `cpp/producer`
+- `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), exercising `cpp/generator` and `cpp/producer`
 - `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
 - `cpp/generator/case.{h,cpp}` owns the `Case` base class: per-case deterministic randomness keyed by `(bitness, case_id)`, the fair-coin bit stream, and the block-and-random `InputShape` sampling (`SampleValues`/`SampleRestrictions`/`SampledValueString`); `TableCase`/`TreeCase` supply the virtual `Evaluate(std::vector<bool>)`
 - `cpp/generator/tree.{h,cpp}` owns `TreeCase`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
-- `cpp/generator/generator.h` declares the public synchronous C API and the `InputShape` sampling shape
+- `cpp/generator/generator.h` declares the public synchronous API and the `InputShape` sampling shape
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
-- `cpp/generator/utils.{h,cpp}` owns deterministic case-ID sampling (`SampleCaseIds`/`DomainSeed`), the Gray-code `NextSequence` walk, and the bit-layout helpers (`SplitBitsInGroups`/`FullBitId`/`SizeScore`)
+- `cpp/generator/utils.{h,cpp}` owns deterministic case-ID sampling (`SampleCaseIds`/`DomainSeed`), the Gray-code `NextSequence` walk, the bit-layout helpers (`SplitBitsInGroups`/`FullBitId`/`SizeScore`), and the 0/1-string conversion (`BitsFromChars`)
 - `cpp/generator/generator.cpp` owns the compact bit-packed `BitMatrix` (`gen::Values`/`gen::Restrictions`) and the circuit forwarding; `tree.cpp`/`table.cpp` own their `*SampleCaseIds`/`*ForCases` batch entry points
 - `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types and the task queue; coordinates are produced strictly sequentially, chunking each coordinate's case ids across the thread pool and merging the chunks with `gen::Values::Concat`/`gen::Restrictions::Concat`
 - `cpp/producer/thread_pool.{h,cpp}` owns the FIFO worker pool used to generate a coordinate's case-id chunks in parallel
@@ -45,8 +45,7 @@ This is a research project to study ML approach to handle decision trees.
 
 # Building
 
-- `scripts/build.sh` builds the C++ generator into `cpp/build`;
-   this is where the generator (`libgen.so`) is supposed to be stored
+- `scripts/build.sh` builds the C++ generator into `cpp/build`
 
 # Running
 
@@ -82,7 +81,7 @@ with urllib.request.urlopen(request, timeout=10) as response:
 # Bool Bench Notes
 
 - Keep the C++ generator (`cpp/`) small and dependency-light; it is used as a C/C++ generator with a thin Python helper (`src/generator.py`).
-- Preserve the public C ABI in `cpp/generator/generator.h`: keep exported functions `extern "C"` compatible and avoid C++-only types there.
+- `cpp/generator/generator.h` is the public synchronous generator API; keep it the single entry point for C++ callers.
 - Prefer straightforward implementations over new abstractions unless they remove real duplication.
 - Keep common functionality (such as RNG preparation or random bit sampling) in `cpp/generator/utils.{h,cpp}`.
 - When changing behavior, update nearby C++ and Python entry points together if they expose the same generator concept.

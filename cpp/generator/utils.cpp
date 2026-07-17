@@ -8,6 +8,15 @@
 
 namespace gen {
 
+std::vector<bool> BitsFromChars(std::string_view input) {
+    std::vector<bool> bits(input.size());
+    for (size_t i = 0; i < input.size(); ++i) {
+        assert(input[i] == '0' || input[i] == '1');
+        bits[i] = input[i] == '1';
+    }
+    return bits;
+}
+
 namespace {
 
 constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;

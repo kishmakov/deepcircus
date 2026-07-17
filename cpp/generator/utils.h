@@ -3,9 +3,13 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <string_view>
 #include <vector>
 
 namespace gen {
+
+// Converts a 0/1 char string into a bit vector, one bool per char.
+std::vector<bool> BitsFromChars(std::string_view input);
 
 // SplitMix64 output finalizer over an already-advanced state.
 uint64_t Mix64(uint64_t value);
