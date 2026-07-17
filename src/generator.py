@@ -13,7 +13,7 @@ import numpy as np
 
 _SERVER_NAME = "generator_server"
 _HEADER = struct.Struct("<IQ")
-_INITIALIZATION = struct.Struct("<QQHHQQQQ")
+_INITIALIZATION = struct.Struct("<QQHHQQQHH")
 _TASK_PREFIX = struct.Struct("<QHQQ")
 _TENSOR_DESCRIPTOR = struct.Struct("<BHQQQQQQ")
 
@@ -138,7 +138,8 @@ class Generator:
         seed: int,
         train_samples: int,
         validation_samples: int,
-        points_per_sample: int,
+        sample_batches: int,
+        sample_points_in_batch: int,
     ) -> None:
         assert not self._initialized
         payload = _INITIALIZATION.pack(
@@ -149,7 +150,8 @@ class Generator:
             seed,
             train_samples,
             validation_samples,
-            points_per_sample,
+            sample_batches,
+            sample_points_in_batch,
         )
         response = self._request(_INITIALIZE, payload)
         assert not response, response

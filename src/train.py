@@ -98,6 +98,8 @@ def get_or_create_model(
         assert model_config.name == "deepset", model_config.name
         model = DeepSetPredictor(
             point_dim=sample_point_dim(bitness),
+            batches=config.training.sample_batches,
+            points_in_batch=config.training.sample_points_in_batch,
             phi_hidden=model_config.phi_hidden,
             phi_out=model_config.phi_out,
             rho_hidden=model_config.rho_hidden,

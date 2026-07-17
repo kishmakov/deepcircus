@@ -48,8 +48,8 @@ class Sampler:
                 seed=self.training.seed,
                 train_samples=self.training.train_samples,
                 validation_samples=self.training.validation_samples,
-                sample_batches=self.training.batches,
-                sample_points_in_batch=self.training.points_in_batch,
+                sample_batches=self.training.sample_batches,
+                sample_points_in_batch=self.training.sample_points_in_batch,
             )
             self._take_validation_datasets()
 

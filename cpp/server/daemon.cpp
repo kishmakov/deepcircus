@@ -291,8 +291,8 @@ TrainingShape ReadTrainingShape(int client) {
     shape.seed = ReadValue<uint64_t>(client);
     shape.train_samples = ReadValue<uint64_t>(client);
     shape.validation_samples = ReadValue<uint64_t>(client);
-    shape.sample_batches = ReadValue<uint64_t>(client);
-    shape.sample_batch_size = ReadValue<uint64_t>(client);
+    shape.sample_batches = ReadValue<uint16_t>(client);
+    shape.sample_batch_size = ReadValue<uint16_t>(client);
 
     assert(shape.first_iteration <= shape.last_iteration);
     assert(shape.bitness_from > 0);

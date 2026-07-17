@@ -37,6 +37,7 @@ This is a research project to study ML approach to handle decision trees.
 - Generator values stay bit-packed end to end: the daemon publishes tensors packed (targets stay float32) and `src/generator.py` expands them to float32 with `np.unpackbits` (little-endian, bit `b` -> `2*b - 1`) -- value tensors eagerly at parse time, the large restrictions tensor lazily through `restriction_chunks()`
 - `src/sampler.py` owns the thin generator wrapper and pipelined dataset orchestration; do not restore Python multiprocessing or case routing
 - Python chooses table/tree batch counts from bitness, while C++ samples case IDs and generates each typed batch
+- `src/model.py` owns `DeepSetPredictor`: input `(batch, batches * points_in_batch, point_dim)` is split into `batches` groups, each processed by its own dedicated 2-layer `phi` MLP (an `nn.ModuleList`, no weight sharing), the outputs concatenated into a `batches * phi_out` vector and fed to a single `rho` head
 - `src/train.py` owns the bitness training loop, model construction/loading/saving, and per-epoch optimization
 - `src/config.py` owns config parsing plus snapshot/state/resume details; training should use config methods instead of reading snapshot internals
 - `src/experiment_*.py` should contain experiment logic only; do not put ctypes or shared-library details there

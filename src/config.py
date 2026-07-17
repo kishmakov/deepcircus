@@ -42,8 +42,8 @@ class TrainingConfig:
     rmse_threshold: float
     train_samples: int
     validation_samples: int
-    points_in_batch: int
-    batches: int
+    sample_points_in_batch: int
+    sample_batches: int
     bitness_from: int
     bitness_to: int
     seed: int
@@ -51,7 +51,7 @@ class TrainingConfig:
 
     @property
     def points_per_sample(self) -> int:
-        return self.points_in_batch * self.batches
+        return self.sample_points_in_batch * self.sample_batches
 
 
 @dataclass(frozen=True)
@@ -193,8 +193,8 @@ def build_training_config(raw: dict[str, Any]) -> TrainingConfig:
         rmse_threshold=float(training["rmse_threshold"]),
         train_samples=int(training["train_samples"]),
         validation_samples=int(training["validation_samples"]),
-        points_in_batch=int(sample_structure["points_in_batch"]),
-        batches=int(sample_structure["batches"]),
+        sample_points_in_batch=int(sample_structure["points_in_batch"]),
+        sample_batches=int(sample_structure["batches"]),
         bitness_from=int(training["bitness_from"]),
         bitness_to=int(training["bitness_to"]),
         seed=int(training["seed"]),
