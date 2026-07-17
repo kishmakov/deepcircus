@@ -18,6 +18,10 @@ sampling (`SampleValues`/`SampleRestrictions`, using the Gray-code
 `NextSequence` walk); the concrete `TableCase`/`TreeCase` only supply the
 virtual `Evaluate(std::vector<bool>)`. An `InputShape` is `batches`
 independent samplings, each expanded into `batch_size` (power-of-two) points.
+The expansion of per-batch base sequences into points is the public
+`gen::ExpandInputs`, which `Case::Sample` composes with the case's own
+sequence draws; the `expand_inputs` CLI (`cpp/tools/`) exposes it over
+stdin/stdout so Python callers reuse the same walk.
 
 Case-ID sampling is split from generation: `TreeSampleCaseIds`/
 `TableSampleCaseIds` deterministically sample a bitness x cases pair once, and

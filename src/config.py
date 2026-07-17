@@ -49,10 +49,6 @@ class TrainingConfig:
     seed: int
     model_dir: Path
 
-    @property
-    def points_per_sample(self) -> int:
-        return self.sample_points_in_batch * self.sample_batches
-
 
 @dataclass(frozen=True)
 class TrainConfig:

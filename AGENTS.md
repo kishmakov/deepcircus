@@ -22,6 +22,7 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), exercising `cpp/generator` and `cpp/producer`
 - `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
 - `cpp/generator/case.{h,cpp}` owns the `Case` base class: per-case deterministic randomness keyed by `(bitness, case_id)`, the fair-coin bit stream, and the block-and-random `InputShape` sampling (`SampleValues`/`SampleRestrictions`/`SampledValueString`); `TableCase`/`TreeCase` supply the virtual `Evaluate(std::vector<bool>)`
+- `gen::ExpandInputs` (declared in `generator.h`, implemented in `case.cpp`) is the base-sequences-to-points half of `Case::Sample`; `cpp/tools/expand_inputs.cpp` is a thin stdin/stdout CLI over it so Python reuses the exact C++ input walk instead of mirroring it (client helper: `expand_inputs` in `src/generator.py`, used by `scripts/plot_parity.py`)
 - `cpp/generator/tree.{h,cpp}` owns `TreeCase`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
 - `cpp/generator/generator.h` declares the public synchronous API and the `InputShape` sampling shape
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)

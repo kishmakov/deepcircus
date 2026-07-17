@@ -66,6 +66,13 @@ struct InputShape {
     uint16_t batch_size;
 };
 
+// Expands one base sequence per batch into the block-and-random input walk
+// shared with case sampling: batch 0 follows the Gray-code NextSequence walk,
+// each later batch flips bit groups keyed by (batch, point id). `sequences`
+// must hold shape.batches equal-length sequences; returns batches * batch_size
+// points, each sequence-length bits, concatenated.
+std::vector<bool> ExpandInputs(InputShape shape, const std::vector<std::vector<bool>>& sequences);
+
 /********************************* tree **************************************/
 
 size_t TreeCasesNumber(uint16_t bitness);

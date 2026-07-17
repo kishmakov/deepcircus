@@ -38,6 +38,31 @@ def _find_server() -> Path:
 
 
 SERVER = _find_server()
+EXPAND_INPUTS = SERVER.parent / "expand_inputs"
+
+
+def expand_inputs(sequences: np.ndarray, batch_size: int) -> np.ndarray:
+    """Expands per-batch 0/1 base sequences with the C++ block-and-random walk.
+
+    `sequences` is (samples, batches, dims); returns (samples,
+    batches * batch_size, dims), matching gen::ExpandInputs point order.
+    """
+    samples, batches, dims = sequences.shape
+    lines = [
+        "".join("1" if bit else "0" for bit in row)
+        for row in sequences.reshape(samples * batches, dims)
+    ]
+    completed = subprocess.run(
+        [str(EXPAND_INPUTS), str(batches), str(batch_size)],
+        input="\n".join(lines) + "\n",
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    output = completed.stdout.split()
+    assert len(output) == samples, (len(output), samples)
+    bits = np.frombuffer("".join(output).encode("ascii"), dtype=np.uint8) - ord("0")
+    return bits.reshape(samples, batches * batch_size, dims)
 
 
 def sample_point_dim(bitness: int) -> int:

@@ -13,6 +13,9 @@ import numpy as np
 DEEPCIRCUS_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(DEEPCIRCUS_DIR))
 
+from src.config import TrainingConfig
+from src.generator import expand_inputs
+
 MODEL_DIR = Path("/tmp/circus")
 SAMPLES = 256
 RANDOM_SAMPLES = 256
@@ -20,57 +23,47 @@ SEED = 239
 
 
 def sample_inputs(
-    bitness: int, points_per_sample: int, samples: int, rng: np.random.Generator
+    bitness: int, training: TrainingConfig, samples: int, rng: np.random.Generator
 ) -> np.ndarray:
-    # Mirrors InputGenerator (cpp/generator/utils.cpp): per sample, the first
-    # half of the points are block modifications of one base input (rep's bits
-    # choose which blocks to flip), the second half are fully random.
-    block_reps = points_per_sample // 2
-    blocks = (block_reps - 1).bit_length()
-    flip_masks = np.zeros((block_reps, bitness), dtype=np.int64)
-    block_start = 0
-    for block_id in range(blocks):
-        block_size = bitness // blocks + (1 if block_id < bitness % blocks else 0)
-        rep_bit = (np.arange(block_reps) >> block_id) & 1
-        flip_masks[:, block_start : block_start + block_size] = rep_bit[:, None]
-        block_start += block_size
-    assert block_start == bitness, (block_start, bitness)
-
-    base = rng.integers(0, 2, size=(samples, 1, bitness))
-    block_half = base ^ flip_masks[None, :, :]
-    random_half = rng.integers(0, 2, size=(samples, points_per_sample - block_reps, bitness))
-    return np.concatenate([block_half, random_half], axis=1)
+    # The per-batch base sequences are the only randomness; the block-and-random
+    # expansion into points is the shared C++ walk (gen::ExpandInputs, the same
+    # code Case::Sample uses during training-data generation).
+    sequences = rng.integers(0, 2, size=(samples, training.sample_batches, bitness))
+    return expand_inputs(sequences, training.sample_points_in_batch)
 
 
-def parity_samples(bitness: int, points_per_sample: int, rng: np.random.Generator) -> np.ndarray:
-    # Point layout (see FillSample in cpp/generator/utils.cpp):
+def parity_samples(bitness: int, training: TrainingConfig, rng: np.random.Generator) -> np.ndarray:
+    # Point layout (see Case::SampleValues/ComputeAt in cpp/generator/case.cpp):
     # input bits, f(input), then f(input with bit j flipped) for each j,
-    # every coordinate encoded as -1/+1 (PutBit for float writes -1.0f/1.0f).
+    # every coordinate encoded as -1/+1.
     # Parity flips under any single-bit flip, so the flipped block is 1 - parity.
-    bits = sample_inputs(bitness, points_per_sample, SAMPLES, rng)
+    bits = sample_inputs(bitness, training, SAMPLES, rng)
     parity = bits.sum(axis=-1, keepdims=True) % 2
     flipped = np.broadcast_to(1 - parity, bits.shape)
     sample = np.concatenate([bits, parity, flipped], axis=-1)
     return (2 * sample - 1).astype(np.float32)
 
 
-def random_samples(bitness: int, points_per_sample: int, rng: np.random.Generator) -> np.ndarray:
+def random_samples(bitness: int, training: TrainingConfig, rng: np.random.Generator) -> np.ndarray:
     # Baseline: inputs follow the same block-alteration scheme as parity, but
     # f(input) and the flipped-bit block are random bits with no consistency,
     # showing the model's average output level on structureless values.
-    bits = sample_inputs(bitness, points_per_sample, RANDOM_SAMPLES, rng)
-    values = rng.integers(0, 2, size=(RANDOM_SAMPLES, points_per_sample, bitness + 1))
+    bits = sample_inputs(bitness, training, RANDOM_SAMPLES, rng)
+    points = training.sample_batches * training.sample_points_in_batch
+    values = rng.integers(0, 2, size=(RANDOM_SAMPLES, points, bitness + 1))
     sample = np.concatenate([bits, values], axis=-1)
     return (2 * sample - 1).astype(np.float32)
 
 
 def main() -> None:
     from src.config import load_train_config
+    from src.generator import sample_point_dim
     from src.model import DeepSetPredictor, predict_values
 
     config = load_train_config("train.conf")
     model_config = config.model
     assert model_config is not None, config
+    training = config.training
 
     bitnesses = sorted(
         int(match.group(1))
@@ -84,7 +77,9 @@ def main() -> None:
     random_predictions = {}
     for bitness in bitnesses:
         model = DeepSetPredictor(
-            point_dim=2 * bitness + 1,
+            batches=training.sample_batches,
+            points_in_batch=training.sample_points_in_batch,
+            point_dim=sample_point_dim(bitness),
             phi_hidden=model_config.phi_hidden,
             phi_out=model_config.phi_out,
             rho_hidden=model_config.rho_hidden,
@@ -96,10 +91,10 @@ def main() -> None:
             map_location="cpu",
             weights_only=True,
         ))
-        x = parity_samples(bitness, config.training.points_per_sample, rng)
-        parity_predictions[bitness] = predict_values(model, x, config.training.batch_size)
-        r = random_samples(bitness, config.training.points_per_sample, rng)
-        random_predictions[bitness] = predict_values(model, r, config.training.batch_size)
+        x = parity_samples(bitness, training, rng)
+        parity_predictions[bitness] = predict_values(model, x, training.batch_size)
+        r = random_samples(bitness, training, rng)
+        random_predictions[bitness] = predict_values(model, r, training.batch_size)
         print(
             f"bitness={bitness:02d} mean parity: {parity_predictions[bitness].mean(axis=0)}"
             f" random: {random_predictions[bitness].mean(axis=0)}"

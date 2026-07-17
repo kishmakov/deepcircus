@@ -9,6 +9,7 @@ include(GoogleTest)
 
 add_executable(deepcircus_tests
     test_bit_matrix.cpp
+    test_case.cpp
     test_circuits.cpp
     test_table.cpp
     test_thread_pool.cpp
