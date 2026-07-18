@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from src.generator import GeneratedTask, Generator, load_generator
 from src.config import TrainConfig
-from src.model import predict_values
+from src.model import DEVICE, predict_values, unpack_bits
 
 
 class GeneratorProxy:
@@ -130,6 +130,8 @@ class Sampler:
         bitness = task.bitness
         assert task.approx_values is not None
         cases = len(task.approx_values)
+        _, groups, reps, point_dim = task.restrictions_shape
+        assert groups == 2 * bitness, (groups, bitness)
         targets = np.empty((cases, 2), dtype=np.float32)
         start = 0
 
@@ -137,11 +139,15 @@ class Sampler:
             total=cases,
             desc=f"train:table_restrictions b={bitness}",
         ) as progress:
-            for chunk in task.restriction_chunks():
-                chunk_cases, _, reps, point_dim = chunk.shape
+            for packed in task.restriction_chunks():
+                chunk_cases = len(packed)
+                chunk = unpack_bits(
+                    torch.as_tensor(packed, device=DEVICE),
+                    groups * reps * point_dim,
+                ).reshape(chunk_cases * groups, reps, point_dim)
                 predictions = predict_values(
                     previous_model,
-                    chunk.reshape(chunk_cases * bitness * 2, reps, point_dim),
+                    chunk,
                     self.training.batch_size,
                 )
                 predictions = predictions.reshape(chunk_cases, bitness, 2, 2)

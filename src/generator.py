@@ -87,9 +87,11 @@ class GeneratedTask:
     `approx_values` plus a restrictions matrix instead of targets.
 
     Every tensor is copied out of shared memory at parse time, so the task
-    stays valid after release(). Value/target arrays are expanded to float32
-    eagerly; the large restrictions matrix keeps its compact packed copy and is
-    streamed as float32 chunks through restriction_chunks().
+    stays valid after release(). Value tensors keep their compact bit-packed
+    uint8 rows (cases, row_bytes); expansion to ±1 float32 happens on the GPU
+    (src.model.unpack_bits). The large restrictions matrix is likewise kept
+    packed and streamed as packed row chunks through restriction_chunks(),
+    with its logical shape exposed as restrictions_shape.
     """
 
     generator: Generator
@@ -105,14 +107,15 @@ class GeneratedTask:
     _restrictions_packed: np.ndarray | None = None
     _restrictions_shape: tuple[int, ...] | None = None
 
+    @property
+    def restrictions_shape(self) -> tuple[int, ...]:
+        assert self._restrictions_shape is not None, "restrictions missing or already released"
+        return self._restrictions_shape
+
     def restriction_chunks(self, chunk_cases: int = 256):
         assert self._restrictions_packed is not None, "restrictions missing or already released"
-        cases, *point_shape = self._restrictions_shape
-        columns = int(np.prod(point_shape))
-        for start in range(0, cases, chunk_cases):
-            stop = min(start + chunk_cases, cases)
-            bits = np.unpackbits(self._restrictions_packed[start:stop], axis=1, bitorder="little", count=columns)
-            yield (bits.astype(np.float32) * 2.0 - 1.0).reshape(stop - start, *point_shape)
+        for start in range(0, len(self._restrictions_packed), chunk_cases):
+            yield self._restrictions_packed[start : start + chunk_cases]
 
     def release(self) -> None:
         self._restrictions_packed = None
@@ -234,18 +237,15 @@ class Generator:
                 assert task.approx_values is not None, kind
                 assert task._restrictions_packed is None
                 # Copy the compact packed bytes out of shared memory so the
-                # task owns everything it exposes; the large float32 expansion
-                # still happens lazily per chunk in restriction_chunks().
+                # task owns everything it exposes.
                 task._restrictions_packed = np.array(packed)
                 task._restrictions_shape = shape
                 continue
 
-            # Expand this value tensor into an owned float32 array once, here at
-            # parse time; bit b (little-endian within each padded row) stands
-            # for the float 2*b - 1.
-            bits = np.unpackbits(packed, axis=1, bitorder="little", count=int(np.prod(shape[1:])))
-            values = bits.astype(np.float32) * 2.0 - 1.0
-            values = values.reshape(shape)
+            # Copy this value tensor's compact packed rows out of shared
+            # memory; expansion to ±1 float32 happens on the GPU per minibatch
+            # (src.model.unpack_bits).
+            values = np.array(packed)
             if targets is None:
                 assert task.approx_values is None
                 task.approx_values = values

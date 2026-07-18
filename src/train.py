@@ -149,8 +149,9 @@ def train_epoch(
     count = 0
 
     for xb, yb in loader:
-        xb = torch.as_tensor(xb, dtype=torch.float32, device=DEVICE)
-        yb = torch.as_tensor(yb, dtype=torch.float32, device=DEVICE)
+        # xb stays packed uint8; the model unpacks it on-device
+        xb = xb.to(DEVICE)
+        yb = yb.to(DEVICE)
         optimizer.zero_grad()
         prediction = model(xb)
         loss = criterion(prediction, yb)
@@ -175,8 +176,8 @@ def evaluate_epoch(
 
     with torch.no_grad():
         for xb, yb in loader:
-            xb = torch.as_tensor(xb, dtype=torch.float32, device=DEVICE)
-            yb = torch.as_tensor(yb, dtype=torch.float32, device=DEVICE)
+            xb = xb.to(DEVICE)
+            yb = yb.to(DEVICE)
             prediction = model(xb)
             errors = prediction - yb
             squared_error_sum += float(torch.sum(errors.square()).item())
