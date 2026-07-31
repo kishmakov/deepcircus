@@ -2,5 +2,10 @@
     "cmake.sourceDirectory": "/home/kishmakov/Repos/shad/deepcircus/cpp",
     "github.copilot.enable": {
         "*": false
+    },
+    "search.exclude": {
+        "**/.venv": true,
+        "**/build": true,
+        "**/build-*": true,
     }
 }
