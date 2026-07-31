@@ -30,6 +30,17 @@ target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
 # UBSan's nonnull-attribute check; silence it for this vendored file only.
 target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
+# Standalone bit/sampling/solving pieces. Deliberately does not link `gen`:
+# tools knows nothing about cases, tables, trees, or circuits, so the include
+# direction runs generator -> tools only.
+add_library(tools
+    tools/sample.cpp
+    tools/sample.h
+    tools/solver.cpp
+    tools/solver.h
+)
+target_include_directories(tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tools")
+
 add_library(gen
     generator/aig.cpp
     generator/aig.h
@@ -43,14 +54,10 @@ add_library(gen
     generator/tree.h
     generator/utils.cpp
     generator/utils.h
-    tools/solver.cpp
-    tools/solver.h
 )
 
-target_include_directories(gen PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/generator"
-    "${CMAKE_CURRENT_SOURCE_DIR}/tools"
-)
+target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
+target_link_libraries(gen PUBLIC tools)
 target_link_libraries(gen PRIVATE aiger)
 
 add_library(producer
@@ -71,7 +78,7 @@ target_include_directories(generator_server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}
 target_link_libraries(generator_server PRIVATE producer Threads::Threads)
 
 add_executable(expand_inputs tools/expand_inputs.cpp)
-target_link_libraries(expand_inputs PRIVATE gen)
+target_link_libraries(expand_inputs PRIVATE tools)
 
 option(DEEPCIRCUS_BUILD_TESTS "Build the Google Test suite" ON)
 if(DEEPCIRCUS_BUILD_TESTS)

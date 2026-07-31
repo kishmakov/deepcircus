@@ -1,83 +1,92 @@
 # C++ generation architecture
 
-Generation, task production, and connection handling have separate ownership
-boundaries: `cpp/generator/`, `cpp/producer/`, and `cpp/server/`.
+Four ownership boundaries: `cpp/generator/`, `cpp/producer/`, and `cpp/server/`,
+over a generator-independent base layer in `cpp/tools/`.
+
+## Tools
+
+`cpp/tools/` is its own library in namespace `tools`, holding what is separable
+from case bookkeeping: bit walks and truth-table solving, with no notion of a
+case, table, tree, or circuit. The dependency runs strictly one way -- `gen`
+links `tools` and `generator.h` includes `sample.h`, while nothing here may name
+`gen::`, include a `generator/` header, or link `gen`. That is what lets
+`expand_inputs` link `tools` alone; preserve it when adding files.
+
+`sample.{h,cpp}` owns `InputShape` (aliased as `gen::InputShape`) and the whole
+path from randomness to input points: the bit primitives (`BitsFromChars`,
+`SplitBitsInGroups`, `NextSequence`), `GenerateSequence` (one base sequence off
+a `BitSource` -- `Case` passes its own `GenerateBool`), `ExpandInputs` (bases ->
+block-and-random walk: batch 0 follows the Gray-code `NextSequence` walk, later
+batches flip bit groups keyed by `(batch, point id)`), and `SampleInputs`
+composing the two. `Case::Sample` is then only "get the points, evaluate at
+each". The `expand_inputs` CLI exposes `ExpandInputs` over stdin/stdout so
+Python callers reuse the same walk.
+
+`solver.{h,cpp}` owns the exact truth-table dynamic programs `SolveForDepth` and
+`SolveForSize`, called from `table.cpp`, plus `kMaxSolvableBitness` (aliased as
+`gen::kSolvableTableBitness`): a table is "solvable" exactly when the 3^bitness
+walks can handle it.
 
 ## Generator
 
-`cpp/generator/` is synchronous and contains no worker pool. Each call runs to
-completion on its calling thread. Independent calls are safe from different
+`cpp/generator/` is synchronous and contains no worker pool: each call runs to
+completion on its calling thread, and independent calls are safe from different
 producer threads. `Values` and `Restrictions` are dense, bit-packed matrices
-whose rows are cases; exact targets remain separate float vectors holding
-`gen::kTargetsPerCase` interleaved values per case: the depth score
-`bitness - depth` and the size score `log2(2^bitness - size)`. The exact
-truth-table dynamic programs behind those two scores, `SolveForDepth` and
-`SolveForSize`, live in `tools/solver.{h,cpp}` (compiled into the `gen`
-library) and are called from `table.cpp`.
+whose rows are cases; exact targets stay separate float vectors of
+`gen::kTargetsPerCase` interleaved values per case -- the depth score
+`bitness - depth` and the size score `log2(2^bitness - size)`.
 
-A `Case` base class (`case.{h,cpp}`) owns each case's deterministic randomness,
-keyed by `(bitness, case_id)`, and the block-and-random `InputShape`
-sampling (`SampleValues`/`SampleRestrictions`, using the Gray-code
-`NextSequence` walk); the concrete `TableCase`/`TreeCase` only supply the
-virtual `Evaluate(std::vector<bool>)`. An `InputShape` is `batches`
-independent samplings, each expanded into `batch_size` (power-of-two) points.
-The expansion of per-batch base sequences into points is the public
-`gen::ExpandInputs`, which `Case::Sample` composes with the case's own
-sequence draws; the `expand_inputs` CLI (`cpp/tools/`) exposes it over
-stdin/stdout so Python callers reuse the same walk.
+`Case` (`case.{h,cpp}`) owns each case's deterministic randomness keyed by
+`(bitness, case_id)`: its `mt19937` plus the buffered fair-coin `GenerateBool`
+stream. It exposes `SampleValues`/`SampleRestrictions` over an `InputShape`
+(`batches` independent samplings, each expanded into `batch_size` power-of-two
+points); `TableCase`/`TreeCase` only supply the virtual
+`Evaluate(std::vector<bool>)`.
 
 Case-ID sampling is split from generation: `TreeSampleCaseIds`/
-`TableSampleCaseIds` deterministically sample a bitness x cases pair once, and
-`TreeValuesForCases`/`TableValuesForCases`/`TableRestrictionsForCases`
-synchronously generate a batch for an explicit, pre-sampled chunk of those case
-ids under a given `InputShape`. Because each case's computation is deterministic
-from `(bitness, case_id)` alone, generating disjoint chunks of the same sampled
-list on different threads and merging their rows with `Values::Concat`
-reproduces exactly what one non-chunked call over the full list would have
-produced.
+`TableSampleCaseIds` sample a bitness x cases pair once, then
+`TreeValuesForCases`/`TableValuesForCases`/`TableRestrictionsForCases` generate
+a batch for an explicit, pre-sampled chunk. Since each case is deterministic
+from `(bitness, case_id)` alone, generating disjoint chunks on different threads
+and merging with `Values::Concat` reproduces a single non-chunked call exactly.
 
 ## Producer
 
-`cpp/producer/` owns the FIFO thread pool (`ThreadPool`), the iteration/bitness
-task queue (`TaskQueue`), and the task types (`TrainingShape`, `Task`,
-`TaskResult`) that the daemon later publishes. Wire-level tensor kinds belong to
-the daemon.
+`cpp/producer/` owns the FIFO `ThreadPool`, the iteration/bitness `TaskQueue`,
+and the task types (`TrainingShape`, `Task`, `TaskResult`) the daemon publishes;
+wire-level tensor kinds belong to the daemon. `TaskQueue` has no socket or
+shared-memory dependency, so it is its own library, exercised directly by
+`cpp/test`.
 
-Coordinates (`iteration` x `bitness` pairs) are produced strictly sequentially
-by a dedicated producer thread inside `TaskQueue`, which prefetches finished
-results into a bounded buffer (`TaskQueue::kPrefetchDepth`, currently 8) ahead
-of consumption; `Take()` blocks until the next result in task order is ready,
-pops it, and thereby unblocks the producer to top the buffer back up. Within a
-coordinate, the producer samples that tensor's case ids once, splits them
-evenly across `ThreadPool::WorkerCount()` into contiguous chunks, and fans
-them out via the synchronous generator calls.
-Exact-target value rows are merged back into one `gen::Values`; for recursive
-tables, the worker chunks are likewise merged (`Values::Concat` plus
-`Restrictions::Concat`) into a single `gen::GeneratedRestrictions` pairing
-unlabeled table values with their restriction matrix, so published tensors do
-not depend on worker count. `TaskQueue` has no socket or
-shared-memory dependency, so it is built as its own library and exercised
-directly by `cpp/test`.
+Coordinates (`iteration` x `bitness`) are produced strictly sequentially by a
+dedicated producer thread that prefetches results into a bounded buffer
+(`TaskQueue::kPrefetchDepth`, currently 8); `Take()` blocks until the next
+result in task order is ready, pops it, and thereby unblocks the producer to top
+the buffer back up. Within a coordinate the producer samples that tensor's case
+ids once, splits them evenly across `ThreadPool::WorkerCount()` into contiguous
+chunks, and fans them out. Chunks merge back into one `gen::Values` (for
+recursive tables, `Values::Concat` plus `Restrictions::Concat` into a
+`gen::GeneratedRestrictions`), so published tensors do not depend on worker
+count.
 
-A task's validation set depends only on its bitness, so it is generated once
-per bitness (iteration 0) ahead of every training task for that bitness,
-instead of being recomputed per iteration. Iteration-0 tasks carry only a
-validation tensor with exact targets. Training tasks (iteration >= 1) carry
-only a train tensor with exact targets (tables up to the solvable bitness,
-trees above it) plus, above the solvable bitness, a recursive-table tensor
-with restrictions instead of targets.
+A task's validation set depends only on its bitness, so it is generated once per
+bitness (iteration 0) ahead of that bitness's training tasks rather than per
+iteration. Iteration-0 tasks carry only a validation tensor with exact targets.
+Training tasks (iteration >= 1) carry a train tensor with exact targets (tables
+up to the solvable bitness, trees above it) plus, above the solvable bitness, a
+recursive-table tensor with restrictions instead of targets.
 
 ## Server
 
 `cpp/server/` owns the socket protocol, command loop, and POSIX shared-memory
-publication; only the current coordinate is published, and its value and
-restriction tensors stay bit-packed (rows padded to whole bytes, little-endian
-bit order, bit `b` standing for the float `2*b - 1`) while exact targets are
-written as float32. The Python client unpacks the bits on its side, which
-keeps a task's segment ~32x smaller than a float32 expansion.
-`server.cpp` owns `main`, constructing a `TaskQueue` and handing it to the
-daemon as the task source. Both `scripts/bench.py` and the training client
-(`src/generator.py`) speak this protocol.
+publication. Only the current coordinate is published; its value and restriction
+tensors stay bit-packed (rows padded to whole bytes, little-endian bit order,
+bit `b` standing for the float `2*b - 1`) while exact targets are written as
+float32, keeping a task's segment ~32x smaller than a float32 expansion. The
+Python client unpacks on its side. `server.cpp` owns `main`, constructing a
+`TaskQueue` and handing it to the daemon as the task source. Both
+`scripts/bench.py` and the training client (`src/generator.py`) speak this
+protocol.
 
 ## Tests
 

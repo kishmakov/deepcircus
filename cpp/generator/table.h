@@ -6,12 +6,15 @@
 #include <vector>
 
 #include "case.h"
+#include "solver.h"
 
 namespace gen {
 
 inline constexpr uint16_t kMinTableBitness = 4;
-inline constexpr uint16_t kMaxTableBitness = 256;  // technical limitation for a while
-inline constexpr uint16_t kSolvableTableBitness = 12;
+// Technical limitation for a while.
+inline constexpr uint16_t kMaxTableBitness = 256;
+// Tables at or below this bitness get exact targets.
+inline constexpr uint16_t kSolvableTableBitness = tools::kMaxSolvableBitness;
 
 class TableCase : public Case {
 public:

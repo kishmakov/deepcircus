@@ -8,15 +8,6 @@
 
 namespace gen {
 
-std::vector<bool> BitsFromChars(std::string_view input) {
-    std::vector<bool> bits(input.size());
-    for (size_t i = 0; i < input.size(); ++i) {
-        assert(input[i] == '0' || input[i] == '1');
-        bits[i] = input[i] == '1';
-    }
-    return bits;
-}
-
 namespace {
 
 constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
@@ -62,18 +53,6 @@ uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness) {
     return SplitMix64(state);
 }
 
-std::vector<uint16_t> SplitBitsInGroups(uint16_t bitness, uint16_t groups, uint16_t way) {
-    assert(groups > 0);
-    assert(groups <= bitness);
-
-    const size_t shift = way % bitness;
-    std::vector<uint16_t> group_ids(bitness);
-    for (size_t bit_id = 0; bit_id < bitness; ++bit_id) {
-        group_ids[(bit_id + shift) % bitness] = bit_id * groups / bitness;
-    }
-    return group_ids;
-}
-
 std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed) {
     assert(cases > 0);
     assert(cases <= population);
@@ -91,31 +70,6 @@ std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed
         result.push_back(case_id);
     }
     return result;
-}
-
-std::vector<bool> NextSequence(const std::vector<bool>& sequence) {
-    // Reflected binary Gray-code successor: exactly one bit changes per step and
-    // the walk cycles through all 2^n sequences (the last one wraps to all zeros).
-    std::vector<bool> next = sequence;
-    assert(!next.empty());
-
-    size_t ones = 0;
-    for (bool bit : next) {
-        ones += bit ? 1 : 0;
-    }
-
-    if (ones % 2 == 0) {
-        next[0] = !next[0];
-        return next;
-    }
-
-    size_t lowest = 0;
-    while (!next[lowest]) {
-        ++lowest;
-    }
-    const size_t flip = lowest + 1 < next.size() ? lowest + 1 : lowest;
-    next[flip] = !next[flip];
-    return next;
 }
 
 size_t FullBitId(size_t bit_id, size_t fixed_id) { return bit_id < fixed_id ? bit_id : bit_id + 1; }

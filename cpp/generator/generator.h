@@ -1,5 +1,7 @@
 #pragma once
 
+#include "sample.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -59,19 +61,8 @@ struct GeneratedRestrictions {
     Restrictions restrictions;
 };
 
-// Input sampling shape shared by the tree and table value batches: `batches`
-// independent samplings, each expanded into `batch_size` (power-of-two) points.
-struct InputShape {
-    uint16_t batches;
-    uint16_t batch_size;
-};
-
-// Expands one base sequence per batch into the block-and-random input walk
-// shared with case sampling: batch 0 follows the Gray-code NextSequence walk,
-// each later batch flips bit groups keyed by (batch, point id). `sequences`
-// must hold shape.batches equal-length sequences; returns batches * batch_size
-// points, each sequence-length bits, concatenated.
-std::vector<bool> ExpandInputs(InputShape shape, const std::vector<std::vector<bool>>& sequences);
+// Input sampling shape shared by the tree and table value batches.
+using InputShape = tools::InputShape;
 
 /********************************* tree **************************************/
 

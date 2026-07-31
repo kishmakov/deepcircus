@@ -3,28 +3,15 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <string_view>
 #include <vector>
 
 namespace gen {
-
-// Converts a 0/1 char string into a bit vector, one bool per char.
-std::vector<bool> BitsFromChars(std::string_view input);
 
 // SplitMix64 output finalizer over an already-advanced state.
 uint64_t Mix64(uint64_t value);
 uint64_t SplitMix64(uint64_t& state);
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
 uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
-
-// Produces split of `bitness` bits into `groups` roughly equal groups.
-// Approximately [0 .. bitness / groups], [bitness / groups .. 2 * bitness / groups], ...
-// Then shifts this cyclically based on `way`.
-std::vector<uint16_t> SplitBitsInGroups(uint16_t bitness, uint16_t groups, uint16_t way);
-
-// Gray-code successor of `sequence`: exactly one bit changes per call and the
-// walk cycles through all bit sequences of that length.
-std::vector<bool> NextSequence(const std::vector<bool>& sequence);
 
 // Deterministic, chunk-order-independent sample of `cases` distinct ids from
 // [0, population).

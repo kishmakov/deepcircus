@@ -1,8 +1,8 @@
 #include "case.h"
 
+#include "sample.h"
 #include "utils.h"
 
-#include <bit>
 #include <cassert>
 #include <string>
 
@@ -29,19 +29,6 @@ bool Case::GenerateBool() {
     return result;
 }
 
-std::vector<bool> Case::GenerateSequence(uint16_t subtract) {
-    assert(subtract < bitness_);
-    const uint16_t length = bitness_ - subtract;
-
-    std::vector<bool> sequence(length, false);
-
-    for (uint16_t bit = 0; bit < length; ++bit) {
-        sequence[bit] = GenerateBool();
-    }
-
-    return sequence;
-}
-
 std::vector<bool> Case::ComputeAt(const std::vector<bool>& input) const {
     assert(input.size() == bitness_);
 
@@ -56,61 +43,10 @@ std::vector<bool> Case::ComputeAt(const std::vector<bool>& input) const {
     return result;
 }
 
-std::vector<bool> ExpandInputs(InputShape shape, const std::vector<std::vector<bool>>& sequences) {
-    assert(shape.batches > 1);
-    assert(std::has_single_bit(shape.batch_size));
-    assert(sequences.size() == shape.batches);
-    const uint16_t dims = static_cast<uint16_t>(sequences[0].size());
-    assert(dims > 0);
-
-    std::vector<bool> result;
-    result.reserve(static_cast<size_t>(shape.batches) * shape.batch_size * dims);
-
-    // random sampling
-
-    std::vector<bool> sequence = sequences[0];
-
-    for (size_t id = 0; id < shape.batch_size; id++) {
-        if (id > 0) {
-            sequence = NextSequence(NextSequence(sequence));
-        }
-
-        result.insert(result.end(), sequence.begin(), sequence.end());
-    }
-
-    // block inverting
-
-    for (uint16_t batch = 1; batch < shape.batches; ++batch) {
-        const std::vector<bool>& base = sequences[batch];
-        assert(base.size() == dims);
-
-        const uint16_t groups = std::countr_zero(shape.batch_size);
-        const std::vector<uint16_t> group_ids = SplitBitsInGroups(dims, groups, batch);
-
-        for (uint16_t id = 0; id < shape.batch_size; ++id) {
-            std::vector<bool> point = base;
-            for (uint16_t bit = 0; bit < dims; ++bit) {
-                if (((id >> group_ids[bit]) & 1u) != 0) {
-                    point[bit] = !point[bit];
-                }
-            }
-
-            result.insert(result.end(), point.begin(), point.end());
-        }
-    }
-
-    return result;
-}
-
 std::vector<bool> Case::Sample(InputShape shape, uint16_t dims, const ComputeBlock& compute) {
     assert(dims > 0);
 
-    std::vector<std::vector<bool>> sequences;
-    sequences.reserve(shape.batches);
-    for (uint16_t batch = 0; batch < shape.batches; ++batch) {
-        sequences.push_back(GenerateSequence(bitness_ - dims));
-    }
-    const std::vector<bool> inputs = ExpandInputs(shape, sequences);
+    const std::vector<bool> inputs = tools::SampleInputs(shape, dims, [this] { return GenerateBool(); });
 
     const size_t sample_size = 2 * dims + 1;
     const size_t points = static_cast<size_t>(shape.batches) * shape.batch_size;

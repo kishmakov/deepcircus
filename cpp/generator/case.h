@@ -21,10 +21,6 @@ public:
 
     bool GenerateBool();
 
-    // Draws a fresh random sequence of `bitness - subtract` fair-coin bits
-    // (all `bitness` bits by default).
-    std::vector<bool> GenerateSequence(uint16_t subtract = 0);
-
     // Samples the full function: batches x batch_size points, each dumped as
     // its bits followed by ComputeAt (value plus every single-bit flip).
     std::vector<bool> SampleValues(InputShape shape);

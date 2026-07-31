@@ -7,9 +7,7 @@
 #include <limits>
 #include <vector>
 
-#include "table.h"
-
-namespace gen {
+namespace tools {
 
 namespace {
 
@@ -63,7 +61,7 @@ struct FreeBit {
 }  // namespace
 
 size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table) {
-    assert(bitness <= kSolvableTableBitness);
+    assert(bitness <= kMaxSolvableBitness);
     assert(truth_table.size() == (size_t{1} << bitness));
 
     const uint32_t masks_number = uint32_t{1} << bitness;
@@ -145,7 +143,7 @@ size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table) {
 }
 
 size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table) {
-    assert(bitness <= kSolvableTableBitness);
+    assert(bitness <= kMaxSolvableBitness);
     assert(truth_table.size() == (size_t{1} << bitness));
 
     const uint32_t masks_number = uint32_t{1} << bitness;
@@ -213,4 +211,4 @@ size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table) {
     return SizeOf(table[offset[0] + 0]);
 }
 
-}  // namespace gen
+}  // namespace tools

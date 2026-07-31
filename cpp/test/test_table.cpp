@@ -6,9 +6,9 @@
 #include <string_view>
 
 #include "generator.h"
+#include "sample.h"
 #include "solver.h"
 #include "table.h"
-#include "utils.h"
 
 namespace {
 
@@ -70,7 +70,7 @@ constexpr TableBigGoldenCase kTableBigGoldenCases[] = {
 };
 
 std::string TableValue(uint16_t bitness, size_t case_id, std::string_view input) {
-    return gen::TableValue(bitness, case_id, gen::BitsFromChars(input));
+    return gen::TableValue(bitness, case_id, tools::BitsFromChars(input));
 }
 
 void CheckValueConsistency(uint16_t bitness, size_t case_id, std::string_view input) {
@@ -103,9 +103,9 @@ TEST(TableTest, SolvableGoldenValues) {
         EXPECT_EQ(value, c.expected_value) << "bitness=" << c.bitness << " case_id=" << c.case_id;
 
         const gen::TableCase table(c.bitness, c.case_id);
-        EXPECT_EQ(gen::SolveForDepth(c.bitness, table.TruthTable()), c.expected_depth)
+        EXPECT_EQ(tools::SolveForDepth(c.bitness, table.TruthTable()), c.expected_depth)
             << "bitness=" << c.bitness << " case_id=" << c.case_id;
-        EXPECT_EQ(gen::SolveForSize(c.bitness, table.TruthTable()), c.expected_internal_nodes)
+        EXPECT_EQ(tools::SolveForSize(c.bitness, table.TruthTable()), c.expected_internal_nodes)
             << "bitness=" << c.bitness << " case_id=" << c.case_id;
     }
 }

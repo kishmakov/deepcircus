@@ -21,13 +21,15 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
 - `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), exercising `cpp/generator` and `cpp/producer`
 - `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
-- `cpp/generator/case.{h,cpp}` owns the `Case` base class: per-case deterministic randomness keyed by `(bitness, case_id)`, the fair-coin bit stream, and the block-and-random `InputShape` sampling (`SampleValues`/`SampleRestrictions`/`SampledValueString`); `TableCase`/`TreeCase` supply the virtual `Evaluate(std::vector<bool>)`
-- `gen::ExpandInputs` (declared in `generator.h`, implemented in `case.cpp`) is the base-sequences-to-points half of `Case::Sample`; `cpp/tools/expand_inputs.cpp` is a thin stdin/stdout CLI over it so Python reuses the exact C++ input walk instead of mirroring it (client helper: `expand_inputs` in `src/generator.py`, used by `scripts/plot_parity.py`)
+- `cpp/generator/case.{h,cpp}` owns the `Case` base class: per-case deterministic randomness keyed by `(bitness, case_id)`, the fair-coin bit stream (`GenerateBool`), and the sampling entry points (`SampleValues`/`SampleRestrictions`/`SampledValueString`); `TableCase`/`TreeCase` supply the virtual `Evaluate(std::vector<bool>)`
+- `cpp/tools/` is its own `tools` library in namespace `tools`, and it must not depend on `cpp/generator/`: no `gen::` names, no `generator/` includes, no link edge. The dependency runs one way -- `gen` links `tools` and `generator.h` includes `sample.h`. Keep it that way when adding to `cpp/tools/`
+- `cpp/tools/sample.{h,cpp}` owns `tools::InputShape` and the whole input-point walk: the bit primitives (`BitsFromChars`/`SplitBitsInGroups`/`NextSequence`), `GenerateSequence` (draws one base sequence off a `tools::BitSource` fair-coin callback), `ExpandInputs` (block-and-random expansion of the per-batch bases), and `SampleInputs`, the composition `Case::Sample` calls with its own `GenerateBool` stream
+- `cpp/tools/expand_inputs.cpp` is a thin stdin/stdout CLI over `tools::ExpandInputs` so Python reuses the exact C++ input walk instead of mirroring it (client helper: `expand_inputs` in `src/generator.py`, used by `scripts/plot_parity.py`)
 - `cpp/generator/tree.{h,cpp}` owns `TreeCase`, `Div`, `Node`, tree evaluation/building, and exact small-bitness solving
-- `cpp/tools/solver.{h,cpp}` owns the exact truth-table solvers `gen::SolveForDepth`/`gen::SolveForSize` (the 3^bitness dynamic programs behind a solvable table's targets); it is compiled into the `gen` library and called from `table.cpp`
-- `cpp/generator/generator.h` declares the public synchronous API and the `InputShape` sampling shape
+- `cpp/tools/solver.{h,cpp}` owns the exact truth-table solvers `tools::SolveForDepth`/`tools::SolveForSize` (the 3^bitness dynamic programs behind a solvable table's targets) plus `tools::kMaxSolvableBitness`, which `gen::kSolvableTableBitness` aliases; called from `table.cpp`
+- `cpp/generator/generator.h` declares the public synchronous API; it includes `tools/sample.h` and re-exports `gen::InputShape` as an alias of `tools::InputShape`
 - `cpp/generator/aig.cpp` locates `data/circuits` relative to its own source path (falls back to walking up from the cwd)
-- `cpp/generator/utils.{h,cpp}` owns deterministic case-ID sampling (`SampleCaseIds`/`DomainSeed`), the Gray-code `NextSequence` walk, the bit-layout helpers (`SplitBitsInGroups`/`FullBitId`/`SizeScore`), and the 0/1-string conversion (`BitsFromChars`)
+- `cpp/generator/utils.{h,cpp}` owns deterministic case-ID sampling (`SampleCaseIds`/`DomainSeed`/`TaskSeed`), the SplitMix64 mixers, and the case-shaped helpers `FullBitId`/`SizeScore`; the pure bit primitives live in `tools/sample.h` instead
 - `cpp/generator/generator.cpp` owns the compact bit-packed `BitMatrix` (`gen::Values`/`gen::Restrictions`) and the circuit forwarding; `tree.cpp`/`table.cpp` own their `*SampleCaseIds`/`*ForCases` batch entry points
 - `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types and the task queue; coordinates are produced strictly sequentially, chunking each coordinate's case ids across the thread pool and merging the chunks with `gen::Values::Concat`/`gen::Restrictions::Concat`
 - `cpp/producer/thread_pool.{h,cpp}` owns the FIFO worker pool used to generate a coordinate's case-id chunks in parallel
@@ -86,6 +88,6 @@ with urllib.request.urlopen(request, timeout=10) as response:
 - Keep the C++ generator (`cpp/`) small and dependency-light; it is used as a C/C++ generator with a thin Python helper (`src/generator.py`).
 - `cpp/generator/generator.h` is the public synchronous generator API; keep it the single entry point for C++ callers.
 - Prefer straightforward implementations over new abstractions unless they remove real duplication.
-- Keep common functionality (such as RNG preparation or random bit sampling) in `cpp/generator/utils.{h,cpp}`.
+- Keep case-keyed common functionality (such as RNG preparation or seed derivation) in `cpp/generator/utils.{h,cpp}`; generator-independent bit helpers belong in `cpp/tools/sample.{h,cpp}`.
 - When changing behavior, update nearby C++ and Python entry points together if they expose the same generator concept.
 - Check builds through the local `cpp/CMakeLists.txt` path when edits touch compiled code.

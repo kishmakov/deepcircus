@@ -1,5 +1,6 @@
 #include "case.h"
 #include "generator.h"
+#include "sample.h"
 
 #include <gtest/gtest.h>
 
@@ -23,9 +24,9 @@ TEST(CaseTest, SampleValuesEmbedsExpandInputs) {
     ConstantCase drawer(bitness, 42);
     std::vector<std::vector<bool>> sequences;
     for (uint16_t batch = 0; batch < shape.batches; ++batch) {
-        sequences.push_back(drawer.GenerateSequence());
+        sequences.push_back(tools::GenerateSequence(bitness, [&drawer] { return drawer.GenerateBool(); }));
     }
-    const std::vector<bool> points = ExpandInputs(shape, sequences);
+    const std::vector<bool> points = tools::ExpandInputs(shape, sequences);
 
     ConstantCase sampler(bitness, 42);
     const std::vector<bool> values = sampler.SampleValues(shape);

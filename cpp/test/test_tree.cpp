@@ -7,8 +7,8 @@
 #include <vector>
 
 #include "generator.h"
+#include "sample.h"
 #include "tree.h"
-#include "utils.h"
 
 namespace {
 
@@ -50,7 +50,7 @@ constexpr TreeGoldenCase kTreeGoldenCases[] = {
 };
 
 std::string TreeValue(const TreeGoldenCase& c, std::string_view input) {
-    return gen::TreeValue(c.bitness, c.case_id, gen::BitsFromChars(input));
+    return gen::TreeValue(c.bitness, c.case_id, tools::BitsFromChars(input));
 }
 
 }  // namespace

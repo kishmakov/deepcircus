@@ -169,8 +169,8 @@ GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t>&
         const std::vector<bool> samples = table.SampleValues(shape);
         assert(samples.size() == columns);
         std::copy(samples.begin(), samples.end(), values.begin() + case_index * columns);
-        const size_t depth = SolveForDepth(bitness, table.TruthTable());
-        const size_t size = SolveForSize(bitness, table.TruthTable());
+        const size_t depth = tools::SolveForDepth(bitness, table.TruthTable());
+        const size_t size = tools::SolveForSize(bitness, table.TruthTable());
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - depth);
         targets[gen::kTargetsPerCase * case_index + 1] = SizeScore(bitness, size);
     }
