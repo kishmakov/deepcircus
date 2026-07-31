@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "generator.h"
+#include "solver.h"
 #include "table.h"
 #include "utils.h"
 

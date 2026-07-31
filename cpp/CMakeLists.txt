@@ -43,9 +43,14 @@ add_library(gen
     generator/tree.h
     generator/utils.cpp
     generator/utils.h
+    tools/solver.cpp
+    tools/solver.h
 )
 
-target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
+target_include_directories(gen PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}/generator"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools"
+)
 target_link_libraries(gen PRIVATE aiger)
 
 add_library(producer

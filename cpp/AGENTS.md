@@ -10,7 +10,10 @@ completion on its calling thread. Independent calls are safe from different
 producer threads. `Values` and `Restrictions` are dense, bit-packed matrices
 whose rows are cases; exact targets remain separate float vectors holding
 `gen::kTargetsPerCase` interleaved values per case: the depth score
-`bitness - depth` and the size score `log2(2^bitness - size)`.
+`bitness - depth` and the size score `log2(2^bitness - size)`. The exact
+truth-table dynamic programs behind those two scores, `SolveForDepth` and
+`SolveForSize`, live in `tools/solver.{h,cpp}` (compiled into the `gen`
+library) and are called from `table.cpp`.
 
 A `Case` base class (`case.{h,cpp}`) owns each case's deterministic randomness,
 keyed by `(bitness, case_id)`, and the block-and-random `InputShape`

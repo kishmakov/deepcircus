@@ -25,8 +25,5 @@ private:
     uint64_t sparse_seed_ = 0;
 };
 
-size_t SolveForDepth(uint16_t bitness, const std::vector<bool>& truth_table);
-size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table);
-
 }  // namespace gen
 
