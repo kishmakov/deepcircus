@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <ostream>
 #include <random>
 
 namespace func {
@@ -44,6 +45,9 @@ Scheme::Scheme(size_t bitness) : slots(static_cast<uint8_t>(bitness)) {
 void Scheme::AddOperation(const op::Operation& operation, const std::vector<size_t>& input_ids) {
     assert(operation.kArity == input_ids.size());
     assert(slots < std::numeric_limits<uint8_t>::max());
+    // Distinctness is what the `unbound` lookup below checks, so sorted here
+    // means increasing.
+    assert(std::is_sorted(input_ids.begin(), input_ids.end()));
 
     SlotIds unbound = Unbound();
     std::vector<uint8_t> slot_ids;
@@ -105,7 +109,8 @@ size_t PickOperation(std::mt19937_64& rng, size_t unbound_count) {
     return operation_id;
 }
 
-// Picks `arity` distinct slots; `unbound` is taken by value to draw from.
+// Picks `arity` distinct slots, increasing as `AddOperation` wants them;
+// `unbound` is taken by value to draw from.
 std::vector<size_t> PickInputs(std::mt19937_64& rng, SlotIds unbound, size_t arity) {
     assert(arity <= unbound.size());
 
@@ -117,6 +122,8 @@ std::vector<size_t> PickInputs(std::mt19937_64& rng, SlotIds unbound, size_t ari
         unbound[slot] = unbound.back();
         unbound.pop_back();
     }
+
+    std::sort(input_ids.begin(), input_ids.end());
     return input_ids;
 }
 
@@ -134,6 +141,21 @@ Scheme RandomScheme(size_t bitness, uint64_t seed) {
     }
 
     return scheme;
+}
+
+std::ostream& operator<<(std::ostream& out, const OperationElement& element) {
+    out << element.kName << "(";
+    for (size_t id = 0; id < element.input_ids.size(); ++id) {
+        out << (id == 0 ? "" : ", ") << "s" << int(element.input_ids[id]);
+    }
+    return out << ") -> s" << int(element.output_id);
+}
+
+std::ostream& operator<<(std::ostream& out, const Scheme& scheme) {
+    for (uint8_t level = 0; level < scheme.depth; ++level) {
+        out << "    " << scheme.OperationAt(level) << '\n';
+    }
+    return out << "    output = s" << scheme.OutputId() << '\n';
 }
 
 }  // namespace func

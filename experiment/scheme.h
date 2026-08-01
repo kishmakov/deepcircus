@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <iosfwd>
 #include <string>
 #include <vector>
 
@@ -64,8 +65,10 @@ class Scheme {
 public:
     explicit Scheme(size_t bitness);
 
-    // Binds `input_ids` -- each of them has to be unbound -- and appends the
-    // slot the operation writes, so both `depth` and `slots` grow by one.
+    // Binds `input_ids` -- each of them has to be unbound, and they have to be
+    // increasing, since every operation is symmetric and an order would only be
+    // a second way of writing down the same gate -- and appends the slot the
+    // operation writes, so both `depth` and `slots` grow by one.
     void AddOperation(const op::Operation& operation, const std::vector<size_t>& input_ids);
 
     // Whether growing is over: the scheme computes a single value.
@@ -108,5 +111,11 @@ private:
 
 // Grows a random scheme until it is completed.
 Scheme RandomScheme(size_t bitness, uint64_t seed);
+
+// "MAJ(s0, s1, s4) -> s5".
+std::ostream& operator<<(std::ostream& out, const OperationElement& element);
+
+// One indented line per level, then the output slot.
+std::ostream& operator<<(std::ostream& out, const Scheme& scheme);
 
 }  // namespace func
