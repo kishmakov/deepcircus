@@ -7,8 +7,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(sizes_experiment
     sizes.cpp
-    function.h
-    function.cpp
+    scheme.h
+    scheme.cpp
     # The exact decision-tree solvers, compiled straight into the experiment:
     # `cpp/` is a separate CMake project and `tools` depends on nothing else.
     ../cpp/tools/solver.cpp
