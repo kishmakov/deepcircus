@@ -43,8 +43,8 @@ int main(int argc, char** argv) {
     assert(argc <= 3);
     CheckOperations();
 
-    const std::string bitness_str = argc >= 2 ? argv[1] : "8";
-    const std::string seed_str = argc >= 3 ? argv[2] : "8";
+    const std::string bitness_str = argc >= 2 ? argv[1] : "12";
+    const std::string seed_str = argc >= 3 ? argv[2] : "122";
 
     const size_t bitness = std::stoul(bitness_str);
     const uint64_t seed = std::stoull(seed_str);

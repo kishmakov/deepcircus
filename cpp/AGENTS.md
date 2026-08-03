@@ -92,3 +92,19 @@ protocol.
 
 `cpp/test/` is a Google Test suite (fetched via CMake `FetchContent`, same
 pattern as the `aiger` dependency) linked against the `producer` library.
+
+## Validation
+
+`cpp/validation/` is the standalone `validation` executable that checks what
+training produces: `scheme.{h,cpp}` owns the operation table and the gate
+scheme, `reconstruct.{h,cpp}` searches for a scheme reproducing a decision
+tree, and `main.cpp` drives the search and verifies the result over every input
+assignment. It links `tools` for the exact solvers and nothing else -- like
+`expand_inputs`, it stays on the generator-independent side, so no `gen::`
+names, no `generator/` includes, no `gen` link edge.
+
+`main.cpp`'s asserts are the checks, not debug scaffolding, so its CMake entry
+undefines `NDEBUG` for that one file; the rest of the target builds Release like
+everything else. `scripts/build.sh` builds it with the whole project;
+`cpp/validation/build.sh` builds just this target out of the same `cpp/build`
+tree.

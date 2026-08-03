@@ -20,6 +20,7 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/producer/` holds the task queue, thread pool, and generator orchestration; it is a library independent of the daemon and is covered by `cpp/test`
 - `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
 - `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), exercising `cpp/generator` and `cpp/producer`
+- `cpp/validation/` holds the `validation` executable that checks training results: it reconstructs a scheme for a decision tree and verifies it against the exact solvers. It links `tools` only -- no `gen::` names, no `generator/` includes -- and is a subdirectory of the `cpp/` CMake project, so `scripts/build.sh` builds it; `cpp/validation/build.sh` builds that one target
 - `data/circuits/` holds the benchmark circuits (`*.aig`/`*.bench`); `data/dimensions.txt` records their sizes
 - `cpp/generator/case.{h,cpp}` owns the `Case` base class: per-case deterministic randomness keyed by `(bitness, case_id)`, the fair-coin bit stream (`GenerateBool`), and the sampling entry points (`SampleValues`/`SampleRestrictions`/`SampledValueString`); `TableCase`/`TreeCase` supply the virtual `Evaluate(std::vector<bool>)`
 - `cpp/tools/` is its own `tools` library in namespace `tools`, and it must not depend on `cpp/generator/`: no `gen::` names, no `generator/` includes, no link edge. The dependency runs one way -- `gen` links `tools` and `generator.h` includes `sample.h`. Keep it that way when adding to `cpp/tools/`
@@ -34,6 +35,7 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/producer/task_queue.{h,cpp}` owns the wire-level task/tensor types and the task queue; coordinates are produced strictly sequentially, chunking each coordinate's case ids across the thread pool and merging the chunks with `gen::Values::Concat`/`gen::Restrictions::Concat`
 - `cpp/producer/thread_pool.{h,cpp}` owns the FIFO worker pool used to generate a coordinate's case-id chunks in parallel
 - `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns `main` and wires the daemon to a `TaskQueue`
+- `cpp/validation/main.cpp` keeps its asserts under Release: its CMake entry undefines `NDEBUG` for that file, so the checks it runs are the point of the binary
 - `scripts/test.sh` builds `cpp/test` under AddressSanitizer/UndefinedBehaviorSanitizer (in `cpp/build-asan`, separate from the Release `cpp/build`) and runs it with leak detection on
 - Value-tensor APIs accept an `InputShape` (`batches` x `batch_size`); the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `src/generator.py` owns the generator daemon client: server spawning, the task protocol, and shared-memory task views
