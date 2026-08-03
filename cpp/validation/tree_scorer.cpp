@@ -57,12 +57,11 @@ bool Evaluation::UsesEverySlot() const {
 
 Evaluation Tabulate(const Scheme& scheme) {
     const size_t rows = size_t{1} << scheme.InputCount(0);
-    const size_t output_id = scheme.OutputId();
 
     Evaluation table;
     for (size_t row = 0; row < rows; ++row) {
         const SchemeInput input = static_cast<SchemeInput>(row);
-        table.Append(input, scheme.Compute(input)[output_id]);
+        table.Append(input, scheme.ComputeValue(input));
     }
     return table;
 }

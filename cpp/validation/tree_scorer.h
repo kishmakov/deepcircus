@@ -44,7 +44,7 @@ struct TreeScore {
     double log_size = 0.0;
 };
 
-// Exactly scores the optimal decision tree for `evaluation`.
+// Scores the optimal decision tree for `evaluation`.
 TreeScore Score(const Evaluation& evaluation);
 
 }  // namespace func

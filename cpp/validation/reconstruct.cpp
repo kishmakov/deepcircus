@@ -49,23 +49,6 @@ const std::vector<SchemeInput>& ValidationRows(size_t bitness) {
     return rows;
 }
 
-// Packs the unbound slot values at `row`; bit `id` represents slot `id`.
-size_t UnboundVectorAt(const Scheme& scheme, SchemeInput row) {
-    const Slots values = scheme.Compute(row);
-    const SlotIds& unbound = scheme.Unbound();
-
-    size_t vector_id = 0;
-    for (size_t id = 0; id < unbound.size(); ++id) {
-        vector_id |= static_cast<size_t>(values[unbound[id]]) << id;
-    }
-    return vector_id;
-}
-
-// Evaluates the target at one row without building a full truth table.
-bool TargetAt(const Scheme& original, SchemeInput row) {
-    return original.Compute(row)[original.OutputId()];
-}
-
 // Sorted hashes of the unbound slot functions over validation rows. Used for
 // order-independent deduplication; sampled fingerprints may collide.
 std::vector<uint64_t> SlotsFingerprint(const Scheme& scheme) {
@@ -73,7 +56,7 @@ std::vector<uint64_t> SlotsFingerprint(const Scheme& scheme) {
     std::vector<uint64_t> hashes(unbound.size(), 1469598103934665603ULL);
 
     for (SchemeInput row : ValidationRows(scheme.InputCount(0))) {
-        const Slots values = scheme.Compute(row);
+        const Slots values = scheme.ComputeAll(row);
         for (size_t id = 0; id < unbound.size(); ++id) {
             hashes[id] = (hashes[id] ^ static_cast<uint64_t>(values[unbound[id]])) * 1099511628211ULL;
         }
@@ -113,7 +96,7 @@ ReconstructionState InitialState(const Scheme& original) {
     const size_t bitness = original.InputCount(0);
 
     ReconstructionState state{Scheme(bitness)};
-    assert(state.Validate(original));
+    assert(state.Validate(original) == 0);
     const bool assessed = Assess(state, original);
     assert(assessed);
     return state;
@@ -180,7 +163,7 @@ Evaluation ReconstructionState::Evaluate(const std::vector<SchemeInput>& rows, c
     for (SchemeInput row : rows) {
         // Unbound slots are live-in at the scheme's current depth.
         const SchemeInput input_row = ConstructInputs(row, scheme.depth);
-        result.Append(row, TargetAt(original, input_row));
+        result.Append(row, original.ComputeValue(input_row));
     }
 
     return result;
@@ -212,7 +195,7 @@ bool ReconstructionState::IsAssembled(const Scheme& original) const {
 
     // Completion also requires agreement with `original` on validation rows.
     for (SchemeInput row : ValidationRows(original.InputCount(0))) {
-        if (TargetAt(scheme, row) != TargetAt(original, row)) {
+        if (scheme.ComputeValue(row) != original.ComputeValue(row)) {
             return false;
         }
     }
@@ -220,22 +203,28 @@ bool ReconstructionState::IsAssembled(const Scheme& original) const {
     return true;
 }
 
-bool ReconstructionState::Validate(const Scheme& original) const {
-    const std::vector<SchemeInput> rows = ValidationRows(original.InputCount(0));
+size_t ReconstructionState::Validate(const Scheme& original) const {
+    const std::vector<SchemeInput>& rows = ValidationRows(original.InputCount(0));
 
     // Sparse mapping from unbound values to their required target.
     std::unordered_map<size_t, bool> seen;
     seen.reserve(rows.size());
 
+    size_t mismatches = 0;
     for (SchemeInput row : rows) {
-        const bool value = TargetAt(original, row);
-        const auto [entry, fresh] = seen.emplace(UnboundVectorAt(scheme, row), value);
-        if (!fresh && entry->second != value) {
-            return false;
+        const size_t vector_id = scheme.ComputeUnbound(row);
+        const bool value = original.ComputeValue(row);
+
+        const auto recorded = seen.find(vector_id);
+        if (recorded == seen.end()) {
+            seen.emplace(vector_id, value);
+        } else if (recorded->second != value) {
+            // These unbound values already stand for the other target.
+            ++mismatches;
         }
     }
 
-    return true;
+    return mismatches;
 }
 
 ReconstructionState Reconstruct(const Scheme& original) {
@@ -279,7 +268,7 @@ ReconstructionState Reconstruct(const Scheme& original) {
 
                 ReconstructionState next = state.Grow(operation, picked);
                 // Deduplicate and validate before paying for exact assessment.
-                if (!visited.insert(SlotsFingerprint(next.scheme)).second || !next.Validate(original) ||
+                if (!visited.insert(SlotsFingerprint(next.scheme)).second || next.Validate(original) != 0 ||
                     !Assess(next, original)) {
                     continue;
                 }

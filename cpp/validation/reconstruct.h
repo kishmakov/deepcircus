@@ -39,8 +39,8 @@ struct ReconstructionState {
     // Adds `operation` over the unbound slots at `picked`.
     ReconstructionState Grow(const op::Operation& operation, const std::vector<size_t>& picked) const;
 
-    // Checks that the target remains a function of the unbound slots.
-    bool Validate(const Scheme& original) const;
+    // Checks for correspondence and returns number of found mismatches.
+    size_t Validate(const Scheme& original) const;
 };
 
 // Rebuilds an equivalent scheme from `original`'s behavior, logging expansions.

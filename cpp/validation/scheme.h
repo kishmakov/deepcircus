@@ -96,7 +96,13 @@ public:
     // Slot values after evaluation started at `level`: its live-in slots take
     // the bits of `input` (lowest bit first, ascending slot id), then
     // operations `level`..`depth` run in order. Untouched slots stay false.
-    Slots Compute(SchemeInput input, uint8_t level = 0) const;
+    Slots ComputeAll(SchemeInput input, uint8_t level = 0) const;
+
+    // The value of target slot for given input.
+    bool ComputeValue(SchemeInput input) const { return ComputeAll(input)[OutputId()]; }
+
+    // The value of unbound slots for given input, packed.
+    size_t ComputeUnbound(SchemeInput input) const;
 
     // Slots evaluation started at `level` needs given; `level == depth` is `Unbound()`.
     const SlotIds& LiveIn(uint8_t level) const;

@@ -67,7 +67,7 @@ void Scheme::AddOperation(const op::Operation& operation, const std::vector<size
     ++depth;
 }
 
-Slots Scheme::Compute(SchemeInput input, uint8_t level) const {
+Slots Scheme::ComputeAll(SchemeInput input, uint8_t level) const {
     const SlotIds& live_in = LiveIn(level);
     assert(live_in.size() <= std::numeric_limits<SchemeInput>::digits);
 
@@ -84,6 +84,17 @@ Slots Scheme::Compute(SchemeInput input, uint8_t level) const {
     }
 
     return values;
+}
+
+size_t Scheme::ComputeUnbound(SchemeInput input) const {
+    const Slots values = ComputeAll(input);
+    const SlotIds& unbound = Unbound();
+
+    size_t vector_id = 0;
+    for (size_t id = 0; id < unbound.size(); ++id) {
+        vector_id |= static_cast<size_t>(values[unbound[id]]) << id;
+    }
+    return vector_id;
 }
 
 const SlotIds& Scheme::LiveIn(uint8_t level) const {

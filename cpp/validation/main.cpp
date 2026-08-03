@@ -39,20 +39,6 @@ void CheckOperations() {
     }
 }
 
-
-// The rebuilt scheme has to compute the very function it was rebuilt from. The
-// search does not check that -- nothing in it ever compares the two schemes --
-// so counting the assignments they disagree on is this binary's job.
-size_t Mismatches(const func::Evaluation& rebuilt, const func::Evaluation& target) {
-    assert(rebuilt.rows == target.rows);
-
-    size_t mismatches = 0;
-    for (size_t row = 0; row < target.Rows(); ++row) {
-        mismatches += rebuilt.values[row] != target.values[row];
-    }
-    return mismatches;
-}
-
 int main(int argc, char** argv) {
     assert(argc <= 3);
     CheckOperations();
@@ -81,10 +67,11 @@ int main(int argc, char** argv) {
     std::cout << "  tree score: (depth " << initial_score.depth << ", log size " << initial_score.log_size
               << ") -> (depth " << result.score.depth << ", log size " << result.score.log_size << ")\n";
 
-    const size_t rows = target.Rows();
-    const size_t mismatches = Mismatches(func::Tabulate(result.scheme), target);
-    std::cout << "  verified: " << rows - mismatches << "/" << rows << " input assignments\n";
+    // The rebuilt scheme has to compute the very function it was rebuilt from,
+    // so far as the validation rows can tell.
+    const size_t mismatches = result.Validate(scheme);
     assert(mismatches == 0);
+    std::cout << "  verified: no mismatch over up to " << func::kValidationBudget << " validation rows\n";
 
     return 0;
 }
