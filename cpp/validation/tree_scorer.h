@@ -1,28 +1,50 @@
 #pragma once
 
-// How cheap an optimal decision tree over a set of slots is -- the measure the
-// reconstruction search orders its states by, on the same scale the model is
-// trained to predict.
+// Scores optimal decision trees on the model's training scale. Dense truth
+// tables and exact solving live here and are created only when scored.
 
+#include <cassert>
 #include <cstddef>
 #include <vector>
 
+#include "scheme.h"
+
 namespace func {
 
-// The optimal decision tree over some set of slots: `depth` queries deep, and
-// `log_size` its node count on the scale the model is trained against
-// (`gen::SizeScore`): log2(2^slots - size). A constant function scores `slots`
-// there and a full tree scores 0, so a cheaper tree has a smaller `depth` but a
-// *larger* `log_size`.
+// Function values at selected rows. Bit `k` of a row is slot `k`'s value.
+// Scoring is exact, so an evaluation still has to cover every row.
+struct Evaluation {
+    std::vector<SchemeInput> rows;
+    std::vector<bool> values;
+
+    void Append(SchemeInput row, bool value) {
+        rows.push_back(row);
+        values.push_back(value);
+    }
+
+    size_t Rows() const {
+        assert(rows.size() == values.size());
+        return rows.size();
+    }
+
+    // log2 of the row count.
+    size_t Slots() const;
+
+    // Whether changing every slot can affect the function.
+    bool UsesEverySlot() const;
+};
+
+// Evaluates a completed scheme at every one of its inputs.
+Evaluation Tabulate(const Scheme& scheme);
+
+// Optimal tree cost: query depth and `log2(2^slots - size)`. Cheaper trees have
+// smaller `depth` but larger `log_size`.
 struct TreeScore {
     size_t depth = 0;
     double log_size = 0.0;
 };
 
-// The optimal decision tree over a truth table, tabulated the way the exact
-// solvers want it: entry `id` is the value at the assignment whose slot `k` is
-// bit `k` of `id`, so the slot count is the log2 of the entry count. Only
-// tables the solvers can walk have a score.
-TreeScore Score(const std::vector<bool>& truth_table);
+// Exactly scores the optimal decision tree for `evaluation`.
+TreeScore Score(const Evaluation& evaluation);
 
 }  // namespace func

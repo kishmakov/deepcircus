@@ -18,6 +18,13 @@ struct Operation {
 
     Operation(const char* name, uint8_t arity, uint64_t table) : kName(name), kArity(arity), table_(table) {
         assert(arity <= kMaxArity);
+
+        for (OperationInput input = 0; input < (OperationInput{1} << kArity); ++input) {
+            OperationInput& preimage = preimages_[(*this)(input)];
+            preimage = preimage == kNoInput ? input : preimage;
+        }
+        // Every operation here is non-constant, so it takes both values.
+        assert(preimages_[0] != kNoInput && preimages_[1] != kNoInput);
     }
 
     bool operator()(OperationInput input) const {
@@ -25,11 +32,18 @@ struct Operation {
         return (table_ >> input) & 1;
     }
 
+    // Smallest input the operation takes to `value`, so inverting is deterministic.
+    OperationInput Preimage(bool value) const { return preimages_[value]; }
+
     const std::string kName;
     uint8_t kArity;
 
 private:
+    // Out of the input range of any operation, so it stands for "not seen yet".
+    static constexpr OperationInput kNoInput = OperationInput{1} << kMaxArity;
+
     uint64_t table_ = 0;
+    OperationInput preimages_[2] = {kNoInput, kNoInput};
 };
 
 extern std::vector<Operation> kOperations;
@@ -49,25 +63,21 @@ struct OperationElement : op::Operation {
     bool operator()(const Slots& slots) const;
 };
 
-// A single-input function has no gates at all, and `Scheme` needs at least one
-// level to be evaluated.
+// A single-input function has no gates, and `Scheme` needs at least one level.
 constexpr size_t kMinBitness = 2;
 constexpr size_t kMaxBitness = 12;
 
-// A boolean function grown one operation at a time. It starts as `bitness`
-// unbound input slots; every added operation binds unbound slots (never read by
-// another operation before) and leaves one new slot unbound in their place. So
-// growing ends with a single unbound slot, the output.
-//
-// A slot id is also its evaluation order: inputs come first and level `level`
-// writes slot `bitness + level`.
+// A boolean function grown one operation at a time: starting from `bitness`
+// unbound input slots, each operation binds unbound slots and leaves one new
+// unbound slot in their place, so growing ends with one unbound slot, the
+// output. A slot id is also its evaluation order: inputs first, then level
+// `level` writes slot `bitness + level`.
 class Scheme {
 public:
     explicit Scheme(size_t bitness);
 
-    // Binds `input_ids` -- each of them has to be unbound, and they have to be
-    // increasing, since every operation is symmetric and an order would only be
-    // a second way of writing down the same gate -- and appends the slot the
+    // Binds `input_ids` -- unbound and increasing, since a symmetric operation
+    // would otherwise have a second spelling -- and appends the slot the
     // operation writes, so both `depth` and `slots` grow by one.
     void AddOperation(const op::Operation& operation, const std::vector<size_t>& input_ids);
 
@@ -83,14 +93,12 @@ public:
     uint8_t depth = 0;
     uint8_t slots = 0;
 
-    // Slot values after evaluation started at `level`: the live-in slots of
-    // `level` take the bits of `input` (lowest bit first, ascending slot id)
-    // and operations `level`..`depth` are applied in order. Slots neither given
-    // nor written stay false.
+    // Slot values after evaluation started at `level`: its live-in slots take
+    // the bits of `input` (lowest bit first, ascending slot id), then
+    // operations `level`..`depth` run in order. Untouched slots stay false.
     Slots Compute(SchemeInput input, uint8_t level = 0) const;
 
-    // Slots evaluation started at `level` has to be given from the outside;
-    // `level == depth` is the set still unbound.
+    // Slots evaluation started at `level` needs given; `level == depth` is `Unbound()`.
     const SlotIds& LiveIn(uint8_t level) const;
 
     // Number of slots evaluation started at `level` has to be given.
@@ -103,8 +111,8 @@ public:
     const OperationElement& OperationAt(uint8_t level) const;
 
 private:
-    // One entry per level plus the current unbound set: `live_ins_[level]` is
-    // what was unbound just before operation `level` was added.
+    // One entry per level plus the current unbound set: `live_ins_[level]` is what
+    // was unbound just before operation `level` was added.
     std::vector<SlotIds> live_ins_;
     std::vector<OperationElement> operations_;
 };

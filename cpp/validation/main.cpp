@@ -10,6 +10,7 @@
 
 #include "reconstruct.h"
 #include "scheme.h"
+#include "tree_scorer.h"
 
 using func::op::Operation;
 using func::op::OperationInput;
@@ -39,6 +40,19 @@ void CheckOperations() {
 }
 
 
+// The rebuilt scheme has to compute the very function it was rebuilt from. The
+// search does not check that -- nothing in it ever compares the two schemes --
+// so counting the assignments they disagree on is this binary's job.
+size_t Mismatches(const func::Evaluation& rebuilt, const func::Evaluation& target) {
+    assert(rebuilt.rows == target.rows);
+
+    size_t mismatches = 0;
+    for (size_t row = 0; row < target.Rows(); ++row) {
+        mismatches += rebuilt.values[row] != target.values[row];
+    }
+    return mismatches;
+}
+
 int main(int argc, char** argv) {
     assert(argc <= 3);
     CheckOperations();
@@ -56,20 +70,21 @@ int main(int argc, char** argv) {
               << " gates:\n"
               << scheme;
 
+    const func::Evaluation target = func::Tabulate(scheme);
+    const func::TreeScore initial_score = func::Score(target);
+
     std::cout << "\n  search:\n";
-    const func::Reconstruction reconstruction = func::Reconstruct(scheme);
+    const func::ReconstructionState result = func::Reconstruct(scheme);
 
-    std::cout << "\n  reconstructed scheme, " << int(reconstruction.scheme.depth) << " gates:\n"
-              << reconstruction.scheme;
+    std::cout << "\n  reconstructed scheme, " << int(result.scheme.depth) << " gates:\n" << result.scheme;
 
-    const size_t rows = size_t{1} << bitness;
-    std::cout << "  tree score: (depth " << reconstruction.initial_score.depth << ", log size "
-              << reconstruction.initial_score.log_size << ") -> (depth " << reconstruction.final_score.depth
-              << ", log size " << reconstruction.final_score.log_size << ")\n";
-    std::cout << "  search: " << reconstruction.expansions << " expansions, " << reconstruction.pushed
-              << " states pushed, " << reconstruction.visited << " slot sets seen\n";
-    std::cout << "  verified: " << rows - reconstruction.mismatches << "/" << rows << " input assignments\n";
-    assert(reconstruction.mismatches == 0);
+    std::cout << "  tree score: (depth " << initial_score.depth << ", log size " << initial_score.log_size
+              << ") -> (depth " << result.score.depth << ", log size " << result.score.log_size << ")\n";
+
+    const size_t rows = target.Rows();
+    const size_t mismatches = Mismatches(func::Tabulate(result.scheme), target);
+    std::cout << "  verified: " << rows - mismatches << "/" << rows << " input assignments\n";
+    assert(mismatches == 0);
 
     return 0;
 }

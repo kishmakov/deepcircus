@@ -96,11 +96,37 @@ pattern as the `aiger` dependency) linked against the `producer` library.
 ## Validation
 
 `cpp/validation/` is the standalone `validation` executable that checks what
-training produces: `scheme.{h,cpp}` owns the operation table and the gate
-scheme, `tree_scorer.{h,cpp}` owns `TreeScore` and the scoring of a truth table
-through the exact solvers, `reconstruct.{h,cpp}` searches for a scheme
-reproducing a decision tree, and `main.cpp` drives the search and verifies the
-result over every input assignment. A `TreeScore`'s `log_size` is on the model's
+training produces: `scheme.{h,cpp}` owns the operation table -- each operation
+carrying a `Preimage` inverse -- and the gate scheme, `tree_scorer.{h,cpp}` owns
+everything that costs a walk over every row (`Evaluation` -- the function's
+values at a set of rows, and what `Score` takes -- `Tabulate`, and the exact
+solvers behind `Score`), `reconstruct.{h,cpp}` searches for a
+scheme reproducing a decision tree, and `main.cpp` drives the search and
+verifies the result over every input assignment. Keep the dense side on the
+`tree_scorer.h` side of that line: it is what caps the reachable bitness, and a
+score predicted from a sampled fingerprint would need none of it. A
+`ReconstructionState` is its scheme and its score and nothing else -- what it
+has left to compute is worked out afresh through `Evaluate`, walking each row of
+its unbound slots back to an input reaching it (`ConstructInputs`, inverting one
+operation per level) and reading the target there; `Grow` always builds the next
+state and cheaply, while
+`Validate(original)` is const and only asks whether the state still tells the
+target apart; working out its residual and scoring it is a separate step
+(`Assess` in `reconstruct.cpp`) the search takes for the states it inspects and
+no others. The scheme being rebuilt is passed in wherever it is needed and read
+a row at a time, so the search holds no tabulation of it at all. Everything the
+search judges a state by goes through the one row set `ValidationRows` draws:
+`Validate`, `IsAssembled` (a completed scheme agreeing with the original over
+those rows), and `SlotsFingerprint`, the per-slot hash the search dedups on in
+place of the columns it used to keep. That is `kValidationBudget` rows --
+exhaustive while `2^bitness` fits in it, that many random rows above, where a
+dropped distinction can slip through and only `main.cpp`'s final check catches
+the wrong scheme. `Reconstruct` returns the assembled
+`ReconstructionState` it ended on and reports what the run cost only through
+`PrintStep`'s per-step line; checking the rebuilt scheme against the original is
+`main.cpp`'s job, not the search's. One counter bounds a run: past
+`kMaxProcessed` states pushed the search stops adding to the heap and finishes
+on what it holds, aborting if that drains without assembling. A `TreeScore`'s `log_size` is on the model's
 own scale -- `log2(2^slots - size)`, a hand-kept copy of `gen::SizeScore`, since
 validation cannot link `gen` -- so a *cheaper* tree scores *higher* there, which
 is why the search's ordering negates it.
