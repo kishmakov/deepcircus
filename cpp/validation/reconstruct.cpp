@@ -11,8 +11,6 @@
 #include <utility>
 #include <vector>
 
-#include "solver.h"
-
 namespace func {
 
 namespace {
@@ -137,11 +135,12 @@ struct State {
 };
 
 // Best first: the cheapest decision tree wins, then the scheme closest to being
-// completed, then the older state.
+// completed, then the older state. A cheaper tree scores a *higher* `log_size`,
+// hence the negation.
 struct ByScore {
     bool operator()(const State& lhs, const State& rhs) const {
-        return std::make_tuple(lhs.score.depth, lhs.score.size, lhs.columns.Slots(), lhs.order) <
-               std::make_tuple(rhs.score.depth, rhs.score.size, rhs.columns.Slots(), rhs.order);
+        return std::make_tuple(lhs.score.depth, -lhs.score.log_size, lhs.columns.Slots(), lhs.order) <
+               std::make_tuple(rhs.score.depth, -rhs.score.log_size, rhs.columns.Slots(), rhs.order);
     }
 };
 
@@ -187,12 +186,6 @@ bool UsesEverySlot(const TruthTable& residual) {
     return true;
 }
 
-TreeScore Score(const TruthTable& table) {
-    const uint16_t slots = static_cast<uint16_t>(table.Slots());
-    assert(slots <= tools::kMaxSolvableBitness);
-    return {tools::SolveForDepth(slots, table.values), tools::SolveForSize(slots, table.values)};
-}
-
 std::optional<State> State::Grow(const op::Operation& operation, const std::vector<size_t>& picked,
                                  const TruthTable& target, std::set<Columns>& visited, size_t order) const {
     Columns grown = columns.Apply(operation, picked);
@@ -216,7 +209,7 @@ std::optional<State> State::Grow(const op::Operation& operation, const std::vect
     Scheme next = scheme;
     next.AddOperation(operation, input_ids);
 
-    const TreeScore score = Score(residual);
+    const TreeScore score = Score(residual.values);
     return State{std::move(next), std::move(grown), std::move(residual), score, order};
 }
 
@@ -227,7 +220,7 @@ State InitialState(const TruthTable& target) {
     State state{Scheme(bitness), Columns::Inputs(bitness), {}, {}, 0};
     const bool feasible = Residual(state.columns, target, state.residual);
     assert(feasible);
-    state.score = Score(state.residual);
+    state.score = Score(state.residual.values);
     return state;
 }
 
@@ -252,7 +245,7 @@ void PrintStep(size_t expansion, const State& state, size_t heap_size) {
     } else {
         std::cout << state.scheme.OperationAt(state.scheme.depth - 1);
     }
-    std::cout << ", tree (depth " << state.score.depth << ", size " << state.score.size << "), "
+    std::cout << ", tree (depth " << state.score.depth << ", log size " << state.score.log_size << "), "
               << state.columns.Slots() << " slots left, heap " << heap_size << '\n';
 }
 

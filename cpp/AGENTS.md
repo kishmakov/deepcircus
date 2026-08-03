@@ -97,11 +97,17 @@ pattern as the `aiger` dependency) linked against the `producer` library.
 
 `cpp/validation/` is the standalone `validation` executable that checks what
 training produces: `scheme.{h,cpp}` owns the operation table and the gate
-scheme, `reconstruct.{h,cpp}` searches for a scheme reproducing a decision
-tree, and `main.cpp` drives the search and verifies the result over every input
-assignment. It links `tools` for the exact solvers and nothing else -- like
-`expand_inputs`, it stays on the generator-independent side, so no `gen::`
-names, no `generator/` includes, no `gen` link edge.
+scheme, `tree_scorer.{h,cpp}` owns `TreeScore` and the scoring of a truth table
+through the exact solvers, `reconstruct.{h,cpp}` searches for a scheme
+reproducing a decision tree, and `main.cpp` drives the search and verifies the
+result over every input assignment. A `TreeScore`'s `log_size` is on the model's
+own scale -- `log2(2^slots - size)`, a hand-kept copy of `gen::SizeScore`, since
+validation cannot link `gen` -- so a *cheaper* tree scores *higher* there, which
+is why the search's ordering negates it.
+
+It links `tools` for the exact solvers and nothing else -- like `expand_inputs`,
+it stays on the generator-independent side, so no `gen::` names, no
+`generator/` includes, no `gen` link edge.
 
 `main.cpp`'s asserts are the checks, not debug scaffolding, so its CMake entry
 undefines `NDEBUG` for that one file; the rest of the target builds Release like

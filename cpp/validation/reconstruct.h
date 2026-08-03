@@ -7,7 +7,7 @@
 // A search state is a scheme that still has several unbound slots. Every
 // operation added later reads unbound slots only, so the target has to be a
 // function of the current unbound slot values. That residual function is what a
-// state is scored by -- the (depth, size) of its optimal decision tree, compared
+// state is scored by -- the `TreeScore` of its optimal decision tree, compared
 // lexicographically -- and its absence is what prunes: once two input rows share
 // their unbound slot values but disagree on the target, the scheme has dropped a
 // distinction no completion can bring back.
@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "scheme.h"
+#include "tree_scorer.h"
 
 namespace func {
 
@@ -34,13 +35,6 @@ struct TruthTable {
     }
 };
 
-// The optimal decision tree over some set of slots: `depth` queries deep and
-// `size` decision nodes big. States are ordered by the pair, `depth` first.
-struct TreeScore {
-    size_t depth = 0;
-    size_t size = 0;
-};
-
 // What one search run reached, plus what it cost to get there.
 struct Reconstruction {
     // The rebuilt scheme; it need not be the one the target came from, only one
@@ -48,7 +42,8 @@ struct Reconstruction {
     Scheme scheme;
     // Score of the bare inputs the search started from.
     TreeScore initial_score;
-    // Score of the completed scheme: a single slot holding the target, so (1, 1).
+    // Score of the completed scheme: a single slot holding the target, one
+    // query over one node, so (1, log2(2 - 1) = 0).
     TreeScore final_score;
     // States taken off the heap, put on it, and slot sets ever reached.
     size_t expansions = 0;

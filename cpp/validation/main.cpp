@@ -63,9 +63,9 @@ int main(int argc, char** argv) {
               << reconstruction.scheme;
 
     const size_t rows = size_t{1} << bitness;
-    std::cout << "  tree score: (depth " << reconstruction.initial_score.depth << ", size "
-              << reconstruction.initial_score.size << ") -> (depth " << reconstruction.final_score.depth << ", size "
-              << reconstruction.final_score.size << ")\n";
+    std::cout << "  tree score: (depth " << reconstruction.initial_score.depth << ", log size "
+              << reconstruction.initial_score.log_size << ") -> (depth " << reconstruction.final_score.depth
+              << ", log size " << reconstruction.final_score.log_size << ")\n";
     std::cout << "  search: " << reconstruction.expansions << " expansions, " << reconstruction.pushed
               << " states pushed, " << reconstruction.visited << " slot sets seen\n";
     std::cout << "  verified: " << rows - reconstruction.mismatches << "/" << rows << " input assignments\n";

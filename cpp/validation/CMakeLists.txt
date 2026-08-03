@@ -4,6 +4,8 @@ add_executable(validation
     scheme.cpp
     reconstruct.h
     reconstruct.cpp
+    tree_scorer.h
+    tree_scorer.cpp
 )
 
 # The exact decision-tree solvers come from `tools`, which knows nothing about
