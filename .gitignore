@@ -8,6 +8,13 @@ cmake-build-*/
 tmp
 abc.history
 
+# Documentation
+*.log
+*.aux
+*.pdf
+*.bbl
+*.blg
+
 # Python
 __pycache__/
 *.py[cod]

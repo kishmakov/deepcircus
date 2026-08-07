@@ -1,0 +1,104 @@
+\documentclass[11pt]{article}
+
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\title{Construction Explained}
+\author{Kirill Shmakov}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Goal}
+
+The idea of this project is to augment the algorithm presented
+in~\cite{rokach2013mlcircuit} with an ML-backed model for complexity estimation
+of decision trees, used for the heuristic choice of element.
+
+\section{Algorithm}
+
+Initially we have a boolean function $g$ with $n$ primary inputs $\bar{x} = \left(x_1, x_2, \dots, x_n\right)$.
+
+Our goal is to construct a circuit representation of this function using logical
+elements from $\mathcal{K} = \left\{ K_1, K_2, \dots, K_m \right\}$.
+
+We use a greedy heuristic algorithm to find some implementation. This algorithm operates
+on a pair $(S, C)$, where $S$ is the set of slots and $C$ is the current unfinished
+circuit.
+
+Initially $S_0 = \left\{x_1, x_2, \dots, x_n\right\}$ and $C_0$ is the empty
+circuit.
+
+At the iteration step for the current pair $(S, C)$ the algorithm iterates over the
+elements $K$ of $\mathcal{K}$ and attaches each of them to the current slots $S$ in
+all possible ways. The output of the element produces a new slot $y$. For every such
+attachment we estimate a complexity score of our function $\text{Score}\left[g \mid \bar{x}, y\right]$.
+The attachment that gives the minimal value of the score function is selected, and we
+update our pair $(S, C)$.
+
+The score function is the size of the minimal decision tree needed to compute the
+function $g$ from the value table of $\bar{x}, y$: we pick the $y$ that maximally
+helps us to reduce the remaining complexity.
+
+\section{Model}
+
+For $n \leqslant 12$ we can compute $\text{Score}\left[g \mid \bar{x}, y\right]$ as the size
+of the minimal decision tree (the truth table is not very big, so dynamic programming
+is applicable).
+
+For larger $n$ this quickly becomes impossible, and we need to use an ML model $S_1$
+for approximate computation.
+
+$S_1$ accepts two boolean functions $g, f : \{0,1\}^n \to \{0,1\}$ as its arguments;
+we write $S^n_1$ when we need to track the arity of the input functions.
+It outputs a pair $(d, s)$ of real numbers, $d, s \in [0, n]$. Here $d$ is the depth
+of the minimal-depth decision tree, and $s$ is $\log_2 (\text{IN} + 1)$, where
+$\text{IN}$ is the number of internal nodes in the minimal-size decision tree; these
+two trees need not be the same.
+
+We also need another model $S_2$, which takes a boolean function $g : \{0,1\}^n \to \{0,1\}$
+and a subset $X \subseteq \{0,1\}^n$ as its arguments. Its outputs $(d, s)$ have the
+same semantics, for the decision trees needed to compute $g$ restricted to $X$.
+
+For training $S_1$ and $S_2$ we use exact values when possible. Otherwise we compute
+the target value as follows.
+
+\subsection{Targets for $S_1$}
+
+We select the target for $S^n_1\left[g \mid f\right]$ to be the minimum over the
+following reductions:
+\begin{itemize}
+    \item through each primary input $x_i$:
+        $$
+            S^{n-1}_1 \left[g \downarrow_{x_i = 0} \mid f \downarrow_{x_i = 0} \right], \qquad
+            S^{n-1}_1 \left[g \downarrow_{x_i = 1} \mid f \downarrow_{x_i = 1} \right]
+        $$
+    \item through $f$:
+        $$
+            S^n_2 \left[g \mid f^{-1}(0) \right], \qquad
+            S^n_2 \left[g \mid f^{-1}(1) \right]
+        $$
+\end{itemize}
+
+Here $h \downarrow_{x_i = \alpha}$ for $\alpha \in \{0, 1\}$ denotes the restriction of
+$h$ obtained by fixing $x_i = \alpha$, viewed as a function of the remaining $n - 1$
+inputs.
+
+\subsection{Targets for $S_2$}
+
+We select the target for $S^n_2\left[g \mid X\right]$ to be the minimum over the
+reductions through each primary input $x_i$:
+$$
+    S^{n-1}_2 \left[g \downarrow_{x_i = 0} \mid X \downarrow_{x_i = 0} \right], \qquad
+    S^{n-1}_2 \left[g \downarrow_{x_i = 1} \mid X \downarrow_{x_i = 1} \right]
+$$
+where $X \downarrow_{x_i = \alpha}$ is the projection of $X \cap \{x_i = \alpha\}$ onto
+the coordinates other than $x_i$.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
