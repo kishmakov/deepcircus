@@ -18,6 +18,7 @@ This is a research project to study ML approach to handle decision trees.
 - `tmp` is the directory not indexed by git
 - `cpp/generator/` holds synchronous generation sources
 - `cpp/producer/` holds the task queue, thread pool, and generator orchestration; it is a library independent of the daemon and is covered by `cpp/test`
+- `cpp/preparation/` holds the `offline_train_data_generator` executable that writes the offline training data one bitness at a time (`offline_train_data_generator <output_dir> <bitness> <seed>` -> `s1_<bitness>.bin`, `s2_<bitness>.bin`, bitness zero-padded to two digits so a listing sorts in bitness order; the seed is written into each file's header, since the name does not carry it); it is a subdirectory of the `cpp/` CMake project, so `scripts/build.sh` builds it into `cpp/build/preparation/`; `scripts/preparation/build_offline_generator.sh` builds that one target and publishes it as the `execs/offline_train_data_generator` symlink, which is the name callers use. Its payload is still deterministic placeholder filler
 - `cpp/server/` holds the daemon, socket protocol, shared-memory publication, and `main`
 - `cpp/test/` holds the Google Test suite (fetched via CMake `FetchContent`), exercising `cpp/generator` and `cpp/producer`
 - `cpp/validation/` holds the `validation` executable that checks training results: it reconstructs a scheme for a decision tree and verifies it against the exact solvers. It links `tools` only -- no `gen::` names, no `generator/` includes -- and is a subdirectory of the `cpp/` CMake project, so `scripts/build.sh` builds it; `cpp/validation/build.sh` builds that one target
@@ -36,6 +37,8 @@ This is a research project to study ML approach to handle decision trees.
 - `cpp/producer/thread_pool.{h,cpp}` owns the FIFO worker pool used to generate a coordinate's case-id chunks in parallel
 - `cpp/server/daemon.{h,cpp}` owns the socket protocol, command loop, and shared-memory publication; `cpp/server/server.cpp` owns `main` and wires the daemon to a `TaskQueue`
 - `cpp/validation/main.cpp` keeps its asserts under Release: its CMake entry undefines `NDEBUG` for that file, so the checks it runs are the point of the binary
+- `cpp/preparation/main.cpp` does the same: an unopenable output path or an out-of-range bitness must abort, not pass silently, so its CMake entry undefines `NDEBUG` too
+- `scripts/preparation/prepare_offline_train_data.sh` makes `data/s{1,2}_{08..12}.bin` exist: it regenerates only the bitnesses whose pair is incomplete, staging through the work dir and moving the results into `data/`. Its `work_dir`, `seed`, and bitness range all come from `conf/preparation.conf`; a key missing there is fatal rather than defaulted. `data/*` is gitignored apart from `data/circuits/`
 - `scripts/test.sh` builds `cpp/test` under AddressSanitizer/UndefinedBehaviorSanitizer (in `cpp/build-asan`, separate from the Release `cpp/build`) and runs it with leak detection on
 - Value-tensor APIs accept an `InputShape` (`batches` x `batch_size`); the block-and-random input scheme is a C++ implementation detail, so do not expose an input policy or restore Python-generated packed inputs
 - `src/generator.py` owns the generator daemon client: server spawning, the task protocol, and shared-memory task views

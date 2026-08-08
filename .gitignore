@@ -25,3 +25,6 @@ __pycache__/
 # Data
 data/*
 !data/circuits/
+
+# Binaries
+execs

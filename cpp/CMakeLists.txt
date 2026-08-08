@@ -80,6 +80,7 @@ target_link_libraries(generator_server PRIVATE producer Threads::Threads)
 add_executable(expand_inputs tools/expand_inputs.cpp)
 target_link_libraries(expand_inputs PRIVATE tools)
 
+add_subdirectory(preparation)
 add_subdirectory(validation)
 
 option(DEEPCIRCUS_BUILD_TESTS "Build the Google Test suite" ON)
