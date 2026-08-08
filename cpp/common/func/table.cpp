@@ -20,9 +20,11 @@ namespace {
 
 constexpr uint64_t kTableSelectionDomain = 0x7461626c655f7365ull;
 
+constexpr uint16_t kTruthTableBitness = 16;
+
 // A uniformly random truth table, one rng word at a time.
-std::vector<bool> SolvableTruthTable(uint16_t bitness, std::mt19937& rng) {
-    assert(bitness >= kMinTableBitness && bitness <= kSolvableTableBitness);
+std::vector<bool> TruthTable(uint16_t bitness, std::mt19937& rng) {
+    assert(bitness >= kMinTableBitness && bitness <= kTruthTableBitness);
 
     std::vector<bool> truth_table(size_t{1} << bitness);
     size_t input_id = 0;
@@ -37,7 +39,7 @@ std::vector<bool> SolvableTruthTable(uint16_t bitness, std::mt19937& rng) {
 }
 
 size_t BitsToNum(const std::vector<bool>& input) {
-    assert(input.size() <= kSolvableTableBitness);
+    assert(input.size() <= kTruthTableBitness);
 
     size_t id = 0;
     for (size_t bit_id = 0; bit_id < input.size(); ++bit_id) {
@@ -62,27 +64,27 @@ bool SparseTableValue(uint16_t bitness, uint64_t base_seed, const std::vector<bo
 
 TableCase::TableCase(uint16_t bitness, uint64_t seed) : gen::Case(bitness, seed) {
     assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
-    if (bitness_ <= kSolvableTableBitness) {
-        truth_table_ = SolvableTruthTable(bitness_, rng_);
-    } else {
-        sparse_seed_ = static_cast<uint64_t>(rng_()) | (static_cast<uint64_t>(rng_()) << 32);
+    if (bitness_ <= kTruthTableBitness) {
+        // Qualified: the member TruthTable() would otherwise hide the drawing
+        // function at class scope.
+        truth_table_ = func::TruthTable(bitness_, rng_);
     }
+    // Above that the function is a hash keyed on the seed itself, so there is
+    // nothing to draw and nothing to store.
 }
 
 bool TableCase::Evaluate(const std::vector<bool>& input) const {
     assert(input.size() == bitness_);
-    if (bitness_ <= kSolvableTableBitness) {
-        return truth_table_[BitsToNum(input)];
+    if (truth_table_.has_value()) {
+        return (*truth_table_)[BitsToNum(input)];
     }
-    return SparseTableValue(bitness_, sparse_seed_, input);
+    return SparseTableValue(bitness_, seed_, input);
 }
 
 const std::vector<bool>& TableCase::TruthTable() const {
-    assert(bitness_ <= kSolvableTableBitness);
-    return truth_table_;
+    assert(truth_table_.has_value());
+    return *truth_table_;
 }
-
-uint16_t TableSolvableBitness() { return kSolvableTableBitness; }
 
 std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input) {
     assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
@@ -103,7 +105,7 @@ gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uin
     assert(shape.batches > 1);
     assert(std::has_single_bit(shape.batch_size));
     assert(bitness >= kMinTableBitness);
-    assert(bitness <= kSolvableTableBitness);
+    assert(bitness <= tools::kMaxSolvableBitness);
 
     const size_t sample_size = 2 * bitness + 1;
     const size_t columns = static_cast<size_t>(shape.batches) * shape.batch_size * sample_size;
@@ -130,7 +132,7 @@ gen::GeneratedRestrictions TableRestrictionsForSeeds(uint16_t bitness, const std
     assert(cases > 0);
     assert(shape.batches > 1);
     assert(std::has_single_bit(shape.batch_size));
-    assert(bitness > kSolvableTableBitness);
+    assert(bitness > tools::kMaxSolvableBitness);
     assert(bitness <= kMaxTableBitness);
 
     const size_t points = static_cast<size_t>(shape.batches) * shape.batch_size;

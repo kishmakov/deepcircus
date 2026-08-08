@@ -3,38 +3,31 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
 #include "case.h"
-#include "tools/solver.h"
 
 namespace func {
 
-inline constexpr uint16_t kMinTableBitness = 4;
+inline constexpr uint16_t kMinTableBitness = 8;
 // Technical limitation for a while.
 inline constexpr uint16_t kMaxTableBitness = 256;
-// Tables at or below this bitness get exact targets.
-inline constexpr uint16_t kSolvableTableBitness = tools::kMaxSolvableBitness;
 
 // A uniformly random boolean function of `bitness` inputs, drawn from `seed`
-// alone. At or below kSolvableTableBitness the truth table is materialized and
-// readable through TruthTable(); above it the function stays implicit and is
-// hashed per point.
+// alone. How far the solvers reach is a separate question it does not ask.
 class TableCase : public gen::Case {
 public:
     TableCase(uint16_t bitness, uint64_t seed);
 
     bool Evaluate(const std::vector<bool>& input) const override;
-    // Only materialized at or below kSolvableTableBitness.
+    // Only the materialized cases have one.
     const std::vector<bool>& TruthTable() const;
 
 private:
-    std::vector<bool> truth_table_;
-    uint64_t sparse_seed_ = 0;
+    std::optional<std::vector<bool>> truth_table_;
 };
-
-uint16_t TableSolvableBitness();
 
 // Input: bitness bits. Output length: 2 * bitness + 1.
 std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input);

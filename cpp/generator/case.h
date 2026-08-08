@@ -59,6 +59,8 @@ protected:
     std::vector<bool> Sample(InputShape shape, uint16_t dims, const ComputeBlock& compute);
 
     uint16_t bitness_;
+    // Kept as handed in, for a case that hashes its seed instead of drawing.
+    uint64_t seed_;
 
     std::mt19937 rng_;
     uint32_t bit_buffer_ = 0;

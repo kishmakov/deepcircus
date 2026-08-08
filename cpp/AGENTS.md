@@ -8,8 +8,8 @@ The generator, producer, and server sit over the generator-independent
 `cpp/common/` holds code shared by otherwise independent executables. The exact
 truth-table solvers live in `common/tools/solver.{h,cpp}`, retain the `tools`
 namespace, and are included as `"tools/solver.h"`. `SolveForDepth` and
-`SolveForSize` are called from `table.cpp`; `kMaxSolvableBitness` is aliased as
-`func::kSolvableTableBitness`.
+`SolveForSize` are called from `table.cpp`; `kMaxSolvableBitness` is named
+directly by everything that needs it, `table.h` included.
 
 `common/tools/random.{h,cpp}` is the shared random toolbox: the SplitMix64
 finalizer and state step, one-shot mixing, unbiased bounded draws, and fair
@@ -24,6 +24,14 @@ random function of its seed alone, so preparation builds one per independently
 random function, helper, subset indicator, or off-subset filler it needs and
 reads it back through `TruthTable()` -- there is no separate table-drawing
 entry point to keep in step with how a case draws its own.
+
+Where a case holds its function outright is its own question, not the solver's:
+it materializes a truth table up to `kTruthTableBitness` (internal to
+`table.cpp`) and hashes its seed per point above that, so `truth_table_` is an
+`optional` and `TruthTable()` asserts on having one rather than on a bitness
+comparison a caller would have to repeat. How far the exact solvers reach is
+`tools::kMaxSolvableBitness`, which callers name directly -- the table
+interface no longer re-exports it, and the two bounds are independent.
 
 The `...Given` and `...Restricted` pairs score the two models of
 `docs/paper.tex` over a second truth table -- the same two readings a

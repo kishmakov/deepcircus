@@ -9,6 +9,7 @@
 
 #include "func/table.h"
 #include "generator.h"
+#include "tools/solver.h"
 #include "tree.h"
 #include "utils.h"
 
@@ -83,7 +84,7 @@ gen::GeneratedValues GenerateTreeValues(ThreadPool& pool, uint16_t bitness, size
 gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, size_t cases, uint16_t batches,
                                          uint16_t batch_size, uint64_t seed) {
     assert(cases > 0);
-    assert(bitness <= func::kSolvableTableBitness);
+    assert(bitness <= tools::kMaxSolvableBitness);
     const std::vector<uint64_t> seeds = func::TableSampleSeeds(bitness, cases, seed);
     return ConcatValues(
         GenerateParallel(pool, seeds, [bitness, batches, batch_size](const std::vector<uint64_t>& chunk) {
@@ -94,7 +95,7 @@ gen::GeneratedValues GenerateTableValues(ThreadPool& pool, uint16_t bitness, siz
 gen::GeneratedRestrictions GenerateTableRestrictions(ThreadPool& pool, uint16_t bitness, size_t cases, uint16_t batches,
                                                      uint16_t batch_size, uint64_t seed) {
     assert(cases > 0);
-    assert(bitness > func::kSolvableTableBitness);
+    assert(bitness > tools::kMaxSolvableBitness);
     const std::vector<uint64_t> seeds = func::TableSampleSeeds(bitness, cases, seed);
     return ConcatRestrictions(
         GenerateParallel(pool, seeds, [bitness, batches, batch_size](const std::vector<uint64_t>& chunk) {
@@ -113,9 +114,9 @@ constexpr uint64_t kValidationIteration = 0;
 std::unique_ptr<TaskResult> GenerateTrainTask(const TrainingShape& shape, const Task& task, ThreadPool& pool) {
     auto result = std::make_unique<TaskResult>();
     result->task = task;
-    assert(gen::kMinTreeBitness <= func::kSolvableTableBitness);
+    assert(gen::kMinTreeBitness <= tools::kMaxSolvableBitness);
 
-    if (task.bitness <= func::kSolvableTableBitness) {
+    if (task.bitness <= tools::kMaxSolvableBitness) {
         result->values.push_back(GenerateTableValues(pool, task.bitness, shape.train_samples, shape.sample_batches,
                                                      shape.sample_batch_size, task.seed));
     } else {
@@ -133,9 +134,8 @@ std::unique_ptr<TaskResult> GenerateTrainTask(const TrainingShape& shape, const 
 std::unique_ptr<TaskResult> GenerateValidationTask(const TrainingShape& shape, const Task& task, ThreadPool& pool) {
     auto result = std::make_unique<TaskResult>();
     result->task = task;
-    const uint16_t solvable = func::TableSolvableBitness();
 
-    if (task.bitness <= solvable) {
+    if (task.bitness <= tools::kMaxSolvableBitness) {
         result->values.push_back(GenerateTableValues(pool, task.bitness, shape.validation_samples, shape.sample_batches,
                                                      shape.sample_batch_size, task.seed));
     } else {

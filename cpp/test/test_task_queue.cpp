@@ -2,6 +2,7 @@
 
 #include <set>
 
+#include "func/table.h"
 #include "task_queue.h"
 
 namespace {
@@ -10,8 +11,8 @@ TrainingShape MakeShape() {
     TrainingShape shape{};
     shape.first_iteration = 1;
     shape.last_iteration = 2;
-    shape.bitness_from = 4;
-    shape.bitness_to = 4;
+    shape.bitness_from = func::kMinTableBitness;
+    shape.bitness_to = func::kMinTableBitness;
     shape.seed = 42;
     shape.train_samples = 4;
     shape.validation_samples = 2;
@@ -28,11 +29,11 @@ TEST(TaskQueueTest, ValidationTask) {
     std::unique_ptr<TaskResult> validation = queue.Take();
     ASSERT_NE(validation, nullptr);
     EXPECT_EQ(validation->task.iteration, 0u);
-    EXPECT_EQ(validation->task.bitness, 4);
+    EXPECT_EQ(validation->task.bitness, func::kMinTableBitness);
     ASSERT_EQ(validation->values.size(), 1u);
     EXPECT_TRUE(validation->restrictions.empty());
     EXPECT_EQ(validation->values[0].values.Rows(), 2u);
-    EXPECT_EQ(validation->values[0].values.Columns(), 2u * 4u * (2 * 4 + 1));
+    EXPECT_EQ(validation->values[0].values.Columns(), 2u * 4u * (2 * func::kMinTableBitness + 1));
     EXPECT_EQ(validation->values[0].targets.size(), gen::kTargetsPerCase * 2u);
 }
 
@@ -44,7 +45,7 @@ TEST(TaskQueueTest, TrainingTasks) {
         std::unique_ptr<TaskResult> result = queue.Take();
         ASSERT_NE(result, nullptr);
         EXPECT_EQ(result->task.iteration, iteration);
-        EXPECT_EQ(result->task.bitness, 4);
+        EXPECT_EQ(result->task.bitness, func::kMinTableBitness);
         ASSERT_EQ(result->values.size(), 1u);
         EXPECT_TRUE(result->restrictions.empty());
         EXPECT_EQ(result->values[0].values.Rows(), 4u);
@@ -84,7 +85,7 @@ TEST(TaskQueueTest, SeedsNotRepeated) {
     EXPECT_EQ(seeds.size(), 3u);
 }
 
-// Different worker counts change how a coordinate's case ids are chunked
+// Different worker counts change how a coordinate's case seeds are chunked
 // across the pool internally; the merged batch must come out byte-identical
 // regardless, since chunking is an execution detail, not a sampling input.
 TEST(TaskQueueTest, WorkersGenerateSameTrees) {
@@ -119,7 +120,7 @@ TrainingShape MakeRecursiveShape() {
     TrainingShape shape{};
     shape.first_iteration = 1;
     shape.last_iteration = 1;
-    shape.bitness_from = 17;  // one above kSolvableTableBitness: recursive table path
+    shape.bitness_from = 17;  // above tools::kMaxSolvableBitness: recursive table path
     shape.bitness_to = 17;
     shape.seed = 7;
     shape.train_samples = 8;
@@ -131,7 +132,7 @@ TrainingShape MakeRecursiveShape() {
 
 }  // namespace
 
-// Above TableSolvableBitness, training tasks carry recursive table values
+// Above tools::kMaxSolvableBitness, training tasks carry recursive table values
 // paired with their restriction matrices; the per-worker chunks are merged
 // back into a single pair preserving case order and total case count.
 TEST(TaskQueueTest, RecursiveBitnessMergesRestrictionChunks) {
@@ -165,7 +166,7 @@ std::vector<uint8_t> TensorBytes(const Tensor& tensor) {
 
 }  // namespace
 
-// Different worker counts change how a coordinate's case ids are chunked
+// Different worker counts change how a coordinate's case seeds are chunked
 // across the pool internally; the merged restriction pair must come out
 // byte-identical regardless, since chunking is an execution detail.
 TEST(TaskQueueTest, WorkersGenerateSameTables) {
