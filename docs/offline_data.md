@@ -28,7 +28,7 @@ range they land, and every source is written for both series.
 
 - `_rand` -- both truth tables drawn uniformly at random.
 - `_small` -- each entry built around a witness decision tree, so its exact
-  minimal size is a chosen small number.
+  minimal size is small.
 
 A uniformly random pair is essentially always hard: at `n = 12` the exact size
 sits in the hundreds, and no amount of redrawing brings it near single digits.
@@ -50,21 +50,29 @@ functions off it:
    to agree with `T` on `X`, and draws `g` at random off `X` -- which is what
    makes the subset worth knowing, since computing `g` everywhere then costs
    what a random table costs.
-5. Solve exactly. The tree only bounds the target from above, so the entry is
-   kept when the solver confirms `k` and redrawn otherwise.
+5. Solve exactly, and store what the solver says. The witness is what the pair
+   was built around, so it bounds the answer from above; it is never the label.
 
-The witness is usually the optimum, so step 5 accepts the large majority of
-draws and the rejection loop turns over once or twice. `min_depth` comes along
-for whatever the tree happens to give; only the size is aimed at.
+There is no search for a pair that hits `k` on the nose. A draw whose
+distinctions partly collapse -- two leaves that no assignment tells apart, a
+subset that misses a leaf entirely -- simply has a smaller minimal size, and the
+entry is kept as it came out. So `k` is an upper bound the targets cluster just
+under rather than a value they pin to, and one draw plus one solve produces an
+entry. `min_depth` comes along for whatever the tree happens to give; only the
+size is steered.
 
-The target is `small_size_from + index % (small_size_to - small_size_from + 1)`,
-so the entry index cycles through the configured range and an entry count that
-is a multiple of the range's width carries every target equally often. The
-construction has a ceiling that grows with the bitness -- a target too large for
-`2^n` rows to keep a `k`-node tree's distinctions alive is rejected forever, and
-the generator aborts on its attempt bound rather than emitting something else.
-Measured, `n = 8` reaches about 24, `n = 10` about 48, and `n = 12` past 64;
-the configured `1..16` is well inside all of them.
+The node count is
+`small_size_from + index % (small_size_to - small_size_from + 1)`, so the entry
+index cycles through the configured range. An entry count *smaller* than the
+range's width therefore never reaches the top of the range: at `entries: 16` and
+`1..32`, only 1..16 is ever drawn. Make the entry count a multiple of the
+width to cover the range evenly.
+
+The construction still has a ceiling, now set by the shape rather than by the
+target: every path of a witness can ask at most `n` input bits plus, in series
+1, the helper, so a node count whose trees cannot fit in that depth is redrawn
+until the attempt bound aborts the run. Measured, `n = 8` and `n = 10` reach past
+64 and `n = 12` past 128, so the configured range is well inside all of them.
 
 ## Layout
 
@@ -184,9 +192,8 @@ The generator takes a seed, an entry count, and the small-size range on the
 command line. All of them come from `conf/preparation.conf`, with one entry count
 shared by every bitness. Its content must be a pure function of `(seed, series,
 bitness, source, entries, small-size range)` -- no clock, no global RNG, no
-filesystem state -- so a file can be reproduced from the config alone. That also
-binds the `_small` rejection loop: an attempt is keyed by its counter alongside
-the entry's coordinates, so entry `k` stays a pure function of `k` rather than
-of how many draws the entries before it happened to burn. The seed is *not*
-stored in the file: neither the header nor the name carries it, so
+filesystem state -- so a file can be reproduced from the config alone. Every
+entry is keyed by its own coordinates, so entry `k` is a pure function of `k`
+rather than of how many draws the entries before it happened to burn. The seed
+is *not* stored in the file: neither the header nor the name carries it, so
 `conf/preparation.conf` is the only record of what produced a given `data/*.bin`.

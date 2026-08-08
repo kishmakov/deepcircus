@@ -12,6 +12,7 @@ add_executable(deepcircus_tests
     test_case.cpp
     test_circuits.cpp
     test_offline_data.cpp
+    test_random.cpp
     test_sample.cpp
     test_solver.cpp
     test_table.cpp

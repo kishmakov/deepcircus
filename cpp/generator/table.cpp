@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "generator.h"
+#include "tools/random.h"
 #include "tools/solver.h"
 #include "tree.h"
 #include "utils.h"
@@ -98,7 +99,7 @@ bool SparseTableValue(uint16_t bitness, uint64_t base_seed, const std::vector<bo
         value ^= static_cast<uint64_t>(bit);
         value *= 0x100000001b3ull;
     }
-    return (Mix64(value) & 1ull) != 0;
+    return (tools::Mix64(value) & 1ull) != 0;
 }
 
 }  // namespace

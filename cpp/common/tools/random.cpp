@@ -1,0 +1,36 @@
+#include "tools/random.h"
+
+#include <cassert>
+#include <cstdint>
+
+namespace tools {
+namespace {
+
+constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
+
+}  // namespace
+
+uint64_t Mix64(uint64_t value) {
+    value = (value ^ (value >> 30)) * 0xbf58476d1ce4e5b9ull;
+    value = (value ^ (value >> 27)) * 0x94d049bb133111ebull;
+    return value ^ (value >> 31);
+}
+
+uint64_t Mix(uint64_t value) { return Mix64(value + kSplitMixIncrement); }
+
+uint64_t SplitMix64(uint64_t& state) { return Mix64(state += kSplitMixIncrement); }
+
+uint64_t Random::Next() { return SplitMix64(state_); }
+
+uint64_t Random::Below(uint64_t bound) {
+    assert(bound > 0);
+    const uint64_t threshold = static_cast<uint64_t>(-bound) % bound;
+    while (true) {
+        const uint64_t value = Next();
+        if (value >= threshold) return value % bound;
+    }
+}
+
+bool Random::Bool() { return (Next() & 1) != 0; }
+
+}  // namespace tools

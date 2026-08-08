@@ -7,9 +7,6 @@
 
 namespace gen {
 
-// SplitMix64 output finalizer over an already-advanced state.
-uint64_t Mix64(uint64_t value);
-uint64_t SplitMix64(uint64_t& state);
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
 uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
 

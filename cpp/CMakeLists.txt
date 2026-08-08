@@ -33,6 +33,8 @@ target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 add_library(common
     common/offline/read_write.cpp
     common/offline/read_write.h
+    common/tools/random.cpp
+    common/tools/random.h
     common/tools/solver.cpp
     common/tools/solver.h
 )

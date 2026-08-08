@@ -11,6 +11,11 @@ namespace, and are included as `"tools/solver.h"`. `SolveForDepth` and
 `SolveForSize` are called from `table.cpp`; `kMaxSolvableBitness` is aliased as
 `gen::kSolvableTableBitness`.
 
+`common/tools/random.{h,cpp}` is the shared random toolbox: the SplitMix64
+finalizer and state step, one-shot mixing, unbiased bounded draws, and fair
+boolean draws. Generator seed/case selection and preparation samplers both use
+it rather than keeping private mixers or random-stream classes.
+
 The `...Given` and `...Restricted` pairs score the two models of
 `docs/paper.tex` over a second truth table -- the same two readings a
 `docs/offline_data.md` entry's second table has, `f` for series 1 and the
