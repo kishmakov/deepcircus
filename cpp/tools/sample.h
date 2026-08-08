@@ -22,7 +22,7 @@ struct InputShape {
 };
 
 // Fair-coin bit stream the base sequences are drawn from; a case supplies its
-// own deterministic one, keyed by (bitness, case_id).
+// own deterministic one, keyed by (bitness, seed).
 using BitSource = std::function<bool()>;
 
 // Converts a 0/1 char string into a bit vector, one bool per char.

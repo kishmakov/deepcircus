@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "generator.h"
-#include "table.h"
 #include "utils.h"
 
 namespace gen {
@@ -58,12 +57,15 @@ size_t ComputeDepth(const std::vector<Node>& nodes, size_t node_id) {
 
 }  // namespace
 
-TreeCase::TreeCase(uint16_t bitness, size_t case_id) : Case(bitness, case_id), used_bits(bitness, false) {
+TreeCase::TreeCase(uint16_t bitness, uint64_t seed) : Case(bitness, seed), used_bits(bitness, false) {
     assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
-    assert(case_id < kTreeCasesNumber);
+    // Internal-node budget the builder spends. Most draws are more nodes than
+    // this bitness can place, so what the tree ends up being is mostly how
+    // BuildSubtree's clamps and random splits spend it.
+    const size_t budget = std::uniform_int_distribution<size_t>(0, kMaxTreeSize)(rng_);
     std::vector<bool> path_used_bits(bitness, false);
     const bool root_required_value = GenerateBool();
-    BuildSubtree(case_id, path_used_bits, /*path_used_count=*/0, root_required_value);
+    BuildSubtree(budget, path_used_bits, /*path_used_count=*/0, root_required_value);
     depth = ComputeDepth(nodes, 0);
 }
 
@@ -122,25 +124,19 @@ bool TreeCase::Evaluate(const std::vector<bool>& input) const {
     }
 }
 
-size_t TreeCasesNumber(uint16_t bitness) {
-    assert(bitness >= kMinTreeBitness && bitness <= kMaxTreeBitness);
-    return kTreeCasesNumber;
-}
-
-std::string TreeValue(uint16_t bitness, size_t case_id, const std::vector<bool>& input) {
-    assert(case_id < TreeCasesNumber(bitness));
+std::string TreeValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input) {
     assert(input.size() == bitness);
 
-    const TreeCase tree(bitness, case_id);
+    const TreeCase tree(bitness, seed);
     return tree.SampledValueString(input);
 }
 
-std::vector<size_t> TreeSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed) {
-    return SampleCaseIds(TreeCasesNumber(bitness), cases, DomainSeed(seed, kTreeSelectionDomain, bitness));
+std::vector<uint64_t> TreeSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed) {
+    return SampleSeeds(cases, DomainSeed(task_seed, kTreeSelectionDomain, bitness));
 }
 
-GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape) {
-    const size_t cases = case_ids.size();
+GeneratedValues TreeValuesForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds, InputShape shape) {
+    const size_t cases = seeds.size();
     assert(cases > 0);
     assert(shape.batches > 1);
     assert(std::has_single_bit(shape.batch_size));
@@ -152,8 +148,7 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
     std::vector<float> targets(gen::kTargetsPerCase * cases);
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
-        const size_t case_id = case_ids[case_index];
-        TreeCase tree(bitness, case_id);
+        TreeCase tree(bitness, seeds[case_index]);
         const std::vector<bool> samples = tree.SampleValues(shape);
         assert(samples.size() == columns);
         std::copy(samples.begin(), samples.end(), values.begin() + case_index * columns);
@@ -166,4 +161,3 @@ GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& 
 }
 
 }  // namespace gen
-

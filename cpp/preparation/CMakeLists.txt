@@ -2,7 +2,7 @@ add_executable(offline_train_data_generator
     main.cpp
     sampler.cpp
 )
-target_link_libraries(offline_train_data_generator PRIVATE common)
+target_link_libraries(offline_train_data_generator PRIVATE gen)
 target_include_directories(offline_train_data_generator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Error handling here is asserts only -- and in `sampler.cpp` an assert is also

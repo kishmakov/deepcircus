@@ -8,11 +8,11 @@
 
 namespace gen {
 
-Case::Case(uint16_t bitness, size_t case_id) : bitness_(bitness), case_id_(case_id) {
+Case::Case(uint16_t bitness, uint64_t seed) : bitness_(bitness) {
     std::seed_seq seq{
         static_cast<uint32_t>(bitness),
-        static_cast<uint32_t>(case_id),
-        static_cast<uint32_t>(case_id >> 32),
+        static_cast<uint32_t>(seed),
+        static_cast<uint32_t>(seed >> 32),
     };
     rng_.seed(seq);
 }

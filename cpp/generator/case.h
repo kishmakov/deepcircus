@@ -13,11 +13,13 @@
 namespace gen {
 
 // Base class owning a single generated case's deterministic randomness, keyed
-// by (bitness, case_id). Provides the case's mt19937 plus a bit-buffered
-// fair-coin stream shared by table and tree generation.
+// by (bitness, seed). Provides the case's mt19937 plus a bit-buffered
+// fair-coin stream shared by table and tree generation. Everything a concrete
+// case is comes off that stream, so the seed alone identifies it -- how a
+// caller picked the seed is the caller's business.
 class Case {
 public:
-    Case(uint16_t bitness, size_t case_id);
+    Case(uint16_t bitness, uint64_t seed);
 
     bool GenerateBool();
 
@@ -57,7 +59,6 @@ protected:
     std::vector<bool> Sample(InputShape shape, uint16_t dims, const ComputeBlock& compute);
 
     uint16_t bitness_;
-    size_t case_id_;
 
     std::mt19937 rng_;
     uint32_t bit_buffer_ = 0;

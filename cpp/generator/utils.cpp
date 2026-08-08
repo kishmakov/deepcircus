@@ -3,7 +3,6 @@
 #include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <unordered_set>
 #include <vector>
 
 #include "tools/random.h"
@@ -20,23 +19,15 @@ uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness) {
     return tools::SplitMix64(state);
 }
 
-std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed) {
-    assert(cases > 0);
-    assert(cases <= population);
-    tools::Random random(seed);
-    std::unordered_set<size_t> selected;
-    selected.reserve(cases * 2);
-    std::vector<size_t> result;
-    result.reserve(cases);
-
-    for (size_t current = population - cases; current < population; ++current) {
-        const size_t candidate = random.Below(static_cast<uint64_t>(current) + 1);
-        const size_t case_id = selected.contains(candidate) ? current : candidate;
-        const bool inserted = selected.insert(case_id).second;
-        assert(inserted);
-        result.push_back(case_id);
+std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed) {
+    assert(count > 0);
+    tools::Random random(task_seed);
+    std::vector<uint64_t> seeds;
+    seeds.reserve(count);
+    for (size_t index = 0; index < count; ++index) {
+        seeds.push_back(random.Next());
     }
-    return result;
+    return seeds;
 }
 
 size_t FullBitId(size_t bit_id, size_t fixed_id) { return bit_id < fixed_id ? bit_id : bit_id + 1; }

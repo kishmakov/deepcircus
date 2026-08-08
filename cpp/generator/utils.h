@@ -10,9 +10,10 @@ namespace gen {
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
 uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
 
-// Deterministic, chunk-order-independent sample of `cases` distinct ids from
-// [0, population).
-std::vector<size_t> SampleCaseIds(size_t population, size_t cases, uint64_t seed);
+// Per-case seeds: `count` independent draws off `task_seed`. Each seed depends
+// only on its index, so splitting the result into contiguous chunks and
+// generating each separately reproduces one call over the whole list.
+std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed);
 
 size_t FullBitId(size_t bit_id, size_t fixed_id);
 

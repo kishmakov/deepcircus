@@ -9,12 +9,21 @@ The generator, producer, and server sit over the generator-independent
 truth-table solvers live in `common/tools/solver.{h,cpp}`, retain the `tools`
 namespace, and are included as `"tools/solver.h"`. `SolveForDepth` and
 `SolveForSize` are called from `table.cpp`; `kMaxSolvableBitness` is aliased as
-`gen::kSolvableTableBitness`.
+`func::kSolvableTableBitness`.
 
 `common/tools/random.{h,cpp}` is the shared random toolbox: the SplitMix64
 finalizer and state step, one-shot mixing, unbiased bounded draws, and fair
 boolean draws. Generator seed/case selection and preparation samplers both use
 it rather than keeping private mixers or random-stream classes.
+
+`common/func/table.{h,cpp}` owns `func::TableCase`, table evaluation, and the
+`func::Table*` seed/value/restriction batch entry points. It is included as
+`"func/table.h"` and remains compiled into `gen` because those batch entry
+points use generator `Case` and tensor types. A `TableCase` is a uniformly
+random function of its seed alone, so preparation builds one per independently
+random function, helper, subset indicator, or off-subset filler it needs and
+reads it back through `TruthTable()` -- there is no separate table-drawing
+entry point to keep in step with how a case draws its own.
 
 The `...Given` and `...Restricted` pairs score the two models of
 `docs/paper.tex` over a second truth table -- the same two readings a
@@ -69,18 +78,28 @@ whose rows are cases; exact targets stay separate float vectors of
 `bitness - depth` and the size score `log2(2^bitness - size)`.
 
 `Case` (`case.{h,cpp}`) owns each case's deterministic randomness keyed by
-`(bitness, case_id)`: its `mt19937` plus the buffered fair-coin `GenerateBool`
+`(bitness, seed)`: its `mt19937` plus the buffered fair-coin `GenerateBool`
 stream. It exposes `SampleValues`/`SampleRestrictions` over an `InputShape`
 (`batches` independent samplings, each expanded into `batch_size` power-of-two
 points); `TableCase`/`TreeCase` only supply the virtual
 `Evaluate(std::vector<bool>)`.
 
-Case-ID sampling is split from generation: `TreeSampleCaseIds`/
-`TableSampleCaseIds` sample a bitness x cases pair once, then
-`TreeValuesForCases`/`TableValuesForCases`/`TableRestrictionsForCases` generate
-a batch for an explicit, pre-sampled chunk. Since each case is deterministic
-from `(bitness, case_id)` alone, generating disjoint chunks on different threads
-and merging with `Values::Concat` reproduces a single non-chunked call exactly.
+A seed is the whole of a case, and `Case` knows nothing else about it -- no id,
+no index into an enumeration of functions. Everything a concrete case is comes
+off that one stream: `TableCase` draws its truth table there, `TreeCase` the
+internal-node budget it then spends. That budget is drawn against
+`kMaxTreeSize` rather than the full 32-bit range the case ids used to span,
+which bounds a case at a bitness whose capacity is effectively unlimited; the
+builder's per-level clamps still bound it from the other side, and the ceiling
+sits well above what the trained bitnesses reach.
+
+Seed sampling is split from generation: `TreeSampleSeeds`/`TableSampleSeeds`
+draw a bitness x cases batch of per-case seeds once, then `TreeValuesForSeeds`/
+`TableValuesForSeeds`/`TableRestrictionsForSeeds` generate a batch for an
+explicit, pre-sampled chunk. Since each case is deterministic from
+`(bitness, seed)` alone and each seed depends only on its index, generating
+disjoint chunks on different threads and merging with `Values::Concat`
+reproduces a single non-chunked call exactly.
 
 ## Producer
 
@@ -95,8 +114,8 @@ dedicated producer thread that prefetches results into a bounded buffer
 (`TaskQueue::kPrefetchDepth`, currently 8); `Take()` blocks until the next
 result in task order is ready, pops it, and thereby unblocks the producer to top
 the buffer back up. Within a coordinate the producer samples that tensor's case
-ids once, splits them evenly across `ThreadPool::WorkerCount()` into contiguous
-chunks, and fans them out. Chunks merge back into one `gen::Values` (for
+seeds once, splits them evenly across `ThreadPool::WorkerCount()` into
+contiguous chunks, and fans them out. Chunks merge back into one `gen::Values` (for
 recursive tables, `Values::Concat` plus `Restrictions::Concat` into a
 `gen::GeneratedRestrictions`), so published tensors do not depend on worker
 count.

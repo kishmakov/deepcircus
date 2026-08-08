@@ -66,35 +66,17 @@ using InputShape = tools::InputShape;
 
 /********************************* tree **************************************/
 
-size_t TreeCasesNumber(uint16_t bitness);
-
 // Input: bitness bits. Output length: 2 * bitness + 1.
-std::string TreeValue(uint16_t bitness, size_t case_id, const std::vector<bool>& input);
+std::string TreeValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input);
 
-// Deterministic, chunk-order-independent case-id sample: splitting the result
-// into contiguous groups and generating each with TreeValuesForCases
+// Deterministic, chunk-order-independent case-seed sample: splitting the result
+// into contiguous groups and generating each with TreeValuesForSeeds
 // reproduces exactly what a single call over the full list would produce.
-std::vector<size_t> TreeSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
+std::vector<uint64_t> TreeSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed);
 
 // Synchronously generates a compact, ready-to-read batch for an explicit,
-// pre-sampled chunk of case ids (see TreeSampleCaseIds).
-GeneratedValues TreeValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape);
-
-/********************************* table *************************************/
-
-uint16_t TableSolvableBitness();
-size_t TableCasesNumber(uint16_t bitness);
-
-// Input: bitness bits. Output length: 2 * bitness + 1.
-std::string TableValue(uint16_t bitness, size_t case_id, const std::vector<bool>& input);
-
-std::vector<size_t> TableSampleCaseIds(uint16_t bitness, size_t cases, uint64_t seed);
-
-GeneratedValues TableValuesForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape);
-
-// Synchronously generates recursive table values and one dense restriction
-// matrix for an explicit, pre-sampled chunk of case ids.
-GeneratedRestrictions TableRestrictionsForCases(uint16_t bitness, const std::vector<size_t>& case_ids, InputShape shape);
+// pre-sampled chunk of case seeds (see TreeSampleSeeds).
+GeneratedValues TreeValuesForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds, InputShape shape);
 
 /******************************** circuit ************************************/
 

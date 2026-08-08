@@ -2,9 +2,9 @@
 
 #include <cassert>
 #include <cstddef>
-#include <utility>
 #include <vector>
 
+#include "func/table.h"
 #include "tools/random.h"
 #include "tools/solver.h"
 
@@ -18,14 +18,6 @@ std::vector<uint8_t> Pack(const std::vector<bool>& table) {
         packed[bit / 8] |= static_cast<uint8_t>(table[bit]) << (bit % 8);
     }
     return packed;
-}
-
-std::vector<bool> Unpack(const std::vector<uint8_t>& packed, uint16_t bitness) {
-    std::vector<bool> table(size_t{1} << bitness);
-    for (size_t bit = 0; bit < table.size(); ++bit) {
-        table[bit] = (packed[bit / 8] >> (bit % 8)) & 1;
-    }
-    return table;
 }
 
 // A witness tree's node: `query` is an input bit id, or `bitness` for the
@@ -44,12 +36,6 @@ struct Node {
 // target is the same with and without it, which is nothing for the S_1 model to
 // learn from.
 constexpr uint32_t kHelperWeightPerBit = 2;
-
-// A series-2 point belongs to `X` on a fair coin. Sparser subsets let the
-// witness collapse below the target too often; denser ones leave too little of
-// `g` random to keep the subset worth knowing.
-constexpr uint32_t kSubsetNumerator = 1;
-constexpr uint32_t kSubsetDenominator = 2;
 
 // Redraw bound for the shape loop below, which accepts the large majority of
 // its draws: exhausting this many means no shape of that many nodes fits inside
@@ -156,27 +142,24 @@ uint64_t SmallKey(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t ind
     return tools::Mix(state ^ index);
 }
 
+uint64_t RandomKey(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index) {
+    uint64_t state = tools::Mix(seed);
+    state = tools::Mix(state ^ series);
+    state = tools::Mix(state ^ bitness);
+    return tools::Mix(state ^ index);
+}
+
 }  // namespace
 
 offline::Entry RandomEntry(const Parameters& parameters, uint16_t series, uint16_t bitness, uint32_t index) {
     assert(series == 1 || series == 2);
-    uint64_t state = tools::Mix(parameters.seed);
-    state = tools::Mix(state ^ series);
-    state = tools::Mix(state ^ bitness);
-    state = tools::Mix(state ^ index);
-
-    const size_t table_bytes = offline::TableBytes(bitness);
-    std::vector<uint8_t> g(table_bytes);
-    std::vector<uint8_t> fx(table_bytes);
-    for (std::vector<uint8_t>* table : {&g, &fx}) {
-        for (uint8_t& byte : *table) {
-            state = tools::Mix(state);
-            byte = static_cast<uint8_t>(state);
-        }
-    }
-
-    const std::vector<bool> truth_table = Unpack(g, bitness);
-    const std::vector<bool> second_table = Unpack(fx, bitness);
+    tools::Random random(RandomKey(parameters.seed, series, bitness, index));
+    // Both functions are drawn the way the generator draws one: a TableCase off
+    // a seed this entry's key produced, read back as its truth table.
+    const func::TableCase target_case(bitness, random.Next());
+    const func::TableCase second_case(bitness, random.Next());
+    const std::vector<bool>& truth_table = target_case.TruthTable();
+    const std::vector<bool>& second_table = second_case.TruthTable();
 
     size_t min_depth = 0;
     size_t min_size = 0;
@@ -189,7 +172,7 @@ offline::Entry RandomEntry(const Parameters& parameters, uint16_t series, uint16
     }
     assert(min_depth <= bitness);
     assert(min_size < (size_t{1} << bitness));
-    return offline::Entry{std::move(g), std::move(fx), static_cast<uint8_t>(min_depth),
+    return offline::Entry{Pack(truth_table), Pack(second_table), static_cast<uint8_t>(min_depth),
                           static_cast<uint16_t>(min_size)};
 }
 
@@ -213,21 +196,20 @@ offline::Entry SmallEntry(const Parameters& parameters, uint16_t series, uint16_
     const std::vector<Node> tree = SampleTree(bitness, nodes, helper_weight, random);
 
     std::vector<bool> truth_table(rows);
-    std::vector<bool> second_table(rows);
+    const func::TableCase second_case(bitness, random.Next());
+    const std::vector<bool>& second_table = second_case.TruthTable();
     if (series == 1) {
-        for (size_t row = 0; row < rows; ++row) second_table[row] = random.Bool();
         for (size_t row = 0; row < rows; ++row) {
             truth_table[row] = Evaluate(tree, bitness, row, second_table[row]);
         }
     } else {
-        for (size_t row = 0; row < rows; ++row) {
-            second_table[row] = random.Below(kSubsetDenominator) < kSubsetNumerator;
-        }
+        const func::TableCase outside_case(bitness, random.Next());
+        const std::vector<bool>& outside_table = outside_case.TruthTable();
         // Off the subset `g` is drawn at random, which is what makes the subset
         // worth knowing: the witness is tiny on `X` and computing `g` everywhere
         // costs the hundreds of nodes a random table does.
         for (size_t row = 0; row < rows; ++row) {
-            truth_table[row] = second_table[row] ? Evaluate(tree, bitness, row, false) : random.Bool();
+            truth_table[row] = second_table[row] ? Evaluate(tree, bitness, row, false) : outside_table[row];
         }
     }
 

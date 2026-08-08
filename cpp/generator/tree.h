@@ -10,9 +10,15 @@
 
 namespace gen {
 
-inline constexpr size_t kTreeCasesNumber = size_t{1} << 32;
 inline constexpr uint16_t kMinTreeBitness = 10;
 inline constexpr uint16_t kMaxTreeBitness = 256;
+
+// Ceiling on a case's internal-node budget. The builder's per-level clamps
+// already bound a tree by what `bitness` bits can hold; this bounds the other
+// side, so a case seeded at a high bitness stays buildable instead of
+// following its budget into hundreds of millions of nodes. It sits above what
+// the trained bitnesses reach, so it only binds well past them.
+inline constexpr size_t kMaxTreeSize = size_t{1} << 20;
 
 struct Div {
     size_t bitId;
@@ -23,7 +29,7 @@ struct Div {
 using Node = std::variant<Div, bool>;
 
 struct TreeCase : Case {
-    TreeCase(uint16_t bitness, size_t case_id);
+    TreeCase(uint16_t bitness, uint64_t seed);
 
     std::vector<Node> nodes;
     std::vector<bool> used_bits;
