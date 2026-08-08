@@ -11,6 +11,9 @@ DATA_DIR="$ROOT/data"
 GENERATOR="$ROOT/execs/offline_train_data_generator"
 
 SERIES=(1 2)
+# `rand` draws both truth tables at random, `small` builds each entry around a
+# witness tree so its exact target lands in the configured small-size range.
+SOURCES=(rand small)
 
 # Reads one `key: value` line. A missing key is fatal rather than defaulted:
 # generating under a silently wrong seed would look like success.
@@ -33,17 +36,21 @@ SEED="$(config_value seed)"
 ENTRIES="$(config_value entries)"
 BITNESS_FROM="$(config_value bitness_from)"
 BITNESS_TO="$(config_value bitness_to)"
+SMALL_SIZE_FROM="$(config_value small_size_from)"
+SMALL_SIZE_TO="$(config_value small_size_to)"
 
 series_files() {
     local bitness="$1"
-    local series
-    for series in "${SERIES[@]}"; do
-        printf 's%s_%02d_rand.bin\n' "$series" "$bitness"
+    local series source
+    for source in "${SOURCES[@]}"; do
+        for series in "${SERIES[@]}"; do
+            printf 's%s_%02d_%s.bin\n' "$series" "$bitness" "$source"
+        done
     done
 }
 
 # One missing file condemns its whole bitness: the generator emits the series
-# together, so there is no asking it for just one of them.
+# and the sources together, so there is no asking it for just one of them.
 missing=()
 for ((bitness = BITNESS_FROM; bitness <= BITNESS_TO; bitness++)); do
     readarray -t names < <(series_files "$bitness")
@@ -72,7 +79,7 @@ mkdir -p "$DATA_DIR" "$STAGE_DIR"
 
 for bitness in "${missing[@]}"; do
     echo "generating $ENTRIES entries for bitness $bitness into $STAGE_DIR (seed $SEED)"
-    "$GENERATOR" "$STAGE_DIR" "$bitness" "$SEED" "$ENTRIES"
+    "$GENERATOR" "$STAGE_DIR" "$bitness" "$SEED" "$ENTRIES" "$SMALL_SIZE_FROM" "$SMALL_SIZE_TO"
 
     readarray -t names < <(series_files "$bitness")
     for name in "${names[@]}"; do
