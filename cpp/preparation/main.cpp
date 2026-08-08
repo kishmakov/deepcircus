@@ -4,14 +4,10 @@
 //
 //     offline_train_data_generator <output_dir> <bitness> <seed> <entries>
 //
-// it writes `s1_<bitness>.bin` and `s2_<bitness>.bin` into <output_dir>.
+// it writes `s1_<bitness>_rand.bin` and `s2_<bitness>_rand.bin` into
+// <output_dir>.
 // The bitness is zero-padded, so a plain listing of `data/` stays in bitness
-// order instead of putting `s1_10.bin` ahead of `s1_8.bin`.
-//
-// The payload is still a placeholder: deterministic filler keyed by
-// `(seed, series, bitness)` so the staging script can be exercised end to end.
-// Only `SeriesEntry` changes when the real solver-backed content lands; the
-// file layout and the CLI are meant to stay.
+// order instead of putting `s1_10_rand.bin` ahead of `s1_08_rand.bin`.
 
 #include <cassert>
 #include <cstdint>
@@ -21,6 +17,7 @@
 #include <vector>
 
 #include "offline/read_write.h"
+#include "tools/solver.h"
 
 namespace {
 
@@ -36,6 +33,7 @@ uint64_t Mix(uint64_t value) {
 }
 
 offline::Entry SeriesEntry(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index) {
+    assert(series == 1 || series == 2);
     uint64_t state = Mix(seed);
     state = Mix(state ^ series);
     state = Mix(state ^ bitness);
@@ -51,11 +49,26 @@ offline::Entry SeriesEntry(uint64_t seed, uint16_t series, uint16_t bitness, uin
         }
     }
 
-    state = Mix(state);
-    const uint8_t min_depth = static_cast<uint8_t>(state % (bitness + 1));
-    state = Mix(state);
-    const uint16_t min_size = static_cast<uint16_t>(state % (uint32_t{1} << bitness));
-    return offline::Entry{std::move(g), std::move(fx), min_depth, min_size};
+    std::vector<bool> truth_table(size_t{1} << bitness);
+    std::vector<bool> second_table(size_t{1} << bitness);
+    for (size_t bit = 0; bit < truth_table.size(); ++bit) {
+        truth_table[bit] = (g[bit / 8] >> (bit % 8)) & 1;
+        second_table[bit] = (fx[bit / 8] >> (bit % 8)) & 1;
+    }
+
+    size_t min_depth = 0;
+    size_t min_size = 0;
+    if (series == 1) {
+        min_depth = tools::SolveForDepthGiven(bitness, truth_table, second_table);
+        min_size = tools::SolveForSizeGiven(bitness, truth_table, second_table);
+    } else {
+        min_depth = tools::SolveForDepthRestricted(bitness, truth_table, second_table);
+        min_size = tools::SolveForSizeRestricted(bitness, truth_table, second_table);
+    }
+    assert(min_depth <= bitness);
+    assert(min_size < (size_t{1} << bitness));
+    return offline::Entry{std::move(g), std::move(fx), static_cast<uint8_t>(min_depth),
+                          static_cast<uint16_t>(min_size)};
 }
 
 std::string BitnessTag(uint16_t bitness) {
@@ -65,7 +78,7 @@ std::string BitnessTag(uint16_t bitness) {
 }
 
 void WriteSeries(const std::string& directory, uint16_t series, uint16_t bitness, uint64_t seed, uint32_t entries) {
-    const std::string path = directory + "/s" + std::to_string(series) + "_" + BitnessTag(bitness) + ".bin";
+    const std::string path = directory + "/s" + std::to_string(series) + "_" + BitnessTag(bitness) + "_rand.bin";
     offline::Writer writer(path, entries, bitness);
     for (uint32_t index = 0; index < entries; ++index) {
         writer.Write(SeriesEntry(seed, series, bitness, index));

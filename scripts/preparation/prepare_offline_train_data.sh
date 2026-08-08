@@ -38,7 +38,7 @@ series_files() {
     local bitness="$1"
     local series
     for series in "${SERIES[@]}"; do
-        printf 's%s_%02d.bin\n' "$series" "$bitness"
+        printf 's%s_%02d_rand.bin\n' "$series" "$bitness"
     done
 }
 

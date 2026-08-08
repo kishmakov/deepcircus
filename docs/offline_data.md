@@ -1,17 +1,19 @@
 # Offline training data files
 
-The offline training data lives in `data/` as `s1_<bitness>.bin` and
-`s2_<bitness>.bin`, with the bitness zero-padded to two digits (`s1_08.bin` ...
-`s2_12.bin`) so a plain listing stays in bitness order. The files are written by
+The random offline training data lives in `data/` as `s1_<bitness>_rand.bin` and
+`s2_<bitness>_rand.bin`, with the bitness zero-padded to two digits
+(`s1_08_rand.bin` ... `s2_12_rand.bin`) so a plain listing stays in bitness
+order. The `_rand` suffix distinguishes this random source from other offline
+data sources. The files are written by
 `cpp/preparation/main.cpp` (`offline_train_data_generator <output_dir> <bitness>
 <seed> <entries>`, one bitness per invocation, both series at once) and staged into
 `data/` by `scripts/preparation/prepare_offline_train_data.sh`.
 
 The two series are the training sets of the two models in `docs/paper.tex`:
 
-- `s1_*.bin` -- samples for `S1`, which takes a pair of boolean functions
+- `s1_*_rand.bin` -- samples for `S1`, which takes a pair of boolean functions
   `g, f : {0,1}^n -> {0,1}`.
-- `s2_*.bin` -- samples for `S2`, which takes a boolean function `g` and a
+- `s2_*_rand.bin` -- samples for `S2`, which takes a boolean function `g` and a
   subset `X ⊆ {0,1}^n`.
 
 Both series use the *same* byte layout: each sample carries two truth tables of
@@ -57,6 +59,9 @@ Entries follow the header back to back, starting at offset 5. With
   The two trees need not be the same one. A decision tree over `n` inputs has at
   most `2^n - 1` internal nodes, so at `n = 12` the value is at most 4095 and
   `uint16_t` is enough through the whole supported range.
+
+For series 1 the tree may query `f` once per path. For series 2 only the
+assignments in `X` must be computed correctly.
 
 The model-side scales (`s = log2(min_size + 1)` in the paper, and the score
 transforms in `cpp/generator/utils.h`) are *not* applied here: the file stores
