@@ -30,6 +30,14 @@ target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
 # UBSan's nonnull-attribute check; silence it for this vendored file only.
 target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
+add_library(common
+    common/offline_data.cpp
+    common/offline_data.h
+)
+target_include_directories(common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/common")
+# File validation uses assertions and must remain active in Release builds.
+set_source_files_properties(common/offline_data.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
+
 # Standalone bit/sampling/solving pieces. Deliberately does not link `gen`:
 # tools knows nothing about cases, tables, trees, or circuits, so the include
 # direction runs generator -> tools only.

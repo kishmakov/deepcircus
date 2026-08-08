@@ -2,33 +2,29 @@
 // `scripts/preparation/prepare_offline_train_data.sh` stages into `data/`.
 // Invoked as
 //
-//     offline_train_data_generator <output_dir> <bitness> <seed>
+//     offline_train_data_generator <output_dir> <bitness> <seed> <entries>
 //
 // it writes `s1_<bitness>.bin` and `s2_<bitness>.bin` into <output_dir>.
 // The bitness is zero-padded, so a plain listing of `data/` stays in bitness
-// order instead of putting `s1_10.bin` ahead of `s1_8.bin`. The seed reaches
-// the file's header as well as its payload, so what produced a file can be read
-// back off it -- the name carries no trace of the seed.
+// order instead of putting `s1_10.bin` ahead of `s1_8.bin`.
 //
 // The payload is still a placeholder: deterministic filler keyed by
 // `(seed, series, bitness)` so the staging script can be exercised end to end.
-// Only `SeriesRecord` changes when the real solver-backed content lands; the
+// Only `SeriesEntry` changes when the real solver-backed content lands; the
 // file layout and the CLI are meant to stay.
 
 #include <cassert>
 #include <cstdint>
-#include <fstream>
+#include <limits>
 #include <string>
+#include <utility>
+#include <vector>
+
+#include "offline_data.h"
 
 namespace {
 
-constexpr uint16_t kMinBitness = 8;
-constexpr uint16_t kMaxBitness = 12;
-
-// "CRCS" in little-endian byte order, so `xxd` on a produced file is readable.
-constexpr uint32_t kMagic = 0x53435243;
 constexpr uint16_t kSeries[] = {1, 2};
-constexpr uint32_t kPlaceholderRecords = 16;
 
 // SplitMix64 finalizer, same mixer the generator uses to key randomness off a
 // case's coordinates.
@@ -39,15 +35,27 @@ uint64_t Mix(uint64_t value) {
     return value ^ (value >> 31);
 }
 
-// Deterministic from `(seed, series, bitness, index)` alone -- nothing here may
-// reach for a clock, a global RNG, or the filesystem.
-uint64_t SeriesRecord(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index) {
-    return Mix(seed ^ (uint64_t(series) << 48) ^ (uint64_t(bitness) << 32) ^ index);
-}
+offline::Entry SeriesEntry(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index) {
+    uint64_t state = Mix(seed);
+    state = Mix(state ^ series);
+    state = Mix(state ^ bitness);
+    state = Mix(state ^ index);
 
-template <typename T>
-void Write(std::ofstream& out, T value) {
-    out.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    const size_t table_bytes = offline::TableBytes(bitness);
+    std::vector<uint8_t> g(table_bytes);
+    std::vector<uint8_t> fx(table_bytes);
+    for (std::vector<uint8_t>* table : {&g, &fx}) {
+        for (uint8_t& byte : *table) {
+            state = Mix(state);
+            byte = static_cast<uint8_t>(state);
+        }
+    }
+
+    state = Mix(state);
+    const uint8_t min_depth = static_cast<uint8_t>(state % (bitness + 1));
+    state = Mix(state);
+    const uint16_t min_size = static_cast<uint16_t>(state % (uint32_t{1} << bitness));
+    return offline::Entry{std::move(g), std::move(fx), min_depth, min_size};
 }
 
 std::string BitnessTag(uint16_t bitness) {
@@ -56,36 +64,31 @@ std::string BitnessTag(uint16_t bitness) {
     return digits;
 }
 
-void WriteSeries(const std::string& directory, uint16_t series, uint16_t bitness, uint64_t seed) {
+void WriteSeries(const std::string& directory, uint16_t series, uint16_t bitness, uint64_t seed, uint32_t entries) {
     const std::string path = directory + "/s" + std::to_string(series) + "_" + BitnessTag(bitness) + ".bin";
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    assert(out.is_open());
-
-    Write(out, kMagic);
-    Write(out, series);
-    Write(out, bitness);
-    Write(out, kPlaceholderRecords);
-    Write(out, seed);
-    for (uint32_t index = 0; index < kPlaceholderRecords; ++index) {
-        Write(out, SeriesRecord(seed, series, bitness, index));
+    offline::Writer writer(path, entries, bitness);
+    for (uint32_t index = 0; index < entries; ++index) {
+        writer.Write(SeriesEntry(seed, series, bitness, index));
     }
-
-    out.flush();
-    assert(out.good());
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-    assert(argc == 4);
+    assert(argc == 5);
 
     const std::string directory = argv[1];
-    const uint16_t bitness = static_cast<uint16_t>(std::stoul(argv[2]));
+    const unsigned long bitness_argument = std::stoul(argv[2]);
     const uint64_t seed = std::stoull(argv[3]);
-    assert(bitness >= kMinBitness && bitness <= kMaxBitness);
+    const unsigned long entries_argument = std::stoul(argv[4]);
+    assert(bitness_argument <= std::numeric_limits<uint16_t>::max());
+    assert(entries_argument <= std::numeric_limits<uint32_t>::max());
+    const uint16_t bitness = bitness_argument;
+    const uint32_t entries = entries_argument;
+    assert(bitness >= offline::kMinBitness && bitness <= offline::kMaxBitness);
 
     for (const uint16_t series : kSeries) {
-        WriteSeries(directory, series, bitness, seed);
+        WriteSeries(directory, series, bitness, seed, entries);
     }
 
     return 0;

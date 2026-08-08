@@ -30,6 +30,7 @@ config_value() {
 # finished run.
 STAGE_DIR="$(config_value work_dir)"
 SEED="$(config_value seed)"
+ENTRIES="$(config_value entries)"
 BITNESS_FROM="$(config_value bitness_from)"
 BITNESS_TO="$(config_value bitness_to)"
 
@@ -70,8 +71,8 @@ fi
 mkdir -p "$DATA_DIR" "$STAGE_DIR"
 
 for bitness in "${missing[@]}"; do
-    echo "generating bitness $bitness into $STAGE_DIR (seed $SEED)"
-    "$GENERATOR" "$STAGE_DIR" "$bitness" "$SEED"
+    echo "generating $ENTRIES entries for bitness $bitness into $STAGE_DIR (seed $SEED)"
+    "$GENERATOR" "$STAGE_DIR" "$bitness" "$SEED" "$ENTRIES"
 
     readarray -t names < <(series_files "$bitness")
     for name in "${names[@]}"; do
