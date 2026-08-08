@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "case.h"
-#include "solver.h"
+#include "tools/solver.h"
 
 namespace gen {
 
@@ -29,4 +29,3 @@ private:
 };
 
 }  // namespace gen
-

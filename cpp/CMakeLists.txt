@@ -31,21 +31,21 @@ target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
 target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
 add_library(common
-    common/offline_data.cpp
-    common/offline_data.h
+    common/offline/read_write.cpp
+    common/offline/read_write.h
+    common/tools/solver.cpp
+    common/tools/solver.h
 )
 target_include_directories(common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/common")
 # File validation uses assertions and must remain active in Release builds.
-set_source_files_properties(common/offline_data.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
+set_source_files_properties(common/offline/read_write.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
-# Standalone bit/sampling/solving pieces. Deliberately does not link `gen`:
+# Standalone bit/sampling pieces. Deliberately does not link `gen`:
 # tools knows nothing about cases, tables, trees, or circuits, so the include
 # direction runs generator -> tools only.
 add_library(tools
     tools/sample.cpp
     tools/sample.h
-    tools/solver.cpp
-    tools/solver.h
 )
 target_include_directories(tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tools")
 
@@ -65,7 +65,7 @@ add_library(gen
 )
 
 target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
-target_link_libraries(gen PUBLIC tools)
+target_link_libraries(gen PUBLIC common tools)
 target_link_libraries(gen PRIVATE aiger)
 
 add_library(producer

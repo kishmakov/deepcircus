@@ -1,12 +1,44 @@
 # C++ generation architecture
 
-Four ownership boundaries: `cpp/generator/`, `cpp/producer/`, and `cpp/server/`,
-over a generator-independent base layer in `cpp/tools/`.
+The generator, producer, and server sit over the generator-independent
+`cpp/common/` and `cpp/tools/` libraries.
+
+## Common
+
+`cpp/common/` holds code shared by otherwise independent executables. The exact
+truth-table solvers live in `common/tools/solver.{h,cpp}`, retain the `tools`
+namespace, and are included as `"tools/solver.h"`. `SolveForDepth` and
+`SolveForSize` are called from `table.cpp`; `kMaxSolvableBitness` is aliased as
+`gen::kSolvableTableBitness`.
+
+The `...Given` and `...Restricted` pairs score the two models of
+`docs/paper.tex` over a second truth table -- the same two readings a
+`docs/offline_data.md` entry's second table has, `f` for series 1 and the
+indicator of `X` for series 2.
+
+`SolveForDepthGiven`/`SolveForSizeGiven` are `S_1[g | f]`: the tree may also
+query a helper function of the same inputs, once per path, seeing the value
+table of `x_1..x_n` plus `y = f(x)`. They run the one DP over three layers of
+the same `3^bitness` states -- helper unqueried, helper fixed to 0, helper fixed
+to 1 -- since a path either knows `f`'s value or does not. The fixed-helper
+layers depend only on themselves, so they are solved first and then offered to
+the unqueried layer as one more transition at every state.
+
+`SolveForDepthRestricted`/`SolveForSizeRestricted` are `S_2[g | X]`: the tree
+only has to be right on the subset, and everything outside it is a don't-care.
+That is the plain DP over states seeded to hold `X` alone, so it is `Solve` with
+a subset rather than a fourth code path.
+
+Both rest on states that can hold no assignment at all -- `seen == 0`, a dead
+branch, which costs nothing. Depth and size differ only in how a node combines
+its two branches, so all six entry points are one templated DP over a policy;
+`cpp/test/test_solver.cpp` pins golden targets and cross-checks every entry
+point against a brute-force reference.
 
 ## Tools
 
 `cpp/tools/` is its own library in namespace `tools`, holding what is separable
-from case bookkeeping: bit walks and truth-table solving, with no notion of a
+from case bookkeeping: bit walks and input sampling, with no notion of a
 case, table, tree, or circuit. The dependency runs strictly one way -- `gen`
 links `tools` and `generator.h` includes `sample.h`, while nothing here may name
 `gen::`, include a `generator/` header, or link `gen`. That is what lets
@@ -21,11 +53,6 @@ batches flip bit groups keyed by `(batch, point id)`), and `SampleInputs`
 composing the two. `Case::Sample` is then only "get the points, evaluate at
 each". The `expand_inputs` CLI exposes `ExpandInputs` over stdin/stdout so
 Python callers reuse the same walk.
-
-`solver.{h,cpp}` owns the exact truth-table dynamic programs `SolveForDepth` and
-`SolveForSize`, called from `table.cpp`, plus `kMaxSolvableBitness` (aliased as
-`gen::kSolvableTableBitness`): a table is "solvable" exactly when the 3^bitness
-walks can handle it.
 
 ## Generator
 
@@ -134,7 +161,7 @@ own scale -- `log2(2^slots - size)`, a hand-kept copy of `gen::SizeScore`, since
 validation cannot link `gen` -- so a *cheaper* tree scores *higher* there, which
 is why the search's ordering negates it.
 
-It links `tools` for the exact solvers and nothing else -- like `expand_inputs`,
+It links `common` for the exact solvers and nothing else -- like `expand_inputs`,
 it stays on the generator-independent side, so no `gen::` names, no
 `generator/` includes, no `gen` link edge.
 

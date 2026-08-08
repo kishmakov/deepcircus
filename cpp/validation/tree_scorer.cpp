@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <utility>
 
-#include "solver.h"
+#include "tools/solver.h"
 
 namespace func {
 

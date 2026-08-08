@@ -10,7 +10,7 @@
 #include <vector>
 
 #include "generator.h"
-#include "solver.h"
+#include "tools/solver.h"
 #include "tree.h"
 #include "utils.h"
 

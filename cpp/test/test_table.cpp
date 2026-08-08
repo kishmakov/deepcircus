@@ -7,7 +7,7 @@
 
 #include "generator.h"
 #include "sample.h"
-#include "solver.h"
+#include "tools/solver.h"
 #include "table.h"
 
 namespace {
