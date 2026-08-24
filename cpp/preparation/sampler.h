@@ -1,6 +1,6 @@
 #pragma once
 
-// The two offline training-set sources of `docs/offline_data.md`. Both build an
+// The two offline training-set sources of `docs/data.md`. Both build an
 // entry out of the run's parameters and the entry's coordinates alone, so a
 // file stays reproducible from `conf/preparation.conf` and nothing else.
 

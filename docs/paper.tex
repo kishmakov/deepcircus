@@ -3,6 +3,9 @@
 \usepackage[a4paper,margin=2.5cm]{geometry}
 \usepackage{amsmath}
 \usepackage{amssymb}
+\usepackage{xcolor}
+
+\newcommand{\CS}{\textcolor{blue}{\mathbf{CS}}}
 
 \title{Construction Explained}
 \author{Kirill Shmakov}
@@ -35,7 +38,7 @@ circuit.
 At the iteration step for the current pair $(S, C)$ the algorithm iterates over the
 elements $K$ of $\mathcal{K}$ and attaches each of them to the current slots $S$ in
 all possible ways. The output of the element produces a new slot $y$. For every such
-attachment we estimate a complexity score of our function $\text{Score}\left[g \mid \bar{x}, y\right]$.
+attachment we estimate a complexity score of our function $\CS\left[g \mid \bar{x}, y\right]$.
 The attachment that gives the minimal value of the score function is selected, and we
 update our pair $(S, C)$.
 
@@ -45,7 +48,7 @@ helps us to reduce the remaining complexity.
 
 \section{Model}
 
-For $n \leqslant 12$ we can compute $\text{Score}\left[g \mid \bar{x}, y\right]$ as the size
+For $n \leqslant 12$ we can compute $\CS\left[g \mid \bar{x}, y\right]$ as the size
 of the minimal decision tree (the truth table is not very big, so dynamic programming
 is applicable).
 
