@@ -3,15 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <vector>
-
 namespace gen {
-
-uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
-uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
-
-// Returns seeds for initialization of cases.
-std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed);
 
 size_t FullBitId(size_t bit_id, size_t fixed_id);
 

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "generator.h"
+#include "tools/random.h"
 #include "utils.h"
 
 namespace gen {
@@ -132,7 +133,7 @@ std::string TreeValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& 
 }
 
 std::vector<uint64_t> TreeSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed) {
-    return SampleSeeds(cases, DomainSeed(task_seed, kTreeSelectionDomain, bitness));
+    return tools::SampleSeeds(cases, tools::DomainSeed(task_seed, kTreeSelectionDomain, bitness));
 }
 
 GeneratedValues TreeValuesForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds, InputShape shape) {

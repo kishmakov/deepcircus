@@ -1,0 +1,12 @@
+work_dir: /tmp/circus   # staging directory used by the generator
+seed: 239               # the generator's only randomness source
+entries: 16             # entries written to *each* of the four files per bitness
+
+full_tables:
+  bitness:              # inclusive range of arities `n` to prepare
+    from: 8
+    to: 12
+
+  small_sizes:          # range of targets for paired objects sampled with small distance
+    from: 1
+    to: 32

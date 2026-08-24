@@ -96,7 +96,7 @@ std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>&
 }
 
 std::vector<uint64_t> TableSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed) {
-    return gen::SampleSeeds(cases, gen::DomainSeed(task_seed, kTableSelectionDomain, bitness));
+    return tools::SampleSeeds(cases, tools::DomainSeed(task_seed, kTableSelectionDomain, bitness));
 }
 
 gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds, gen::InputShape shape) {

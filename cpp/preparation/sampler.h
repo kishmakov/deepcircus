@@ -2,7 +2,7 @@
 
 // The two offline training-set sources of `docs/data.md`. Both build an
 // entry out of the run's parameters and the entry's coordinates alone, so a
-// file stays reproducible from `conf/preparation.conf` and nothing else.
+// file stays reproducible from `conf/preparation.yaml` and nothing else.
 
 #include <cstdint>
 
@@ -10,7 +10,7 @@
 
 namespace preparation {
 
-// What a run gives its samplers, straight out of `conf/preparation.conf`. The
+// What a run gives its samplers, straight out of `conf/preparation.yaml`. The
 // small-size range is the closed interval a `_small` entry's witness tree draws
 // its node count from; `RandomEntry` has no use for it and takes it only so the
 // two sources stay one signature.

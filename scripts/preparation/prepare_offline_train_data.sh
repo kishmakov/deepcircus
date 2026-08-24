@@ -5,7 +5,7 @@ set -euo pipefail
 # missing. Safe to re-run.
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CONFIG="$ROOT/conf/preparation.conf"
+CONFIG="$ROOT/conf/preparation.yaml"
 DATA_DIR="$ROOT/data"
 # Published by `build_offline_generator.sh`.
 GENERATOR="$ROOT/execs/offline_train_data_generator"
@@ -15,29 +15,60 @@ SERIES=(1 2)
 # witness tree so its exact target lands in the configured small-size range.
 SOURCES=(rand small)
 
-# Reads one `key: value` line. A missing key is fatal rather than defaulted:
-# generating under a silently wrong seed would look like success.
-config_value() {
-    local key="$1" name value
-    while read -r name value; do
-        if [ "$name" = "$key:" ]; then
-            printf '%s\n' "$value"
-            return 0
-        fi
-    done < "$CONFIG"
-    echo "error: no '$key' in ${CONFIG#"$ROOT"/}" >&2
-    return 1
+# The dotted paths this script needs, in the order the reader prints them.
+CONFIG_KEYS=(
+    work_dir
+    seed
+    entries
+    full_tables.bitness.from
+    full_tables.bitness.to
+    full_tables.small_sizes.from
+    full_tables.small_sizes.to
+)
+
+# Resolves every path in one interpreter start, so the config's hierarchy and
+# its comments stay OmegaConf's business instead of something bash parses. A
+# missing path is fatal rather than defaulted: generating under a silently wrong
+# seed would look like success.
+read_config() {
+    "$ROOT/.venv/bin/python" - "$CONFIG" "${CONFIG_KEYS[@]}" <<'PY'
+import sys
+
+from omegaconf import OmegaConf
+
+path, keys = sys.argv[1], sys.argv[2:]
+config = OmegaConf.load(path)
+for key in keys:
+    value = OmegaConf.select(config, key, default=None)
+    assert value is not None, f"no '{key}' in {path}"
+    print(value)
+PY
 }
+
+# Capturing into a variable is what lets `set -e` see a failed read; splitting
+# straight into `readarray` would swallow the exit status and leave the values
+# below half-assigned.
+CONFIG_VALUES="$(read_config)"
+readarray -t values <<< "$CONFIG_VALUES"
+if [ "${#values[@]}" -ne "${#CONFIG_KEYS[@]}" ]; then
+    echo "error: read ${#values[@]} of ${#CONFIG_KEYS[@]} values from ${CONFIG#"$ROOT"/}" >&2
+    exit 1
+fi
+
+declare -A config
+for index in "${!CONFIG_KEYS[@]}"; do
+    config["${CONFIG_KEYS[$index]}"]="${values[$index]}"
+done
 
 # The generator owns this directory; `data/` only gains files that came out of a
 # finished run.
-STAGE_DIR="$(config_value work_dir)"
-SEED="$(config_value seed)"
-ENTRIES="$(config_value entries)"
-BITNESS_FROM="$(config_value bitness_from)"
-BITNESS_TO="$(config_value bitness_to)"
-SMALL_SIZE_FROM="$(config_value small_size_from)"
-SMALL_SIZE_TO="$(config_value small_size_to)"
+STAGE_DIR="${config[work_dir]}"
+SEED="${config[seed]}"
+ENTRIES="${config[entries]}"
+BITNESS_FROM="${config[full_tables.bitness.from]}"
+BITNESS_TO="${config[full_tables.bitness.to]}"
+SMALL_SIZE_FROM="${config[full_tables.small_sizes.from]}"
+SMALL_SIZE_TO="${config[full_tables.small_sizes.to]}"
 
 series_files() {
     local bitness="$1"

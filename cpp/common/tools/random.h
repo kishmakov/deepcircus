@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace tools {
 
@@ -24,5 +26,14 @@ public:
 private:
     uint64_t state_;
 };
+
+// Seed of one generation task, derived from the run seed.
+uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
+
+// Seed of one sampling domain within a task, so that domains draw independently.
+uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
+
+// Returns seeds for initialization of cases.
+std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed);
 
 }  // namespace tools

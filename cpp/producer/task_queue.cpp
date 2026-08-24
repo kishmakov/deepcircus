@@ -9,9 +9,9 @@
 
 #include "func/table.h"
 #include "generator.h"
+#include "tools/random.h"
 #include "tools/solver.h"
 #include "tree.h"
-#include "utils.h"
 
 namespace {
 
@@ -155,12 +155,12 @@ std::unique_ptr<TaskResult> GenerateTask(const TrainingShape& shape, const Task&
 TaskQueue::TaskQueue(TrainingShape shape, size_t workers) : shape_(shape), pool_(workers) {
     for (uint32_t bitness = shape.bitness_from; bitness <= shape.bitness_to; ++bitness) {
         tasks_.push_back(Task{kValidationIteration, static_cast<uint16_t>(bitness),
-                              gen::TaskSeed(shape.seed, static_cast<uint16_t>(bitness), kValidationIteration)});
+                              tools::TaskSeed(shape.seed, static_cast<uint16_t>(bitness), kValidationIteration)});
     }
     for (uint64_t iteration = shape.first_iteration; iteration <= shape.last_iteration; ++iteration) {
         for (uint32_t bitness = shape.bitness_from; bitness <= shape.bitness_to; ++bitness) {
             tasks_.push_back(Task{iteration, static_cast<uint16_t>(bitness),
-                                  gen::TaskSeed(shape.seed, static_cast<uint16_t>(bitness), iteration)});
+                                  tools::TaskSeed(shape.seed, static_cast<uint16_t>(bitness), iteration)});
         }
     }
     producer_ = std::thread([this] { Produce(); });
