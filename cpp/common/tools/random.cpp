@@ -35,6 +35,13 @@ uint64_t Random::Below(uint64_t bound) {
 
 bool Random::Bool() { return (Next() & 1) != 0; }
 
+uint64_t EntrySeed(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index) {
+    uint64_t state = Mix(seed);
+    state = Mix(state ^ series);
+    state = Mix(state ^ bitness);
+    return Mix(state ^ index);
+}
+
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration) {
     return Mix(seed ^ (static_cast<uint64_t>(bitness) << 48) ^ iteration);
 }

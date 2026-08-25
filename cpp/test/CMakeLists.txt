@@ -8,6 +8,7 @@ FetchContent_MakeAvailable(googletest)
 include(GoogleTest)
 
 add_executable(deepcircus_tests
+    test_binary_tree.cpp
     test_bit_matrix.cpp
     test_case.cpp
     test_circuits.cpp

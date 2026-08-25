@@ -27,6 +27,10 @@ private:
     uint64_t state_;
 };
 
+// Seed of one offline entry, keyed off its coordinates alone, so it never depends on the draws entries before it
+// burned. Salt `seed` (`Mix(seed) ^ stream`) to keep one kind of entry's stream clear of another's.
+uint64_t EntrySeed(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index);
+
 // Seed of one generation task, derived from the run seed.
 uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
 
