@@ -4,8 +4,10 @@
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{xcolor}
+\usepackage{float}
+\usepackage{tikz}
+\usetikzlibrary{positioning}
 
-\newcommand{\CS}{\textcolor{red}{\mathbf{CS}}}
 \newcommand{\Score}{\textcolor{blue}{\mathrm{Score}}}
 \newcommand{\MLM}{\textcolor{blue}{\mathcal{M}}}
 
@@ -64,9 +66,9 @@ step is the attempt to make it drop as fast as possible.
 attachment: an element $K \in \mathcal{K}$ with $k = \mathrm{in}(K)$, together with a
 $k$-subset $\left\{y_{i_1}, \dots, y_{i_k}\right\} \subseteq S$ of slots to feed it. The
 element contributes all of its $l = \mathrm{out}(K)$ outputs at once, as $l$ new slots
-$$
+\begin{equation}\label{eq:attach}
     \left(z_1, \dots, z_l\right) = K\left(y_{i_1}, \dots, y_{i_k}\right),
-$$
+\end{equation}
 whose columns are computed row-wise from the columns of the inputs, and the candidate
 carries the state to
 $$
@@ -100,68 +102,132 @@ functions of $n$ variables at order $2^n / n$.
 
 \subsection{Our modification}
 
-Instead of working with the exact decision tree, we take the score to be the
-approximate value
-$$
-    \Score\left[g \mid S\right] = \MLM\left[g \mid S\right],
-$$
-backed by a learned function $\MLM$. The main benefit of this approach is that $\Score$
-becomes computationally affordable, which lets us handle $g$ of larger arity.
+We attack the first dimension of the $2^n \times L$ table, so that $\Score$ becomes
+computationally affordable and lets us handle $g$ of larger arity. The second dimension
+$L$ remains a challenge, but it stays moderate for the functions that can be built from
+few elements.
+
+Our idea is to compute $\Score\left[g \mid S\right]$ without looking at the whole slot
+set $S$, reading it off a single element instead: the element $K$ attached last to the
+unfinished circuit $C$. By~\eqref{eq:attach} its $l$ outputs $\left(z_1, \dots, z_l\right)$
+are themselves functions of the primary inputs.
+
+For one such function we use a learned heuristic $\MLM\left[g \mid z\right]$, which
+approximates the complexity of a decision tree computing $g$ from the table given by
+the primary inputs and $z$. The score of a candidate attachment is then the best value
+attained by its new outputs:
+\begin{equation}
+    \Score\left[g \mid S_{j+1}\right]
+        = \min_{1 \leqslant i \leqslant l} \MLM\left[g \mid z_i\right].
+\end{equation}
 
 \section{Model}
 
-For $n \leqslant 12$ we can compute $\CS\left[g \mid S\right]$ as the size
-of the minimal decision tree (the truth table is not very big, so dynamic programming
-is applicable).
+The model takes two Boolean functions of the same arity,
+$$
+    g, f : \left\{0, 1\right\}^n \to \left\{0, 1\right\},
+$$
+and returns a pair of real numbers
+$$
+    \MLM\left[g \mid f\right] = \left(d, s\right), \qquad d, s \in \left[0, n\right].
+$$
+Both refer to decision trees that compute $g$ from the table whose columns are the
+primary inputs $x_1, \dots, x_n$ together with $f$. Here $d$ is the depth of the
+minimal-depth such tree, and $s = \log_2\left(\mathrm{IN} + 1\right)$, where
+$\mathrm{IN}$ is the number of internal nodes of the minimal-size one; the two trees
+need not coincide.
 
-For larger $n$ this quickly becomes impossible, and we need to use an ML model $S_1$
-for approximate computation.
+In order to train $\MLM$ we follow the approach similar to on described
+in~\cite{agostinelli2019rubik}: exact values are used wherever they are affordable, and
+the remaining targets are bootstrapped from cheaper instances of the same problem. For
+$n \leqslant 12$ the truth table is small enough for the minimal decision tree to be
+found exactly by dynamic programming, so such values serve as targets directly. For
+larger $n$ we assemble the bootstrapped target through two models:
+\begin{itemize}
+    \item $M_1$ -- the model itself, on a pair of functions of arity $n$;
+    \item $M_2\left[g \mid X\right]$ -- an auxiliary model, taking a function
+        $g : \{0,1\}^n \to \{0,1\}$ and a subset $X \subseteq \{0,1\}^n$. Its outputs
+        $(d, s)$ have the same meaning, for the decision trees that compute $g$
+        restricted to $X$.
+\end{itemize}
 
-$S_1$ accepts two boolean functions $g, f : \{0,1\}^n \to \{0,1\}$ as its arguments;
-we write $S^n_1$ when we need to track the arity of the input functions.
-It outputs a pair $(d, s)$ of real numbers, $d, s \in [0, n]$. Here $d$ is the depth
-of the minimal-depth decision tree, and $s$ is $\log_2 (\text{IN} + 1)$, where
-$\text{IN}$ is the number of internal nodes in the minimal-size decision tree; these
-two trees need not be the same.
+We write $M^n_1$ and $M^n_2$ when the arity of the arguments has to be tracked
+explicitly. A reduction either fixes one primary input, which drops the arity by one,
+or splits on $f$, which passes from $M_1$ to $M_2$; the target is the best value over
+all reductions available.
 
-We also need another model $S_2$, which takes a boolean function $g : \{0,1\}^n \to \{0,1\}$
-and a subset $X \subseteq \{0,1\}^n$ as its arguments. Its outputs $(d, s)$ have the
-same semantics, for the decision trees needed to compute $g$ restricted to $X$.
+\subsection{Targets for $M_1$}
 
-For training $S_1$ and $S_2$ we use exact values when possible. Otherwise we compute
-the target value as follows.
-
-\subsection{Targets for $S_1$}
-
-We select the target for $S^n_1\left[g \mid f\right]$ to be the minimum over the
+Here $h \downarrow_{x_i = \alpha}$ for $\alpha \in \{0, 1\}$ denotes the restriction of
+$h$ obtained by fixing $x_i = \alpha$, viewed as a function of the remaining $n - 1$
+inputs. We select the target for $M^n_1\left[g \mid f\right]$ to be the minimum over the
 following reductions:
 \begin{itemize}
     \item through each primary input $x_i$:
         $$
-            S^{n-1}_1 \left[g \downarrow_{x_i = 0} \mid f \downarrow_{x_i = 0} \right], \qquad
-            S^{n-1}_1 \left[g \downarrow_{x_i = 1} \mid f \downarrow_{x_i = 1} \right]
+            M^{n-1}_1 \left[g \downarrow_{x_i = 0} \mid f \downarrow_{x_i = 0} \right], \qquad
+            M^{n-1}_1 \left[g \downarrow_{x_i = 1} \mid f \downarrow_{x_i = 1} \right]
         $$
     \item through $f$:
         $$
-            S^n_2 \left[g \mid f^{-1}(0) \right], \qquad
-            S^n_2 \left[g \mid f^{-1}(1) \right]
+            M^n_2 \left[g \mid f^{-1}(0) \right], \qquad
+            M^n_2 \left[g \mid f^{-1}(1) \right]
         $$
 \end{itemize}
 
-Here $h \downarrow_{x_i = \alpha}$ for $\alpha \in \{0, 1\}$ denotes the restriction of
-$h$ obtained by fixing $x_i = \alpha$, viewed as a function of the remaining $n - 1$
-inputs.
 
-\subsection{Targets for $S_2$}
+\subsection{Targets for $M_2$}
 
-We select the target for $S^n_2\left[g \mid X\right]$ to be the minimum over the
+We select the target for $M^n_2\left[g \mid X\right]$ to be the minimum over the
 reductions through each primary input $x_i$:
 $$
-    S^{n-1}_2 \left[g \downarrow_{x_i = 0} \mid X \downarrow_{x_i = 0} \right], \qquad
-    S^{n-1}_2 \left[g \downarrow_{x_i = 1} \mid X \downarrow_{x_i = 1} \right]
+    M^{n-1}_2 \left[g \downarrow_{x_i = 0} \mid X \downarrow_{x_i = 0} \right], \qquad
+    M^{n-1}_2 \left[g \downarrow_{x_i = 1} \mid X \downarrow_{x_i = 1} \right]
 $$
 where $X \downarrow_{x_i = \alpha}$ is the projection of $X \cap \{x_i = \alpha\}$ onto
 the coordinates other than $x_i$.
+
+\subsection{Training}
+
+Based on these relations, the training follows the scheme below.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    x = 1cm, y = 1cm,
+    font = \small,
+    model/.style = {draw, rounded corners, minimum width = 15mm, minimum height = 8mm},
+    seed/.style  = {draw, dashed, rounded corners, text width = 24mm, align = center},
+]
+    \node[model] (u12) at (0, 1.7) {$M^{12}_1$};
+    \node[model] (u13) at (3, 1.7) {$M^{13}_1$};
+    \node[model] (u14) at (6, 1.7) {$M^{14}_1$};
+    \node        (ud)  at (7.6, 1.7) {$\cdots$};
+
+    \node[model] (l12) at (0, 0) {$M^{12}_2$};
+    \node[model] (l13) at (3, 0) {$M^{13}_2$};
+    \node[model] (l14) at (6, 0) {$M^{14}_2$};
+    \node        (ld)  at (7.6, 0) {$\cdots$};
+
+    \node[seed] (dp) at (-3.2, 0.85) {exact values, $n \leqslant 12$};
+    \draw[->] (dp) -- (u12);
+    \draw[->] (dp) -- (l12);
+
+    \draw[->] (u12) -- node[above] {fix $x_i$} (u13);
+    \draw[->] (u13) -- (u14);
+    \draw[->] (u14) -- (ud);
+
+    \draw[->] (l12) -- node[below] {fix $x_i$} (l13);
+    \draw[->] (l13) -- (l14);
+    \draw[->] (l14) -- (ld);
+
+    \draw[->] (l13) -- node[right] {split on $f$} (u13);
+    \draw[->] (l14) -- (u14);
+\end{tikzpicture}
+\caption{Every arrow points from a model to the one it supplies with targets. Exact
+values seed both models at $n \leqslant 12$.}
+\label{fig:training}
+\end{figure}
 
 \bibliographystyle{unsrt}
 \bibliography{paper}
