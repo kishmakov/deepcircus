@@ -15,6 +15,8 @@
 
 \begin{document}
 
+\nocite{*}
+
 \maketitle
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -27,7 +29,11 @@ of decision trees, used for the heuristic choice of element.
 
 \subsection{Formulation}
 
-We work over a fixed set of logical elements $\mathcal{K} = \left\{ K_1, K_2, \dots, K_m \right\}$.
+We work over a fixed set of logical elements
+$\mathcal{K} = \left\{ K_1, K_2, \dots, K_m \right\}$, each of which is a Boolean map
+$$
+    K : \left\{0, 1\right\}^{\mathrm{in}(K)} \to \left\{0, 1\right\}^{\mathrm{out}(K)}.
+$$
 We are given a Boolean function $g$ with $n$ primary inputs $\bar{x} = \left(x_1, x_2, \dots, x_n\right)$,
 and our goal is to construct a circuit representation of $g$ using elements from $\mathcal{K}$.
 
@@ -42,9 +48,9 @@ Engine, is a greedy heuristic that grows the circuit one element at a time, movi
 the primary inputs towards the output. The framework of this algorithm is as follows.
 
 \paragraph{State.} The algorithm operates on a pair $(S, C)$, where $S$ is the set of
-\emph{slots} -- the signals that are available and not yet consumed -- and $C$ is the
-current unfinished circuit. Every slot $y \in S$ is itself a Boolean function of the
-primary inputs, so $S$ can be read as a value table with one column per slot. Initially
+\emph{slots} -- the signals that are available -- and $C$ is the current unfinished
+circuit. Every slot $y \in S$ is itself a Boolean function of the primary inputs,
+so $S$ can be read as a value table with one column per slot. Initially
 $$
     S_0 = \left\{x_1, x_2, \dots, x_n\right\}, \qquad C_0 = \text{the empty circuit}.
 $$
@@ -55,16 +61,16 @@ $\Score\left[g \mid S\right]$ measures the complexity of that residual, and the 
 step is the attempt to make it drop as fast as possible.
 
 \paragraph{Step.} For the current pair $(S_j, C_j)$ the algorithm enumerates every candidate
-attachment: an element $K \in \mathcal{K}$ of arity $k$, together with a $k$-subset
-$\left\{y_{i_1}, \dots, y_{i_k}\right\} \subseteq S$ of slots to feed it. The output of
-the element produces a new slot
+attachment: an element $K \in \mathcal{K}$ with $k = \mathrm{in}(K)$, together with a
+$k$-subset $\left\{y_{i_1}, \dots, y_{i_k}\right\} \subseteq S$ of slots to feed it. The
+element contributes all of its $l = \mathrm{out}(K)$ outputs at once, as $l$ new slots
 $$
-    y = K\left(y_{i_1}, \dots, y_{i_k}\right),
+    \left(z_1, \dots, z_l\right) = K\left(y_{i_1}, \dots, y_{i_k}\right),
 $$
-whose column is computed row-wise from the columns of its inputs, and the candidate
+whose columns are computed row-wise from the columns of the inputs, and the candidate
 carries the state to
 $$
-    S_{j+1} = S_j \cup \left\{y\right\},
+    S_{j+1} = S_j \cup \left\{z_1, \dots, z_l\right\},
     \qquad
     C_{j+1} = C_j + K.
 $$
@@ -76,9 +82,21 @@ minimal value is committed, and the algorithm proceeds from $(S_{j+1}, C_{j+1})$
 \subsection{Limitation}
 
 In the original approach $\Score\left[g \mid S\right]$ is the number of leaves in a
-decision tree that computes $g$ from the value table of $S$. This computation of best
-tree is exponential in arity.  While this choice gives good convergence, computing it
-quickly becomes impractical as the arity of $g$ grows.
+decision tree that computes $g$ from the value table of $S$. Finding a tree with the
+smallest number of leaves is NP-complete~\cite{hyafil1976np}, so computing this score
+exactly costs time exponential in the arity.
+
+To speed this up, the authors used Orange's \texttt{TreeLearner} heuristic, which returns
+an approximate smallest tree. Even so, the heuristic still has to process every row of
+the value table, and the number of rows grows exponentially with the arity of $g$. The
+choice gives good convergence, but it quickly becomes impractical as that arity grows.
+
+Formally, the tree has to be built from a table of size $2^n \times L$, where $n$ is the
+arity of $g$ and $L$ is the number of slots, itself proportional to the size of the current
+circuit $C$. Both dimensions grow exponentially in $n$: the rows by definition, and the
+columns because the classical results of Shannon~\cite{shannon1949synthesis} and
+Lupanov~\cite{lupanov1958synthesis} put the circuit complexity of almost all Boolean
+functions of $n$ variables at order $2^n / n$.
 
 \subsection{Our modification}
 
@@ -145,7 +163,7 @@ $$
 where $X \downarrow_{x_i = \alpha}$ is the projection of $X \cap \{x_i = \alpha\}$ onto
 the coordinates other than $x_i$.
 
-\bibliographystyle{plain}
+\bibliographystyle{unsrt}
 \bibliography{paper}
 
 \end{document}
