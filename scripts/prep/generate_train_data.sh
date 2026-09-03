@@ -8,7 +8,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 CONFIG="$ROOT/conf/preparation.yaml"
 DATA_DIR="$ROOT/data"
 # Published by `build_offline_generator.sh`.
-GENERATOR="$ROOT/execs/offline_train_data_generator"
+GENERATOR="$ROOT/execs/data_generator"
 
 SERIES=(1 2)
 # `rand` draws both truth tables at random, `small` builds each entry around a

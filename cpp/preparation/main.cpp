@@ -2,7 +2,7 @@
 // `scripts/preparation/prepare_offline_train_data.sh` stages into `data/`.
 // Invoked as
 //
-//     offline_train_data_generator <output_dir> <bitness> <seed> <entries> \
+//     data_generator <output_dir> <bitness> <seed> <entries> \
 //         <small_size_from> <small_size_to>
 //
 // it writes `s<series>_<bitness>_<source>.bin` into <output_dir> for both

@@ -6,7 +6,7 @@ set -euo pipefail
 # is written to a scratch directory, so the PDF is the only file the run leaves
 # behind next to the source.
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 PAPER="${1:-$ROOT/docs/paper.tex}"
 PAPER_DIR="$(cd "$(dirname "$PAPER")" && pwd)"

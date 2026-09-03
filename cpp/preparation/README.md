@@ -1,6 +1,6 @@
 # cpp/preparation
 
-The `offline_train_data_generator` executable. It creates the random and
+The `data_generator` executable. It creates the random and
 small-tree datasets used for offline training, using the exact solvers for
 their targets.
 
