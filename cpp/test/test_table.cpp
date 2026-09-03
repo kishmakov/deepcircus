@@ -141,3 +141,17 @@ TEST(TableTest, TruthTableFollowsSeed) {
     EXPECT_EQ(func::TableCase(11, 239).TruthTable(), table);
     EXPECT_NE(func::TableCase(11, 240).TruthTable(), table);
 }
+
+TEST(TableTest, SerializeStoresSeedLittleEndian) {
+    const func::TableCase table(8, 0x0123456789abcdefull);
+    EXPECT_EQ(table.serialize(), (std::vector<uint8_t>{0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01}));
+}
+
+TEST(TableTest, DeserializeRestoresSeededTable) {
+    const func::TableCase original(8, 0x0123456789abcdefull);
+    const std::vector<uint8_t> bytes = original.serialize();
+    const func::TableCase restored(8, bytes);
+
+    EXPECT_EQ(restored.TruthTable(), original.TruthTable());
+    EXPECT_EQ(restored.serialize(), bytes);
+}

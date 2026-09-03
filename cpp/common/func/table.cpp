@@ -4,7 +4,7 @@
 #include <bit>
 #include <cassert>
 #include <cstdint>
-#include <random>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,41 +20,30 @@ namespace {
 
 constexpr uint64_t kTableSelectionDomain = 0x7461626c655f7365ull;
 
-constexpr uint16_t kTruthTableBitness = 16;
+// Widest table worth materializing.
+constexpr uint16_t kMaxMaterializedBitness = 16;
 
-// A uniformly random truth table, one rng word at a time.
-std::vector<bool> TruthTable(uint16_t bitness, std::mt19937& rng) {
-    assert(bitness >= kMinTableBitness && bitness <= kTruthTableBitness);
+uint64_t DeserializeSeed(const std::vector<uint8_t>& bytes) {
+    assert(bytes.size() == sizeof(uint64_t));
 
-    std::vector<bool> truth_table(size_t{1} << bitness);
-    size_t input_id = 0;
-    while (input_id < truth_table.size()) {
-        const uint32_t chunk = rng();
-        for (size_t bit = 0; bit < 32 && input_id < truth_table.size(); ++bit) {
-            truth_table[input_id] = ((chunk >> bit) & 1u) != 0;
-            ++input_id;
-        }
-    }
-    return truth_table;
+    uint64_t seed = 0;
+    std::memcpy(&seed, bytes.data(), sizeof(seed));
+    return seed;
 }
 
-size_t BitsToNum(const std::vector<bool>& input) {
-    assert(input.size() <= kTruthTableBitness);
-
-    size_t id = 0;
-    for (size_t bit_id = 0; bit_id < input.size(); ++bit_id) {
-        if (input[bit_id]) {
-            id |= size_t{1} << bit_id;
-        }
+// The seed's function at one point. The fold stops after the last set bit, so
+// trailing zeros cost a point nothing and it keeps its value however wide the
+// function around it is -- the narrow truth table stays the prefix of every
+// wider one.
+bool HashedValue(uint64_t seed, const std::vector<bool>& input) {
+    size_t bits = input.size();
+    while (bits > 0 && !input[bits - 1]) {
+        --bits;
     }
-    return id;
-}
 
-bool SparseTableValue(uint16_t bitness, uint64_t base_seed, const std::vector<bool>& input) {
-    assert(input.size() == bitness);
-    uint64_t value = base_seed;
-    for (bool bit : input) {
-        value ^= static_cast<uint64_t>(bit);
+    uint64_t value = seed;
+    for (size_t bit_id = 0; bit_id < bits; ++bit_id) {
+        value ^= static_cast<uint64_t>(input[bit_id]);
         value *= 0x100000001b3ull;
     }
     return (tools::Mix64(value) & 1ull) != 0;
@@ -62,28 +51,38 @@ bool SparseTableValue(uint16_t bitness, uint64_t base_seed, const std::vector<bo
 
 }  // namespace
 
-TableCase::TableCase(uint16_t bitness, uint64_t seed) : gen::Case(bitness, seed) {
+TableCase::TableCase(uint16_t bitness, uint64_t seed) : func::Func(bitness), seed_(seed) {
     assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
-    if (bitness_ <= kTruthTableBitness) {
-        // Qualified: the member TruthTable() would otherwise hide the drawing
-        // function at class scope.
-        truth_table_ = func::TruthTable(bitness_, rng_);
-    }
-    // Above that the function is a hash keyed on the seed itself, so there is
-    // nothing to draw and nothing to store.
 }
 
-bool TableCase::Evaluate(const std::vector<bool>& input) const {
+TableCase::TableCase(uint16_t bitness, std::vector<uint8_t> bytes)
+    : func::Func(bitness), seed_(DeserializeSeed(bytes)) {
+    assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
+}
+
+bool TableCase::operator()(const FuncInput& input) const {
     assert(input.size() == bitness_);
-    if (truth_table_.has_value()) {
-        return (*truth_table_)[BitsToNum(input)];
-    }
-    return SparseTableValue(bitness_, seed_, input);
+    return HashedValue(seed_, input);
 }
 
-const std::vector<bool>& TableCase::TruthTable() const {
-    assert(truth_table_.has_value());
-    return *truth_table_;
+std::vector<uint8_t> TableCase::serialize() const {
+    std::vector<uint8_t> bytes(sizeof(seed_));
+    std::memcpy(bytes.data(), &seed_, sizeof(seed_));
+    return bytes;
+}
+
+std::vector<bool> TableCase::TruthTable() const {
+    assert(bitness_ <= kMaxMaterializedBitness);
+
+    std::vector<bool> truth_table(size_t{1} << bitness_);
+    FuncInput input(bitness_);
+    for (size_t id = 0; id < truth_table.size(); ++id) {
+        for (uint16_t bit_id = 0; bit_id < bitness_; ++bit_id) {
+            input[bit_id] = ((id >> bit_id) & 1u) != 0;
+        }
+        truth_table[id] = HashedValue(seed_, input);
+    }
+    return truth_table;
 }
 
 std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input) {
@@ -117,8 +116,10 @@ gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uin
         const std::vector<bool> samples = table.SampleValues(shape);
         assert(samples.size() == columns);
         std::copy(samples.begin(), samples.end(), values.begin() + case_index * columns);
-        const size_t depth = tools::SolveForDepth(bitness, table.TruthTable());
-        const size_t size = tools::SolveForSize(bitness, table.TruthTable());
+        // Built once: the table is no longer kept on the case.
+        const std::vector<bool> truth_table = table.TruthTable();
+        const size_t depth = tools::SolveForDepth(bitness, truth_table);
+        const size_t size = tools::SolveForSize(bitness, truth_table);
         targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - depth);
         targets[gen::kTargetsPerCase * case_index + 1] = gen::SizeScore(bitness, size);
     }

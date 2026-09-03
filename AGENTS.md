@@ -25,7 +25,7 @@ level.
 | [`conf/`](conf/README.md) | run configuration -- training runs and offline data preparation |
 | [`cpp/`](cpp/README.md) | C++ part of the project |
 | `data/` | the benchmark circuits under `data/circuits/` (`*.aig`/`*.bench`, sizes recorded in `data/dimensions.txt`) and the generated offline training files `s{1,2}_<bitness>_{rand,small}.bin`. Gitignored apart from `data/circuits/` |
-| `docs/` | the paper (`paper.tex`, `paper.bib`) and format documentation -- [`docs/data.md`](docs/data.md) specifies the offline training files; `docs/old/` keeps retired notes |
+| `docs/` | the paper (`paper.tex`, `paper.bib`) and format documentation -- [`docs/data_m1.md`](docs/data_m1.md) specifies the offline training files; `docs/old/` keeps retired notes |
 | `execs/` | symlinks to built binaries under their published names; gitignored |
 | [`scripts/`](scripts/README.md) | thin entrypoints: build, test, run, benchmark, plot, prepare data |
 | [`src/`](src/README.md) | Python part of the project |

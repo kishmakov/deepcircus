@@ -6,4 +6,4 @@ their targets.
 
 Run parameters live in [`../../conf/`](../../conf/README.md), and the output
 format is documented in
-[`docs/data.md`](../../docs/data.md).
+[`docs/data_m1.md`](../../docs/data_m1.md).

@@ -1,7 +1,8 @@
 #pragma once
 
 // Deterministic offline samplers for `M_1[g | f]` (series 1) and
-// `M_2[g | X]` (series 2); see `docs/paper.tex` and `docs/data.md`.
+// `M_2[g | X]` (series 2); see `docs/paper.tex`; the `M_1` file format is in
+// `docs/data_m1.md`.
 
 #include <cstdint>
 

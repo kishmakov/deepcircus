@@ -3,11 +3,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <optional>
 #include <string>
 #include <vector>
 
-#include "case.h"
+#include "func/func.h"
+#include "generator.h"
 
 namespace func {
 
@@ -15,18 +15,23 @@ inline constexpr uint16_t kMinTableBitness = 8;
 // Technical limitation for a while.
 inline constexpr uint16_t kMaxTableBitness = 256;
 
-// A uniformly random boolean function of `bitness` inputs, drawn from `seed`
-// alone. How far the solvers reach is a separate question it does not ask.
-class TableCase : public gen::Case {
+// A uniformly random boolean function keyed on `seed` alone.
+class TableCase : public func::Func {
 public:
     TableCase(uint16_t bitness, uint64_t seed);
+    TableCase(uint16_t bitness, std::vector<uint8_t> bytes);
 
-    bool Evaluate(const std::vector<bool>& input) const override;
-    // Only the materialized cases have one.
-    const std::vector<bool>& TruthTable() const;
+    // The point overload alone would hide the batch one inherited from Func.
+    using Func::operator();
+    bool operator()(const FuncInput& input) const override;
+    std::vector<uint8_t> serialize() const override;
+
+    // Every value, laid out by the input read as a little-endian index. Built
+    // on the spot, so only ask a bitness whose table fits in memory.
+    std::vector<bool> TruthTable() const;
 
 private:
-    std::optional<std::vector<bool>> truth_table_;
+    const uint64_t seed_;
 };
 
 // Input: bitness bits. Output length: 2 * bitness + 1.
