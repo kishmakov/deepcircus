@@ -11,10 +11,6 @@
 
 namespace func {
 
-inline constexpr uint16_t kMinTableBitness = 8;
-// Technical limitation for a while.
-inline constexpr uint16_t kMaxTableBitness = 256;
-
 // A uniformly random boolean function keyed on `seed` alone.
 class TableFunc : public func::Func {
 public:

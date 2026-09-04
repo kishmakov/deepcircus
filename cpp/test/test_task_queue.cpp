@@ -11,8 +11,8 @@ TrainingShape MakeShape() {
     TrainingShape shape{};
     shape.first_iteration = 1;
     shape.last_iteration = 2;
-    shape.bitness_from = func::kMinTableBitness;
-    shape.bitness_to = func::kMinTableBitness;
+    shape.bitness_from = func::kMinBitness;
+    shape.bitness_to = func::kMinBitness;
     shape.seed = 42;
     shape.train_samples = 4;
     shape.validation_samples = 2;
@@ -29,11 +29,11 @@ TEST(TaskQueueTest, ValidationTask) {
     std::unique_ptr<TaskResult> validation = queue.Take();
     ASSERT_NE(validation, nullptr);
     EXPECT_EQ(validation->task.iteration, 0u);
-    EXPECT_EQ(validation->task.bitness, func::kMinTableBitness);
+    EXPECT_EQ(validation->task.bitness, func::kMinBitness);
     ASSERT_EQ(validation->values.size(), 1u);
     EXPECT_TRUE(validation->restrictions.empty());
     EXPECT_EQ(validation->values[0].values.Rows(), 2u);
-    EXPECT_EQ(validation->values[0].values.Columns(), 2u * 4u * (2 * func::kMinTableBitness + 1));
+    EXPECT_EQ(validation->values[0].values.Columns(), 2u * 4u * (2 * func::kMinBitness + 1));
     EXPECT_EQ(validation->values[0].targets.size(), gen::kTargetsPerCase * 2u);
 }
 
@@ -45,7 +45,7 @@ TEST(TaskQueueTest, TrainingTasks) {
         std::unique_ptr<TaskResult> result = queue.Take();
         ASSERT_NE(result, nullptr);
         EXPECT_EQ(result->task.iteration, iteration);
-        EXPECT_EQ(result->task.bitness, func::kMinTableBitness);
+        EXPECT_EQ(result->task.bitness, func::kMinBitness);
         ASSERT_EQ(result->values.size(), 1u);
         EXPECT_TRUE(result->restrictions.empty());
         EXPECT_EQ(result->values[0].values.Rows(), 4u);

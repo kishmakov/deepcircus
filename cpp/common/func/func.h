@@ -8,6 +8,11 @@
 
 namespace func {
 
+// The bitness range every kind of function is built over.
+inline constexpr uint16_t kMinBitness = 8;
+// Technical limitation for a while.
+inline constexpr uint16_t kMaxBitness = 256;
+
 // Widest function worth materializing as a truth table.
 inline constexpr uint16_t kMaxMaterializedBitness = 16;
 

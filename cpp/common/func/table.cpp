@@ -31,12 +31,12 @@ uint64_t DeserializeSeed(const std::vector<uint8_t>& bytes) {
 }  // namespace
 
 TableFunc::TableFunc(uint16_t bitness, uint64_t seed) : func::Func(bitness), seed_(seed) {
-    assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
+    assert(bitness_ >= kMinBitness && bitness_ <= kMaxBitness);
 }
 
 TableFunc::TableFunc(uint16_t bitness, std::vector<uint8_t> bytes)
     : func::Func(bitness), seed_(DeserializeSeed(bytes)) {
-    assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
+    assert(bitness_ >= kMinBitness && bitness_ <= kMaxBitness);
 }
 
 bool TableFunc::operator()(const FuncInput& input) const {
@@ -51,7 +51,7 @@ std::vector<uint8_t> TableFunc::serialize() const {
 }
 
 std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input) {
-    assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
+    assert(bitness >= kMinBitness && bitness <= kMaxBitness);
     assert(input.size() >= bitness);
 
     const TableFunc table(bitness, seed);
@@ -68,7 +68,7 @@ gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uin
     assert(cases > 0);
     assert(shape.batches > 1);
     assert(std::has_single_bit(shape.batch_size));
-    assert(bitness >= kMinTableBitness);
+    assert(bitness >= kMinBitness);
     assert(bitness <= tools::kMaxSolvableBitness);
 
     const size_t sample_size = 2 * bitness + 1;
@@ -99,7 +99,7 @@ gen::GeneratedRestrictions TableRestrictionsForSeeds(uint16_t bitness, const std
     assert(shape.batches > 1);
     assert(std::has_single_bit(shape.batch_size));
     assert(bitness > tools::kMaxSolvableBitness);
-    assert(bitness <= kMaxTableBitness);
+    assert(bitness <= kMaxBitness);
 
     const size_t points = static_cast<size_t>(shape.batches) * shape.batch_size;
     const size_t columns = points * (2 * bitness + 1);

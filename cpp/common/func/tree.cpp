@@ -17,7 +17,7 @@ namespace {
 
 using tools::BinaryTree;
 
-// Marks a serialized word as a leaf. Bit ids stay below kMaxTreeBitness, so
+// Marks a serialized word as a leaf. Bit ids stay below kMaxBitness, so
 // the tag can never be mistaken for one.
 constexpr uint32_t kLeafTag = uint32_t{1} << 31;
 
@@ -104,7 +104,7 @@ void AssertReadable(const BinaryTree& tree, uint16_t bitness) {
 TreeFunc::TreeFunc(uint16_t bitness, uint64_t seed) : TreeFunc(bitness, SampleTree(bitness, seed)) {}
 
 TreeFunc::TreeFunc(uint16_t bitness, tools::BinaryTree tree) : func::Func(bitness), tree_(std::move(tree)) {
-    assert(bitness_ >= kMinTreeBitness && bitness_ <= kMaxTreeBitness);
+    assert(bitness_ >= kMinBitness && bitness_ <= kMaxBitness);
     AssertReadable(tree_, bitness_);
 }
 

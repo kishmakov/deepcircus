@@ -10,10 +10,6 @@
 
 namespace func {
 
-inline constexpr uint16_t kMinTreeBitness = 8;
-// Technical limitation for a while.
-inline constexpr uint16_t kMaxTreeBitness = 256;
-
 // `bitness` bounds path depth; these cap BinaryTree addressing and case memory.
 inline constexpr uint32_t kMaxTreeDepth = 24;
 inline constexpr uint32_t kMaxTreeSize = uint32_t{1} << 20;
