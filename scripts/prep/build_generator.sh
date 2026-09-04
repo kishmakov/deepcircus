@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Builds the one target `scripts/build.sh` also covers, then publishes it under
-# `execs/` -- the name `prepare_offline_train_data.sh` runs.
+# `execs/` for `generate_train_data.sh`.
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BINARY="cpp/build/preparation/data_generator"

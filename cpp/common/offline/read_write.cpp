@@ -5,11 +5,15 @@
 #include <ios>
 #include <limits>
 #include <ostream>
+#include <utility>
+#include <vector>
 
 namespace offline {
 namespace {
 
 constexpr size_t kHeaderBytes = sizeof(uint32_t) + sizeof(uint8_t);
+constexpr size_t kFunctionHeaderBytes = sizeof(uint8_t) + sizeof(uint32_t);
+constexpr size_t kTargetBytes = sizeof(uint8_t) + sizeof(uint16_t);
 
 void WriteUint8(std::ostream& output, uint8_t value) { output.put(static_cast<char>(value)); }
 
@@ -19,6 +23,12 @@ void WriteUint16(std::ostream& output, uint16_t value) {
 }
 
 void WriteUint32(std::ostream& output, uint32_t value) {
+    for (size_t byte = 0; byte < sizeof(value); ++byte) {
+        WriteUint8(output, value >> (8 * byte));
+    }
+}
+
+void WriteUint64(std::ostream& output, uint64_t value) {
     for (size_t byte = 0; byte < sizeof(value); ++byte) {
         WriteUint8(output, value >> (8 * byte));
     }
@@ -46,75 +56,134 @@ uint32_t ReadUint32(std::istream& input) {
     return value;
 }
 
+uint64_t ReadUint64(std::istream& input) {
+    uint64_t value = 0;
+    for (size_t byte = 0; byte < sizeof(value); ++byte) {
+        value |= uint64_t{ReadUint8(input)} << (8 * byte);
+    }
+    return value;
+}
+
 void ReadBytes(std::istream& input, std::vector<uint8_t>& bytes) {
     input.read(reinterpret_cast<char*>(bytes.data()), bytes.size());
     assert(input.good());
 }
 
-}  // namespace
-
-size_t TableBytes(uint16_t bitness) {
-    assert(bitness >= kMinBitness && bitness <= kMaxBitness);
-    return size_t{1} << (bitness - 3);
+uint64_t Position(std::streampos position) {
+    assert(position >= 0);
+    return static_cast<uint64_t>(position);
 }
 
-size_t EntryBytes(uint16_t bitness) { return 2 * TableBytes(bitness) + sizeof(uint8_t) + sizeof(uint16_t); }
+void AssertFunctionKind(FunctionKind kind) {
+    assert(kind == FunctionKind::kTable || kind == FunctionKind::kTree || kind == FunctionKind::kTreeOverTable);
+}
+
+void AssertTarget(const Entry& entry, uint16_t bitness) {
+    const bool unknown_depth = entry.min_depth == kUnknownDepth;
+    const bool unknown_size = entry.min_size == kUnknownSize;
+    assert(unknown_depth == unknown_size);
+    if (unknown_depth) return;
+
+    assert(entry.min_depth <= bitness);
+    if (bitness < std::numeric_limits<uint16_t>::digits) {
+        assert(entry.min_size < (uint32_t{1} << bitness));
+    }
+}
+
+void WriteFunction(std::ostream& output, const Function& function) {
+    AssertFunctionKind(function.kind);
+    assert(function.payload.size() <= UINT32_MAX);
+    WriteUint8(output, static_cast<uint8_t>(function.kind));
+    WriteUint32(output, static_cast<uint32_t>(function.payload.size()));
+    output.write(reinterpret_cast<const char*>(function.payload.data()), function.payload.size());
+}
+
+Function ReadFunction(std::istream& input, uint64_t entry_end) {
+    const auto kind = static_cast<FunctionKind>(ReadUint8(input));
+    AssertFunctionKind(kind);
+    const uint32_t size = ReadUint32(input);
+    assert(Position(input.tellg()) + size <= entry_end);
+
+    std::vector<uint8_t> payload(size);
+    ReadBytes(input, payload);
+    return Function{kind, std::move(payload)};
+}
+
+}  // namespace
+
+uint64_t EntryBytes(const Entry& entry) {
+    return 2 * kFunctionHeaderBytes + entry.g.payload.size() + entry.f.payload.size() + kTargetBytes;
+}
 
 Writer::Writer(const std::string& path, uint32_t entries, uint16_t bitness)
-    : output_(path, std::ios::binary | std::ios::trunc), entries_(entries), bitness_(bitness) {
+    : output_(path, std::ios::binary | std::ios::trunc), offsets_(entries), entries_(entries), bitness_(bitness) {
     assert(output_.is_open());
-    TableBytes(bitness_);
+    assert(bitness_ >= kMinBitness && bitness_ <= kMaxBitness);
     WriteUint32(output_, entries_);
     WriteUint8(output_, static_cast<uint8_t>(bitness_));
+    for (uint32_t index = 0; index < entries_; ++index) WriteUint64(output_, 0);
     assert(output_.good());
 }
 
 Writer::~Writer() {
     assert(entries_written_ == entries_);
+    const std::streampos end = output_.tellp();
+    output_.seekp(kHeaderBytes);
+    assert(output_.good());
+    for (const uint64_t offset : offsets_) WriteUint64(output_, offset);
+    output_.seekp(end);
     output_.flush();
     assert(output_.good());
 }
 
 void Writer::Write(const Entry& entry) {
     assert(entries_written_ < entries_);
-    const size_t table_bytes = TableBytes(bitness_);
-    assert(entry.g.size() == table_bytes);
-    assert(entry.fx.size() == table_bytes);
-    assert(entry.min_depth <= bitness_);
-    assert(entry.min_size < (uint32_t{1} << bitness_));
+    AssertTarget(entry, bitness_);
+    offsets_[entries_written_] = Position(output_.tellp());
 
-    output_.write(reinterpret_cast<const char*>(entry.g.data()), entry.g.size());
-    output_.write(reinterpret_cast<const char*>(entry.fx.data()), entry.fx.size());
+    WriteFunction(output_, entry.g);
+    WriteFunction(output_, entry.f);
     WriteUint8(output_, entry.min_depth);
     WriteUint16(output_, entry.min_size);
     assert(output_.good());
     ++entries_written_;
 }
 
-Reader::Reader(const std::string& path) : input_(path, std::ios::binary), entries_(0), bitness_(0) {
+Reader::Reader(const std::string& path) : input_(path, std::ios::binary), file_bytes_(0), entries_(0), bitness_(0) {
     assert(input_.is_open());
     entries_ = ReadUint32(input_);
     bitness_ = ReadUint8(input_);
+    assert(bitness_ >= kMinBitness && bitness_ <= kMaxBitness);
 
-    const uintmax_t expected_size = kHeaderBytes + uintmax_t{entries_} * EntryBytes(bitness_);
-    assert(std::filesystem::file_size(path) == expected_size);
+    offsets_.resize(entries_);
+    for (uint64_t& offset : offsets_) offset = ReadUint64(input_);
+
+    file_bytes_ = std::filesystem::file_size(path);
+    const uint64_t entries_begin = kHeaderBytes + uint64_t{entries_} * sizeof(uint64_t);
+    if (entries_ == 0) {
+        assert(file_bytes_ == entries_begin);
+        return;
+    }
+
+    assert(offsets_.front() == entries_begin);
+    for (uint32_t index = 0; index < entries_; ++index) {
+        assert(offsets_[index] < (index + 1 < entries_ ? offsets_[index + 1] : file_bytes_));
+    }
 }
 
 Entry Reader::Read(uint32_t index) {
     assert(index < entries_);
-    const uintmax_t offset = kHeaderBytes + uintmax_t{index} * EntryBytes(bitness_);
-    assert(offset <= static_cast<uintmax_t>(std::numeric_limits<std::streamoff>::max()));
+    const uint64_t offset = offsets_[index];
+    const uint64_t entry_end = index + 1 < entries_ ? offsets_[index + 1] : file_bytes_;
+    assert(entry_end <= static_cast<uint64_t>(std::numeric_limits<std::streamoff>::max()));
     input_.seekg(static_cast<std::streamoff>(offset));
     assert(input_.good());
 
-    const size_t table_bytes = TableBytes(bitness_);
-    Entry entry{std::vector<uint8_t>(table_bytes), std::vector<uint8_t>(table_bytes), 0, 0};
-    ReadBytes(input_, entry.g);
-    ReadBytes(input_, entry.fx);
+    Entry entry{ReadFunction(input_, entry_end), ReadFunction(input_, entry_end), 0, 0};
     entry.min_depth = ReadUint8(input_);
     entry.min_size = ReadUint16(input_);
-    assert(entry.min_depth <= bitness_);
-    assert(entry.min_size < (uint32_t{1} << bitness_));
+    assert(Position(input_.tellg()) == entry_end);
+    AssertTarget(entry, bitness_);
     return entry;
 }
 

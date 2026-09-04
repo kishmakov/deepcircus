@@ -3,7 +3,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include <string>
 #include <vector>
 
 #include "func/func.h"
@@ -25,9 +24,6 @@ public:
 private:
     const uint64_t seed_;
 };
-
-// Input: bitness bits. Output length: 2 * bitness + 1.
-std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input);
 
 std::vector<uint64_t> TableSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed);
 

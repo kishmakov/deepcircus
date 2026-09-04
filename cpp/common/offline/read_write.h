@@ -9,17 +9,32 @@
 namespace offline {
 
 inline constexpr uint16_t kMinBitness = 8;
-inline constexpr uint16_t kMaxBitness = 12;
+inline constexpr uint16_t kMaxBitness = UINT8_MAX;
 
-struct Entry {
-    std::vector<uint8_t> g;
-    std::vector<uint8_t> fx;
-    uint8_t min_depth;
-    uint16_t min_size;
+inline constexpr uint8_t kUnknownDepth = UINT8_MAX;
+inline constexpr uint16_t kUnknownSize = UINT16_MAX;
+
+enum class FunctionKind : uint8_t {
+    kTable = 0,
+    kTree = 1,
+    kTreeOverTable = 2,
 };
 
-size_t TableBytes(uint16_t bitness);
-size_t EntryBytes(uint16_t bitness);
+struct Function {
+    FunctionKind kind;
+    std::vector<uint8_t> payload;
+};
+
+struct Entry {
+    Function g;
+    Function f;
+    uint8_t min_depth;
+    uint16_t min_size;
+
+    bool TargetKnown() const { return min_depth != kUnknownDepth; }
+};
+
+uint64_t EntryBytes(const Entry& entry);
 
 class Writer {
 public:
@@ -36,6 +51,7 @@ public:
 
 private:
     std::ofstream output_;
+    std::vector<uint64_t> offsets_;
     uint32_t entries_;
     uint32_t entries_written_ = 0;
     uint16_t bitness_;
@@ -55,6 +71,8 @@ public:
 
 private:
     std::ifstream input_;
+    std::vector<uint64_t> offsets_;
+    uint64_t file_bytes_;
     uint32_t entries_;
     uint16_t bitness_;
 };

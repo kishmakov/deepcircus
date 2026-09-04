@@ -32,11 +32,6 @@ public:
     // split survives a change in either format.
     std::vector<uint8_t> serialize() const override;
 
-    // The tree runs over one more variable than the function does, and reads
-    // the table's value as the last of them.
-    static constexpr uint16_t TreeBitness(uint16_t bitness) { return bitness + 1; }
-    uint16_t TableBitId() const { return bitness_; }
-
     // Upper bounds on the witnessed tree complexity, not the minimum.
     uint32_t Size() const { return tree_.Size(); }
     uint32_t Depth() const { return tree_.Depth(); }

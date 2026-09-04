@@ -42,7 +42,7 @@ std::vector<uint8_t> TreePart(const std::vector<uint8_t>& bytes) {
 
 TTFunc::TTFunc(uint16_t bitness, uint64_t seed)
     : TTFunc(bitness, TableFunc(bitness, tools::DomainSeed(seed, kTTTableDomain, bitness)),
-             TreeFunc(TreeBitness(bitness), tools::DomainSeed(seed, kTTTreeDomain, bitness))) {}
+             TreeFunc(bitness + 1, tools::DomainSeed(seed, kTTTreeDomain, bitness))) {}
 
 TTFunc::TTFunc(uint16_t bitness, TableFunc table, TreeFunc tree)
     : func::Func(bitness), table_(std::move(table)), tree_(std::move(tree)) {
@@ -50,7 +50,7 @@ TTFunc::TTFunc(uint16_t bitness, TableFunc table, TreeFunc tree)
 }
 
 TTFunc::TTFunc(uint16_t bitness, const std::vector<uint8_t>& bytes)
-    : TTFunc(bitness, TableFunc(bitness, TablePart(bytes)), TreeFunc(TreeBitness(bitness), TreePart(bytes))) {}
+    : TTFunc(bitness, TableFunc(bitness, TablePart(bytes)), TreeFunc(bitness + 1, TreePart(bytes))) {}
 
 bool TTFunc::operator()(const FuncInput& input) const {
     assert(input.size() == bitness_);

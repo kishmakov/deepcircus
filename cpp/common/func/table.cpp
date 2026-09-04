@@ -5,10 +5,10 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
-#include <string>
 #include <utility>
 #include <vector>
 
+#include "case.h"
 #include "generator.h"
 #include "tools/random.h"
 #include "tools/solver.h"
@@ -19,6 +19,16 @@ namespace func {
 namespace {
 
 constexpr uint64_t kTableSelectionDomain = 0x7461626c655f7365ull;
+
+class TableSampler : public gen::Case {
+public:
+    TableSampler(uint16_t bitness, uint64_t seed, const TableFunc& table) : gen::Case(bitness, seed), table_(table) {}
+
+private:
+    bool Evaluate(const std::vector<bool>& input) const override { return table_(input); }
+
+    const TableFunc& table_;
+};
 
 uint64_t DeserializeSeed(const std::vector<uint8_t>& bytes) {
     assert(bytes.size() == sizeof(uint64_t));
@@ -50,15 +60,6 @@ std::vector<uint8_t> TableFunc::serialize() const {
     return bytes;
 }
 
-std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input) {
-    assert(bitness >= kMinBitness && bitness <= kMaxBitness);
-    assert(input.size() >= bitness);
-
-    const TableFunc table(bitness, seed);
-    const std::vector<bool> point(input.begin(), input.begin() + bitness);
-    return table.SampledValueString(point);
-}
-
 std::vector<uint64_t> TableSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed) {
     return tools::SampleSeeds(cases, tools::DomainSeed(task_seed, kTableSelectionDomain, bitness));
 }
@@ -78,7 +79,8 @@ gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uin
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         TableFunc table(bitness, seeds[case_index]);
-        const std::vector<bool> samples = table.SampleValues(shape);
+        TableSampler sampler(bitness, seeds[case_index], table);
+        const std::vector<bool> samples = sampler.SampleValues(shape);
         assert(samples.size() == columns);
         std::copy(samples.begin(), samples.end(), values.begin() + case_index * columns);
         // Built once: the table is no longer kept on the case.
@@ -109,12 +111,13 @@ gen::GeneratedRestrictions TableRestrictionsForSeeds(uint16_t bitness, const std
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
         TableFunc table(bitness, seeds[case_index]);
+        TableSampler sampler(bitness, seeds[case_index], table);
 
-        const std::vector<bool> case_values = table.SampleValues(shape);
+        const std::vector<bool> case_values = sampler.SampleValues(shape);
         assert(case_values.size() == columns);
         std::copy(case_values.begin(), case_values.end(), values.begin() + case_index * columns);
 
-        const std::vector<bool> case_restrictions = table.SampleRestrictions(shape);
+        const std::vector<bool> case_restrictions = sampler.SampleRestrictions(shape);
         assert(case_restrictions.size() == restriction_size);
         std::copy(case_restrictions.begin(), case_restrictions.end(),
                   restrictions.begin() + case_index * restriction_size);

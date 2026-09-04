@@ -1,19 +1,21 @@
 # Offline training data for `M_1`
 
-The pairs `(g, f)` and the exact targets that train `M_1[g | f]`, the model of
-"Targets for `M_1`" in [`paper.tex`](paper.tex). One pair of files per bitness,
+The pairs `(g, f)` that train `M_1[g | f]`, with either exact targets or markers
+requesting bootstrapped targets as described in "Targets for `M_1`" in
+[`paper.tex`](paper.tex). One pair of files per bitness,
 
 ```
 data/m1_<bitness>.train
 data/m1_<bitness>.val
 ```
 
-with zero-padded bitness. Supported bitnesses are 8 through 12. The two files
+with zero-padded bitness. Supported bitnesses are 8 through 255. The two files
 share the layout below exactly; which of them an entry lands in is the whole
 difference between them.
 
-`M_2[g | X]` takes a function and a subset rather than a pair of functions, so
-its data is not this format.
+`M_2[g | X]` uses the same binary envelope in `m2_<bitness>.train` and
+`m2_<bitness>.val`; its second function is the indicator of `X` rather than
+`f`.
 
 All integers are unsigned and little-endian. The file is packed without
 alignment padding.
@@ -35,9 +37,8 @@ front and fills it in as it goes.
 
 ## Entry
 
-Two functions of the same `n` bits, followed by the targets they were solved
-for. Each function is written as its kind, the length of its payload, and the
-payload.
+Two functions of the same `n` bits, followed by their target fields. Each
+function is written as its kind, the length of its payload, and the payload.
 
 | Size | Type | Field |
 | ---: | --- | --- |
@@ -47,20 +48,36 @@ payload.
 | 1 | `uint8_t` | kind of `f` |
 | 4 | `uint32_t` | payload length of `f` |
 | `len(f)` | bytes | payload of `f` |
-| 1 | `uint8_t` | minimum decision-tree depth |
-| 2 | `uint16_t` | minimum decision-tree size |
+| 1 | `uint8_t` | decision-tree depth, or `UINT8_MAX` if unknown |
+| 2 | `uint16_t` | decision-tree size, or `UINT16_MAX` if unknown |
 
 A decision tree here computes `g` from the primary inputs together with `f`,
-and may query `f` once per path. Depth and size are raw exact values; no model
-transform is applied.
+and may query `f` once per path. Depth and size are raw values; no model
+transform is applied. Through bitness 12 they are exact minima from the dynamic
+programming solvers. At higher bitnesses a solved entry stores the depth and
+size of its witness tree, which are upper bounds on the minima.
+
+The pair `(UINT8_MAX, UINT16_MAX)`, numerically `(255, 65535)`, marks an unknown
+target. Such an entry supplies `(g, f)` for computing the target through the
+lower-arity `M_1` and auxiliary `M_2` models according to the reductions in
+[`paper.tex`](paper.tex); the marker values are not training targets. The two
+fields form one marker: either both are maximal or neither is. A mixed pair is
+malformed.
+
+The preparation split follows the function kinds. A solved `M_1` entry stores
+`g` as `tree-over-table` and its matching `f` as `table`. An unsolved `M_1`
+entry stores independent `table` functions and the unknown marker. Validation
+contains only solved entries. Through bitness 12, solved `M_2` entries use
+`table`/`table` and exact restricted targets. Above that, solved `M_2` entries
+use `tree`/`table` witnesses and unsolved ones use `table`/`table`.
 
 ## Function kinds
 
 | Kind | Name | The function is backed by |
 | ---: | --- | --- |
-| 0 | `table` | a truth table -- [`func::TableCase`](../cpp/common/func/table.h) |
-| 1 | `tree` | a tree |
-| 2 | `tree-over-table` | a table with a tree applied on top of it |
+| 0 | `table` | a seeded table function -- [`func::TableFunc`](../cpp/common/func/table.h) |
+| 1 | `tree` | a decision tree -- [`func::TreeFunc`](../cpp/common/func/tree.h) |
+| 2 | `tree-over-table` | a table followed by a tree -- [`func::TTFunc`](../cpp/common/func/tt.h) |
 
 The payload is opaque to the reader and the writer. A function serializes
 itself to a `std::vector<uint8_t>` and is rebuilt from those same bytes, so the
