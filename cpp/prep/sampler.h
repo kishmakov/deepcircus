@@ -7,7 +7,7 @@
 
 #include "offline/read_write.h"
 
-namespace preparation {
+namespace prep {
 
 enum class Model : uint8_t {
     kM1 = 1,
@@ -21,4 +21,4 @@ struct Parameters {
 offline::Entry SolvedEntry(const Parameters& parameters, Model model, uint16_t bitness, uint32_t index);
 offline::Entry UnsolvedEntry(const Parameters& parameters, Model model, uint16_t bitness, uint32_t index);
 
-}  // namespace preparation
+}  // namespace prep

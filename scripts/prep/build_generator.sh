@@ -5,7 +5,7 @@ set -euo pipefail
 # `execs/` for `generate_train_data.sh`.
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-BINARY="cpp/build/preparation/data_generator"
+BINARY="cpp/build/prep/data_generator"
 LINK="$ROOT/execs/data_generator"
 
 # Same flags as `scripts/build.sh`, which drives the same tree; differing ones

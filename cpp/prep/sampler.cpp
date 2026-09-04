@@ -12,7 +12,7 @@
 #include "tools/random.h"
 #include "tools/solver.h"
 
-namespace preparation {
+namespace prep {
 
 namespace {
 
@@ -98,4 +98,4 @@ offline::Entry UnsolvedEntry(const Parameters& parameters, Model model, uint16_t
     return Unknown(parameters, model, bitness, index);
 }
 
-}  // namespace preparation
+}  // namespace prep

@@ -29,8 +29,8 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 
 echo
 echo "== data_generator: a few solved entries of each model at bitness 8"
-"$BUILD_DIR/preparation/data_generator" "$WORK_DIR" m1 8 239 4 0 2
-"$BUILD_DIR/preparation/data_generator" "$WORK_DIR" m2 8 239 4 0 2
+"$BUILD_DIR/prep/data_generator" "$WORK_DIR" m1 8 239 4 0 2
+"$BUILD_DIR/prep/data_generator" "$WORK_DIR" m2 8 239 4 0 2
 ls "$WORK_DIR"
 
 echo

@@ -10,7 +10,7 @@ preparation, validation, and tests.
 | [`generator/`](generator/README.md) | synchronous generation of cases and tensors |
 | [`producer/`](producer/README.md) | parallel production and scheduling of generated data |
 | [`server/`](server/README.md) | the daemon that feeds Python its training data |
-| [`preparation/`](preparation/README.md) | offline training-data generation |
+| [`prep/`](prep/README.md) | offline training-data generation |
 | [`validation/`](validation/README.md) | reconstruction and validation |
 | [`test/`](test/README.md) | the C++ test suite |
 

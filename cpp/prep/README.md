@@ -1,4 +1,4 @@
-# cpp/preparation
+# cpp/prep
 
 The `data_generator` executable. It creates the configured `M_1` and `M_2`
 train/validation files, mixing solved witness pairs with unknown table pairs.
