@@ -32,8 +32,7 @@ struct Task {
 
 struct TaskResult {
     Task task;
-    // Inputs come with either exact targets (values) or restriction matrices
-    // (restrictions); worker chunks are merged back before publication.
+    // The remaining legacy queue produces exact tree targets only.
     std::vector<gen::GeneratedValues> values;
     std::vector<gen::GeneratedRestrictions> restrictions;
 };

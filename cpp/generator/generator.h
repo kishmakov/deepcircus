@@ -1,11 +1,11 @@
 #pragma once
 
-#include "sample.h"
-
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "sample.h"
 
 namespace gen {
 
@@ -61,22 +61,8 @@ struct GeneratedRestrictions {
     Restrictions restrictions;
 };
 
-// Input sampling shape shared by the tree and table value batches.
+// Input sampling shape used by generated value batches.
 using InputShape = tools::InputShape;
-
-/********************************* tree **************************************/
-
-// Input: bitness bits. Output length: 2 * bitness + 1.
-std::string TreeValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input);
-
-// Deterministic, chunk-order-independent case-seed sample: splitting the result
-// into contiguous groups and generating each with TreeValuesForSeeds
-// reproduces exactly what a single call over the full list would produce.
-std::vector<uint64_t> TreeSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed);
-
-// Synchronously generates a compact, ready-to-read batch for an explicit,
-// pre-sampled chunk of case seeds (see TreeSampleSeeds).
-GeneratedValues TreeValuesForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds, InputShape shape);
 
 /******************************** circuit ************************************/
 

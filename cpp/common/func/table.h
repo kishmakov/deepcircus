@@ -1,12 +1,10 @@
 #pragma once
 
-#include <stddef.h>
 #include <stdint.h>
 
 #include <vector>
 
 #include "func/func.h"
-#include "generator.h"
 
 namespace func {
 
@@ -24,14 +22,5 @@ public:
 private:
     const uint64_t seed_;
 };
-
-std::vector<uint64_t> TableSampleSeeds(uint16_t bitness, size_t cases, uint64_t task_seed);
-
-gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds, gen::InputShape shape);
-
-// Synchronously generates recursive table values and one dense restriction
-// matrix for an explicit, pre-sampled chunk of case seeds.
-gen::GeneratedRestrictions TableRestrictionsForSeeds(uint16_t bitness, const std::vector<uint64_t>& seeds,
-                                                     gen::InputShape shape);
 
 }  // namespace func

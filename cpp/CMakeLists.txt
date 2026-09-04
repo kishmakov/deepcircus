@@ -32,8 +32,12 @@ target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
 add_library(common
     common/func/func.h
+    common/func/table.cpp
+    common/func/table.h
     common/func/tree.cpp
     common/func/tree.h
+    common/func/tt.cpp
+    common/func/tt.h
     common/offline/read_write.cpp
     common/offline/read_write.h
     common/tools/binary_tree.cpp
@@ -57,18 +61,12 @@ add_library(tools
 target_include_directories(tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tools")
 
 add_library(gen
-    common/func/table.cpp
-    common/func/table.h
-    common/func/tt.cpp
-    common/func/tt.h
     generator/aig.cpp
     generator/aig.h
     generator/case.cpp
     generator/case.h
     generator/generator.cpp
     generator/generator.h
-    generator/tree.cpp
-    generator/tree.h
     generator/utils.cpp
     generator/utils.h
 )
