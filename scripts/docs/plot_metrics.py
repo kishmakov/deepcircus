@@ -75,7 +75,7 @@ def plot(metrics_path: Path, scale: str) -> Path:
     axis.plot(numbers, validation, label="validation", color=VALIDATION_COLOR, linewidth=2)
 
     axis.set_title(
-        f"{metrics['model']} at bitness {int(metrics['bitness']):02d}"
+        f"{metrics['model']} at {int(metrics['bitness']):02d}b"
         f" -- {len(epochs)} epochs, best validation {metrics['best_validation_rmse']:.4f}"
     )
     axis.set_xlabel("epoch")

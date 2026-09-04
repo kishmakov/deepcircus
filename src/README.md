@@ -39,11 +39,13 @@ behind because their target is the unknown marker.
 
 ## train.py
 
-`python -m src.train --model m1 --bitness 8`, which is what
-[`scripts/train/train_model.sh`](../scripts/train/train_model.sh) runs. One
-epoch is one pass over the whole training file, freshly sampled;
-`training.epochs` is the only duration knob, with the RMSE threshold able to end
-the run early.
+`python -m src.train --model m1 --bitness 8`, or `--model m2` for the auxiliary
+model of [`docs/data_m2.md`](../docs/data_m2.md); it is what
+[`scripts/train/train_model.sh`](../scripts/train/train_model.sh) runs. The two
+models differ only in the files the daemon opens -- one loop, one model class,
+one set of targets. One epoch is one pass over the whole training file, freshly
+sampled; `training.epochs` is the only duration knob, with the RMSE threshold
+able to end the run early.
 
 Everything a run writes goes to `work_dir`, and nothing goes anywhere else:
 `<tag>.pt` after every epoch, `<tag>.best.pt` whenever validation improves, and

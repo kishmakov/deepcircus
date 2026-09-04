@@ -1,9 +1,14 @@
 #pragma once
 
-// Turns one offline file of `docs/data_m1.md` into the point clouds the model
-// is trained on. An entry is a pair of functions plus a target; a case is that
-// pair sampled at `batches * points_in_batch` inputs, so the file's entries and
-// the served cases stand one to one.
+// Turns one offline file of `docs/data_m1.md` or `docs/data_m2.md` into the
+// point clouds the model is trained on. An entry is a pair of functions plus a
+// target; a case is that pair sampled at `batches * points_in_batch` inputs, so
+// the file's entries and the served cases stand one to one.
+//
+// Both models are served the same way. What their second function means is the
+// file's business, not this one's: `M_1` pairs `g` with `f`, `M_2` with the
+// indicator of the subset `g` is scored on, and a point carries whichever of
+// them the entry holds.
 //
 // Every epoch samples every case again, at inputs of its own: the epoch id
 // enters the seed, so epoch 3 draws different points than epoch 2 for the same
@@ -40,7 +45,8 @@ struct SamplingShape {
 };
 
 // One point: the input bits, then `g`'s value there followed by its value at
-// each single-bit flip, then the same block for `f`.
+// each single-bit flip, then the same block for the entry's second function --
+// `f` for `M_1`, the indicator of `X` for `M_2`, sampled and packed alike.
 constexpr uint16_t PointDim(uint16_t bitness) { return 3 * bitness + 2; }
 
 // Two scores per case, matching `tools/score.h`.

@@ -1,8 +1,9 @@
 # cpp/server
 
 The `offline_server` daemon: the one process Python trains against. It reads the
-prepared files of [`docs/data_m1.md`](../../docs/data_m1.md) and hands their
-cases over, an epoch at a time. Its client is
+prepared files of [`docs/data_m1.md`](../../docs/data_m1.md) and
+[`docs/data_m2.md`](../../docs/data_m2.md) and hands their cases over, an epoch
+at a time. Its client is
 [`../../src/daemon/`](../../src/daemon/), and nothing else on either side needs
 to know it exists.
 
@@ -17,10 +18,16 @@ An entry is a pair of functions plus a target; a case is that pair sampled at
 `batches * points_in_batch` inputs, one point per input:
 
 ```
-[ x_1..x_n | g(x), g(x^e_1)..g(x^e_n) | f(x), f(x^e_1)..f(x^e_n) ]
+[ x_1..x_n | g(x), g(x^e_1)..g(x^e_n) | h(x), h(x^e_1)..h(x^e_n) ]
 ```
 
-so a point is `3n + 2` bits wide. The two targets are the scores of
+so a point is `3n + 2` bits wide. `h` is whatever the entry's second function
+is: `f` for `M_1`, and for `M_2` the indicator of the subset `g` is scored on,
+so a point says both what `g` does there and whether that point is one the tree
+has to get right. Nothing here reads the two apart -- which model a file holds
+decides only its name.
+
+The two targets are the scores of
 [`tools/score.h`](../common/tools/score.h), not the raw depth and size the file
 stores. Entries carrying the unknown marker are skipped -- bootstrapping them
 through the lower-arity models belongs to the training loop, and nothing here

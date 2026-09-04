@@ -14,8 +14,8 @@ share the layout below exactly; which of them an entry lands in is the whole
 difference between them.
 
 `M_2[g | X]` uses the same binary envelope in `m2_<bitness>.train` and
-`m2_<bitness>.val`; its second function is the indicator of `X` rather than
-`f`.
+`m2_<bitness>.val`, with the indicator of `X` in the second function's place;
+[`data_m2.md`](data_m2.md) says what it means by it.
 
 All integers are unsigned and little-endian. The file is packed without
 alignment padding.

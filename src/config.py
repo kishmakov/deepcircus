@@ -69,7 +69,8 @@ class TrainConfig:
     @property
     def point_dim(self) -> int:
         # The daemon's serving::PointDim: input bits, then g's value and its
-        # single-bit flips, then f's.
+        # single-bit flips, then the same for the entry's second function --
+        # M_1's f, or the indicator of M_2's subset.
         return 3 * self.bitness + 2
 
     def train_path(self) -> Path:

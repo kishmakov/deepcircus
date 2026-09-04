@@ -5,5 +5,5 @@ train/validation files, mixing solved witness pairs with unknown table pairs.
 The exact solvers label solved entries through bitness 12.
 
 Run parameters live in [`../../conf/`](../../conf/README.md), and the output
-format is documented in
-[`docs/data_m1.md`](../../docs/data_m1.md).
+format in [`docs/data_m1.md`](../../docs/data_m1.md) and
+[`docs/data_m2.md`](../../docs/data_m2.md).

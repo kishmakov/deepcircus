@@ -7,6 +7,7 @@
 
 #include "dataset.h"
 #include "func/table.h"
+#include "func/tree.h"
 #include "offline/read_write.h"
 #include "tools/score.h"
 
@@ -24,6 +25,15 @@ offline::Entry TablePair(uint64_t g_seed, uint64_t f_seed, uint8_t depth, uint16
 
 offline::Entry Unsolved(uint64_t g_seed, uint64_t f_seed) {
     return TablePair(g_seed, f_seed, offline::kUnknownDepth, offline::kUnknownSize);
+}
+
+// The shape an `M_2` entry takes above bitness 12: `g` is the witness tree, and
+// the second function is the indicator of the subset it is scored on.
+offline::Entry TreeOverSubset(const func::TreeFunc& witness, uint64_t subset_seed) {
+    return offline::Entry{{offline::FunctionKind::kTree, witness.serialize()},
+                          {offline::FunctionKind::kTable, func::TableFunc(kBitness, subset_seed).serialize()},
+                          static_cast<uint8_t>(witness.Depth()),
+                          static_cast<uint16_t>(witness.Size())};
 }
 
 std::string WriteFile(const std::string& name, const std::vector<offline::Entry>& entries) {
@@ -113,4 +123,38 @@ TEST(ServingTest, SplitsSampleDifferentInputs) {
     EXPECT_NE(train.Sample(1).values, validation.Sample(1).values);
     EXPECT_EQ(train.Sample(1).targets, validation.Sample(1).targets);
     std::filesystem::remove(path);
+}
+
+TEST(ServingTest, ServesTreeBackedFunctions) {
+    // `M_2` above bitness 12 stores `g` as a tree rather than a table, and the
+    // serving side has to rebuild it from the kind byte alone.
+    const func::TreeFunc witness(kBitness, 71);
+    const std::string path = WriteFile("deepcircus_serving_tree.bin", {TreeOverSubset(witness, 72), Unsolved(73, 74)});
+    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+
+    EXPECT_EQ(dataset.Entries(), 2u);
+    EXPECT_EQ(dataset.CaseCount(), 1u);
+
+    const serving::Cases cases = dataset.Sample(1);
+    ASSERT_EQ(cases.cases, 1u);
+    const func::TableFunc subset(kBitness, 72);
+    const uint64_t points = uint64_t{kShape.batches} * kShape.points_in_batch;
+    for (uint64_t point = 0; point < points; ++point) {
+        const uint64_t base = point * serving::PointDim(kBitness);
+        std::vector<bool> input(kBitness);
+        for (uint16_t bit = 0; bit < kBitness; ++bit) input[bit] = RowBit(cases, 0, base + bit);
+
+        EXPECT_EQ(RowBit(cases, 0, base + kBitness), witness(input));
+        EXPECT_EQ(RowBit(cases, 0, base + 2 * kBitness + 1), subset(input));
+    }
+
+    EXPECT_FLOAT_EQ(cases.targets[0], tools::DepthScore(kBitness, witness.Depth()));
+    EXPECT_FLOAT_EQ(cases.targets[1], tools::SizeScore(kBitness, witness.Size()));
+    std::filesystem::remove(path);
+}
+
+TEST(ServingTest, NamesTheFileOfEachModel) {
+    EXPECT_EQ(serving::FilePath("data", serving::Model::kM1, 8, serving::Split::kTrain), "data/m1_08.train");
+    EXPECT_EQ(serving::FilePath("data", serving::Model::kM2, 8, serving::Split::kValidation), "data/m2_08.val");
+    EXPECT_EQ(serving::FilePath("data", serving::Model::kM2, 13, serving::Split::kTrain), "data/m2_13.train");
 }

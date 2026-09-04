@@ -16,4 +16,4 @@ m1:                     # pairs `(g, f)` for `M_1[g | f]`, format in `docs/data_
   "19": {train: {solved:  8192, unsolved:  8192}, val: {solved: 1024}}
 
 m2:                     # pairs `(g, X)` for `M_2[g | X]`, a function and a subset
-  "08": {train: {solved: 65536, unsolved:     0}, val: {solved: 8192}}
+  "08": {train: {solved: 65536, unsolved:     0}, val: {solved: 1024}}
