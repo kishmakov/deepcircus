@@ -44,6 +44,8 @@ add_library(common
     common/tools/binary_tree.h
     common/tools/random.cpp
     common/tools/random.h
+    common/tools/score.cpp
+    common/tools/score.h
     common/tools/solver.cpp
     common/tools/solver.h
 )
@@ -83,6 +85,25 @@ add_library(producer
 )
 target_include_directories(producer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/producer")
 target_link_libraries(producer PUBLIC gen Threads::Threads)
+
+# Offline files as point clouds. Links `common` and `tools` only: reading a
+# prepared file has nothing to do with generating one.
+add_library(serving
+    server/dataset.cpp
+    server/dataset.h
+)
+target_include_directories(serving PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/server")
+target_link_libraries(serving PUBLIC common tools Threads::Threads)
+
+add_executable(offline_server
+    server/daemon.cpp
+    server/daemon.h
+    server/server.cpp
+)
+target_link_libraries(offline_server PRIVATE serving)
+# The client's Initialize payload is validated by assertion, which must survive
+# a Release build.
+set_source_files_properties(server/daemon.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
 add_executable(expand_inputs tools/expand_inputs.cpp)
 target_link_libraries(expand_inputs PRIVATE tools)

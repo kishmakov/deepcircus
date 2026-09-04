@@ -1,4 +1,17 @@
 {
   "version": "0.2.0",
-  "configurations": []
+  "configurations": [
+
+    {
+      "name": "Train m1 at 8 bits",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "src.train",
+      "args": ["--model", "m1", "--bitness", "8"],
+      "console": "integratedTerminal",
+      "env": {},
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "cwd": "${workspaceFolder}"
+    }
+  ]
 }

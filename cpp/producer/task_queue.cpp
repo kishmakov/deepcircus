@@ -12,6 +12,7 @@
 #include "generator.h"
 #include "sample.h"
 #include "tools/random.h"
+#include "tools/score.h"
 #include "utils.h"
 
 namespace {
@@ -54,8 +55,8 @@ gen::GeneratedValues TreeValuesForSeeds(uint16_t bitness, const std::vector<uint
         const func::TreeFunc tree(bitness, seeds[case_index]);
         const std::vector<bool> samples = SampleValues(tree, bitness, seeds[case_index], shape);
         std::copy(samples.begin(), samples.end(), values.begin() + case_index * columns);
-        targets[gen::kTargetsPerCase * case_index] = static_cast<float>(bitness - tree.Depth());
-        targets[gen::kTargetsPerCase * case_index + 1] = gen::SizeScore(bitness, tree.Size());
+        targets[gen::kTargetsPerCase * case_index] = tools::DepthScore(bitness, tree.Depth());
+        targets[gen::kTargetsPerCase * case_index + 1] = tools::SizeScore(bitness, tree.Size());
     }
     return gen::GeneratedValues{gen::Values(seeds.size(), columns, std::move(values)), std::move(targets)};
 }

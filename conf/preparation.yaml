@@ -2,7 +2,7 @@ work_dir: /tmp/circus   # staging directory used by the generator
 seed: 239               # the generator's only randomness source
 
 m1:                     # pairs `(g, f)` for `M_1[g | f]`, format in `docs/data_m1.md`
-  "08": {train: {solved: 16384, unsolved:     0}, val: {solved: 1024}}
+  "08": {train: {solved: 65536, unsolved:     0}, val: {solved: 1024}}
   "09": {train: {solved: 16384, unsolved:     0}, val: {solved: 1024}}
   "10": {train: {solved: 16384, unsolved:     0}, val: {solved: 1024}}
   "11": {train: {solved: 16384, unsolved:     0}, val: {solved: 1024}}

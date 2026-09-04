@@ -9,8 +9,9 @@ The architecture is documented per directory, starting at
 - Where an assert *is* the error handling rather than debug scaffolding,
   undefine `NDEBUG` for that file in its CMake entry (source properties land
   after the build-type flags, so the `-U` wins) instead of turning the check
-  into an `if`. Four files do this today -- `common/offline/read_write.cpp`,
-  `preparation/main.cpp`, `preparation/sampler.cpp`, and `validation/main.cpp`.
+  into an `if`. Five files do this today -- `common/offline/read_write.cpp`,
+  `preparation/main.cpp`, `preparation/sampler.cpp`, `server/daemon.cpp`,
+  and `validation/main.cpp`.
 - A new source file goes in the target its dependencies allow, not the one that
   is convenient: `common` and `tools` may not grow an edge back to `gen`.
 - Formatting and linting come from `.clang-format` and `.clang-tidy` here.
