@@ -9,7 +9,6 @@ preparation, validation, and tests.
 | [`tools/`](tools/README.md) | input sampling and bit utilities |
 | [`generator/`](generator/README.md) | synchronous generation of cases and tensors |
 | [`producer/`](producer/README.md) | parallel production and scheduling of generated data |
-| [`server/`](server/README.md) | the generator daemon and its IPC layer |
 | [`preparation/`](preparation/README.md) | offline training-data generation |
 | [`validation/`](validation/README.md) | reconstruction and validation |
 | [`test/`](test/README.md) | the C++ test suite |

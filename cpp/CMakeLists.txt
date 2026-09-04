@@ -84,14 +84,6 @@ add_library(producer
 target_include_directories(producer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/producer")
 target_link_libraries(producer PUBLIC gen Threads::Threads)
 
-add_executable(generator_server
-    server/daemon.cpp
-    server/daemon.h
-    server/server.cpp
-)
-target_include_directories(generator_server PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/server")
-target_link_libraries(generator_server PRIVATE producer Threads::Threads)
-
 add_executable(expand_inputs tools/expand_inputs.cpp)
 target_link_libraries(expand_inputs PRIVATE tools)
 

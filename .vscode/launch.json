@@ -1,17 +1,4 @@
 {
   "version": "0.2.0",
-  "configurations": [
-
-    {
-      "name": "Train",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${workspaceFolder}/scripts/run.py",
-      "args": ["ignore"],
-      "console": "integratedTerminal",
-      "env": {},
-      "python": "${workspaceFolder}/.venv/bin/python",
-      "cwd": "${workspaceFolder}"
-    }
-  ]
+  "configurations": []
 }
