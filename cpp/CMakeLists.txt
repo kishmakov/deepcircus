@@ -32,6 +32,8 @@ target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
 add_library(common
     common/func/func.h
+    common/func/tree.cpp
+    common/func/tree.h
     common/offline/read_write.cpp
     common/offline/read_write.h
     common/tools/binary_tree.cpp

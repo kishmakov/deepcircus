@@ -40,4 +40,7 @@ uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
 // Returns seeds for initialization of cases.
 std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed);
 
+// Value of a random function of `bitness` bits at the input.
+bool RandomFuncValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& bits);
+
 }  // namespace tools

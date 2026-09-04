@@ -44,8 +44,8 @@ offline::Entry RandomEntry(const Parameters& parameters, uint16_t series, uint16
     tools::Random random(tools::EntrySeed(parameters.seed, series, bitness, index));
     // Both functions are drawn the way the generator draws one: a TableCase off
     // a seed this entry's key produced, read back as its truth table.
-    const func::TableCase target_case(bitness, random.Next());
-    const func::TableCase second_case(bitness, random.Next());
+    const func::TableFunc target_case(bitness, random.Next());
+    const func::TableFunc second_case(bitness, random.Next());
     const std::vector<bool>& truth_table = target_case.TruthTable();
     const std::vector<bool>& second_table = second_case.TruthTable();
 
@@ -87,14 +87,14 @@ offline::Entry SmallEntry(const Parameters& parameters, uint16_t series, uint16_
     const auto tree = tools::BinaryTree::Sample(random.Next(), bitness, nodes, ids);
 
     std::vector<bool> truth_table(rows);
-    const func::TableCase second_case(bitness, random.Next());
+    const func::TableFunc second_case(bitness, random.Next());
     const std::vector<bool>& second_table = second_case.TruthTable();
     if (series == 1) {
         for (size_t row = 0; row < rows; ++row) {
             truth_table[row] = Evaluate(tree, bitness, row, second_table[row]);
         }
     } else {
-        const func::TableCase outside_case(bitness, random.Next());
+        const func::TableFunc outside_case(bitness, random.Next());
         const std::vector<bool>& outside_table = outside_case.TruthTable();
         // Off the subset `g` is drawn at random, which is what makes the subset
         // worth knowing: the witness is tiny on `X` and computing `g` everywhere

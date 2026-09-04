@@ -10,6 +10,8 @@ namespace {
 
 constexpr uint64_t kSplitMixIncrement = 0x9e3779b97f4a7c15ull;
 
+constexpr uint64_t kFnvPrime = 0x100000001b3ull;
+
 }  // namespace
 
 uint64_t Mix64(uint64_t value) {
@@ -59,6 +61,23 @@ std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed) {
         seeds.push_back(random.Next());
     }
     return seeds;
+}
+
+
+bool RandomFuncValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& bits) {
+    assert(bits.size() == bitness);
+
+    size_t used = bitness;
+    while (used > 0 && !bits[used - 1]) {
+        --used;
+    }
+
+    uint64_t value = seed;
+    for (size_t bit_id = 0; bit_id < used; ++bit_id) {
+        value ^= static_cast<uint64_t>(bits[bit_id]);
+        value *= kFnvPrime;
+    }
+    return (Mix64(value) & 1ull) != 0;
 }
 
 }  // namespace tools

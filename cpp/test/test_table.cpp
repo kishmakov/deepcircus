@@ -103,7 +103,7 @@ TEST(TableTest, SolvableGoldenValues) {
         const std::string value = TableValue(c.bitness, c.seed, c.input);
         EXPECT_EQ(value, c.expected_value) << "bitness=" << c.bitness << " seed=" << c.seed;
 
-        const func::TableCase table(c.bitness, c.seed);
+        const func::TableFunc table(c.bitness, c.seed);
         EXPECT_EQ(tools::SolveForDepth(c.bitness, table.TruthTable()), c.expected_depth)
             << "bitness=" << c.bitness << " seed=" << c.seed;
         EXPECT_EQ(tools::SolveForSize(c.bitness, table.TruthTable()), c.expected_internal_nodes)
@@ -133,24 +133,24 @@ TEST(TableTest, BigValueConsistency) {
 }
 
 TEST(TableTest, TruthTableFollowsSeed) {
-    const std::vector<bool> table = func::TableCase(11, 239).TruthTable();
+    const std::vector<bool> table = func::TableFunc(11, 239).TruthTable();
     ASSERT_EQ(table.size(), size_t{1} << 11);
 
     // The function is the seed and nothing else: the same seed rebuilds it, a
     // neighbouring one does not.
-    EXPECT_EQ(func::TableCase(11, 239).TruthTable(), table);
-    EXPECT_NE(func::TableCase(11, 240).TruthTable(), table);
+    EXPECT_EQ(func::TableFunc(11, 239).TruthTable(), table);
+    EXPECT_NE(func::TableFunc(11, 240).TruthTable(), table);
 }
 
 TEST(TableTest, SerializeStoresSeedLittleEndian) {
-    const func::TableCase table(8, 0x0123456789abcdefull);
+    const func::TableFunc table(8, 0x0123456789abcdefull);
     EXPECT_EQ(table.serialize(), (std::vector<uint8_t>{0xef, 0xcd, 0xab, 0x89, 0x67, 0x45, 0x23, 0x01}));
 }
 
 TEST(TableTest, DeserializeRestoresSeededTable) {
-    const func::TableCase original(8, 0x0123456789abcdefull);
+    const func::TableFunc original(8, 0x0123456789abcdefull);
     const std::vector<uint8_t> bytes = original.serialize();
-    const func::TableCase restored(8, bytes);
+    const func::TableFunc restored(8, bytes);
 
     EXPECT_EQ(restored.TruthTable(), original.TruthTable());
     EXPECT_EQ(restored.serialize(), bytes);

@@ -20,9 +20,6 @@ namespace {
 
 constexpr uint64_t kTableSelectionDomain = 0x7461626c655f7365ull;
 
-// Widest table worth materializing.
-constexpr uint16_t kMaxMaterializedBitness = 16;
-
 uint64_t DeserializeSeed(const std::vector<uint8_t>& bytes) {
     assert(bytes.size() == sizeof(uint64_t));
 
@@ -31,65 +28,33 @@ uint64_t DeserializeSeed(const std::vector<uint8_t>& bytes) {
     return seed;
 }
 
-// The seed's function at one point. The fold stops after the last set bit, so
-// trailing zeros cost a point nothing and it keeps its value however wide the
-// function around it is -- the narrow truth table stays the prefix of every
-// wider one.
-bool HashedValue(uint64_t seed, const std::vector<bool>& input) {
-    size_t bits = input.size();
-    while (bits > 0 && !input[bits - 1]) {
-        --bits;
-    }
-
-    uint64_t value = seed;
-    for (size_t bit_id = 0; bit_id < bits; ++bit_id) {
-        value ^= static_cast<uint64_t>(input[bit_id]);
-        value *= 0x100000001b3ull;
-    }
-    return (tools::Mix64(value) & 1ull) != 0;
-}
-
 }  // namespace
 
-TableCase::TableCase(uint16_t bitness, uint64_t seed) : func::Func(bitness), seed_(seed) {
+TableFunc::TableFunc(uint16_t bitness, uint64_t seed) : func::Func(bitness), seed_(seed) {
     assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
 }
 
-TableCase::TableCase(uint16_t bitness, std::vector<uint8_t> bytes)
+TableFunc::TableFunc(uint16_t bitness, std::vector<uint8_t> bytes)
     : func::Func(bitness), seed_(DeserializeSeed(bytes)) {
     assert(bitness_ >= kMinTableBitness && bitness_ <= kMaxTableBitness);
 }
 
-bool TableCase::operator()(const FuncInput& input) const {
+bool TableFunc::operator()(const FuncInput& input) const {
     assert(input.size() == bitness_);
-    return HashedValue(seed_, input);
+    return tools::RandomFuncValue(bitness_, seed_, input);
 }
 
-std::vector<uint8_t> TableCase::serialize() const {
+std::vector<uint8_t> TableFunc::serialize() const {
     std::vector<uint8_t> bytes(sizeof(seed_));
     std::memcpy(bytes.data(), &seed_, sizeof(seed_));
     return bytes;
-}
-
-std::vector<bool> TableCase::TruthTable() const {
-    assert(bitness_ <= kMaxMaterializedBitness);
-
-    std::vector<bool> truth_table(size_t{1} << bitness_);
-    FuncInput input(bitness_);
-    for (size_t id = 0; id < truth_table.size(); ++id) {
-        for (uint16_t bit_id = 0; bit_id < bitness_; ++bit_id) {
-            input[bit_id] = ((id >> bit_id) & 1u) != 0;
-        }
-        truth_table[id] = HashedValue(seed_, input);
-    }
-    return truth_table;
 }
 
 std::string TableValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& input) {
     assert(bitness >= kMinTableBitness && bitness <= kMaxTableBitness);
     assert(input.size() >= bitness);
 
-    const TableCase table(bitness, seed);
+    const TableFunc table(bitness, seed);
     const std::vector<bool> point(input.begin(), input.begin() + bitness);
     return table.SampledValueString(point);
 }
@@ -112,7 +77,7 @@ gen::GeneratedValues TableValuesForSeeds(uint16_t bitness, const std::vector<uin
     std::vector<float> targets(gen::kTargetsPerCase * cases);
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
-        TableCase table(bitness, seeds[case_index]);
+        TableFunc table(bitness, seeds[case_index]);
         const std::vector<bool> samples = table.SampleValues(shape);
         assert(samples.size() == columns);
         std::copy(samples.begin(), samples.end(), values.begin() + case_index * columns);
@@ -143,7 +108,7 @@ gen::GeneratedRestrictions TableRestrictionsForSeeds(uint16_t bitness, const std
     std::vector<bool> restrictions(cases * restriction_size);
 
     for (size_t case_index = 0; case_index < cases; ++case_index) {
-        TableCase table(bitness, seeds[case_index]);
+        TableFunc table(bitness, seeds[case_index]);
 
         const std::vector<bool> case_values = table.SampleValues(shape);
         assert(case_values.size() == columns);
