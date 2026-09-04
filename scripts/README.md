@@ -24,7 +24,7 @@ parameters in [`conf/`](../conf/README.md).
 | Script | What it does |
 | --- | --- |
 | [`build.sh`](build.sh) | configures and builds the whole C++ tree in Release |
-| [`test.sh`](test.sh) | builds the suite with ASan/UBSan and runs it; extra arguments go to GoogleTest |
+| [`test.sh`](test.sh) | builds the whole tree with ASan/UBSan and every assert alive, runs the suite, then runs each executable once on a small input; extra arguments go to GoogleTest |
 | [`clean.sh`](clean.sh) | removes build trees, published symlinks and LaTeX artifacts |
 
 ## Circuits and paper
