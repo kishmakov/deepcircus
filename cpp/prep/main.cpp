@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "offline/read_write.h"
 #include "sampler.h"
@@ -18,6 +20,23 @@ namespace {
 constexpr uint64_t kTrainTTDomain = 0x747261696e5f736full;
 constexpr uint64_t kTrainGeneralDomain = 0x747261696e5f756eull;
 constexpr uint64_t kValidationDomain = 0x76616c5f736f6c76ull;
+constexpr int kThreads = 12;
+
+// Entries are pure functions of their index, so they can be computed out of order;
+// they are written back in index order for determinism from `(bitness, seed)`.
+template <typename Generate>
+std::vector<offline::Entry> GenerateEntries(uint32_t count, Generate generate) {
+    std::vector<offline::Entry> entries(count);
+    std::vector<std::thread> workers;
+    const uint32_t threads = std::min<uint32_t>(kThreads, count);
+    for (uint32_t thread = 0; thread < threads; ++thread) {
+        workers.emplace_back([&entries, &generate, thread, count] {
+            for (uint32_t index = thread; index < count; index += kThreads) entries[index] = generate(index);
+        });
+    }
+    for (std::thread& worker : workers) worker.join();
+    return entries;
+}
 
 std::string BitnessTag(uint16_t bitness) {
     assert(bitness <= offline::kMaxBitness);
@@ -53,21 +72,25 @@ void WriteFile(const std::string& path, prep::Model model, uint16_t bitness, uin
     offline::Writer writer(path, TotalEntries(tt, general), bitness);
 
     const prep::Parameters tt_parameters{tools::DomainSeed(seed, kTrainTTDomain, bitness)};
-    for (uint32_t index = 0; index < tt; ++index) {
-        writer.Write(prep::TTEntry(tt_parameters, model, bitness, index));
+    for (const offline::Entry& entry :
+         GenerateEntries(tt, [&](uint32_t index) { return prep::TTEntry(tt_parameters, model, bitness, index); })) {
+        writer.Write(entry);
     }
 
     const prep::Parameters general_parameters{tools::DomainSeed(seed, kTrainGeneralDomain, bitness)};
-    for (uint32_t index = 0; index < general; ++index) {
-        writer.Write(prep::GeneralEntry(general_parameters, model, bitness, index));
+    for (const offline::Entry& entry : GenerateEntries(general, [&](uint32_t index) {
+             return prep::GeneralEntry(general_parameters, model, bitness, index);
+         })) {
+        writer.Write(entry);
     }
 }
 
 void WriteValidation(const std::string& path, prep::Model model, uint16_t bitness, uint64_t seed, uint32_t entries) {
     offline::Writer writer(path, entries, bitness);
     const prep::Parameters parameters{tools::DomainSeed(seed, kValidationDomain, bitness)};
-    for (uint32_t index = 0; index < entries; ++index) {
-        writer.Write(prep::TTEntry(parameters, model, bitness, index));
+    for (const offline::Entry& entry : GenerateEntries(
+             entries, [&](uint32_t index) { return prep::TTEntry(parameters, model, bitness, index); })) {
+        writer.Write(entry);
     }
 }
 

@@ -2,10 +2,10 @@
 set -euo pipefail
 
 # Generates the M1 and M2 train/validation files requested by
-# `conf/preparation.yaml`. Complete pairs are left untouched on re-runs.
+# `conf/prep.yaml`. Complete pairs are left untouched on re-runs.
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-CONFIG="$ROOT/conf/preparation.yaml"
+CONFIG="$ROOT/conf/prep.yaml"
 DATA_DIR="$ROOT/data"
 GENERATOR="$ROOT/execs/data_generator"
 

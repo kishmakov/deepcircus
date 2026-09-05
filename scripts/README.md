@@ -10,7 +10,7 @@ parameters in [`conf/`](../conf/README.md).
 | Script | What it does |
 | --- | --- |
 | [`prep/build_generator.sh`](prep/build_generator.sh) | builds `data_generator` and publishes it as `execs/data_generator` |
-| [`prep/generate_train_data.sh`](prep/generate_train_data.sh) | fills `data/` with the `m{1,2}_<bitness>.{train,val}` files `conf/preparation.yaml` asks for; complete pairs are left alone on a re-run |
+| [`prep/generate_train_data.sh`](prep/generate_train_data.sh) | fills `data/` with the `m{1,2}_<bitness>.{train,val}` files `conf/prep.yaml` asks for; complete pairs are left alone on a re-run |
 
 ## Training
 

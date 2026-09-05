@@ -24,7 +24,7 @@ uv sync
 scripts/test.sh
 ```
 
-Prepare every coordinate declared in `conf/preparation.yaml`:
+Prepare every coordinate declared in `conf/prep.yaml`:
 
 ```bash
 scripts/prep/build_generator.sh

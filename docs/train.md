@@ -32,7 +32,7 @@ upper bounds on the minima; `general` entries need bootstrapped targets.
 
 ## Offline preparation
 
-Preparation is configured in [`conf/preparation.yaml`](../conf/preparation.yaml)
+Preparation is configured in [`conf/prep.yaml`](../conf/prep.yaml)
 and implemented in [`cpp/prep/`](../cpp/prep/README.md). Generation is
 deterministic from `(bitness, seed)`.
 
