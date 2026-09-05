@@ -55,7 +55,8 @@ able to end the run early.
 
 `seed` initializes PyTorch as well as daemon sampling. The plateau scheduler's
 `min_lr` keeps optimization active after repeated reductions. Metrics include
-the network and optimizer settings used for the run.
+the network and optimizer settings used for the run, and every epoch records
+the error of each score on its own beside the RMSE over both.
 
 Everything a run writes goes to `work_dir`, and nothing goes anywhere else:
 `<tag>.pt` after every epoch, `<tag>.best.pt` whenever validation improves, and

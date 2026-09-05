@@ -35,15 +35,14 @@ class EpochMetrics:
     epoch: int
     train_rmse: float
     validation_rmse: float
+    train_depth_rmse: float
+    train_size_rmse: float
+    validation_depth_rmse: float
+    validation_size_rmse: float
     learning_rate: float
 
     def as_dict(self) -> dict[str, Any]:
-        return {
-            "epoch": self.epoch,
-            "train_rmse": self.train_rmse,
-            "validation_rmse": self.validation_rmse,
-            "learning_rate": self.learning_rate,
-        }
+        return asdict(self)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -82,11 +81,14 @@ def run_training(config: TrainConfig) -> None:
         for epoch in progress:
             # Every epoch is the whole training file, sampled at inputs of its
             # own -- `epochs` is the only thing that decides how long this runs.
-            train_rmse = train_epoch(model, optimizer, loader(config, *data.epoch(epoch), shuffle=True))
-            validation_rmse = evaluate(model, validation_loader)
+            train_scores = train_epoch(model, optimizer, loader(config, *data.epoch(epoch), shuffle=True))
+            validation_scores = evaluate(model, validation_loader)
+            train_rmse = combined_rmse(train_scores)
+            validation_rmse = combined_rmse(validation_scores)
             scheduler.step(validation_rmse)
             metrics.append(
-                EpochMetrics(epoch, train_rmse, validation_rmse, float(optimizer.param_groups[0]["lr"]))
+                EpochMetrics(epoch, train_rmse, validation_rmse, *train_scores, *validation_scores,
+                             float(optimizer.param_groups[0]["lr"]))
             )
             progress.set_postfix(train=f"{train_rmse:.4f}", val=f"{validation_rmse:.4f}")
             record_epoch(config, model, metrics, validation_rmse, best_rmse)
@@ -172,9 +174,11 @@ def previous_best(config: TrainConfig) -> float:
     return best
 
 
-def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loader: DataLoader) -> float:
+def train_epoch(
+        model: nn.Module, optimizer: torch.optim.Optimizer, loader: DataLoader
+) -> tuple[float, float]:
     model.train()
-    squared_error_sum = torch.zeros((), dtype=torch.float64, device=DEVICE)
+    squared_error_sum = torch.zeros(2, dtype=torch.float64, device=DEVICE)
     count = 0
 
     for xb, yb in loader:
@@ -188,27 +192,38 @@ def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loader: Data
         loss.backward()
         optimizer.step()
 
-        squared_error_sum += squared_errors.detach().sum(dtype=torch.float64)
-        count += yb.numel()
+        squared_error_sum += squared_errors.detach().sum(dim=0, dtype=torch.float64)
+        count += len(yb)
 
     assert count > 0, count
-    return float((squared_error_sum.item() / count) ** 0.5)
+    return per_score_rmse(squared_error_sum, count)
 
 
-def evaluate(model: nn.Module, loader: DataLoader) -> float:
+def evaluate(model: nn.Module, loader: DataLoader) -> tuple[float, float]:
     model.eval()
-    squared_error_sum = torch.zeros((), dtype=torch.float64, device=DEVICE)
+    squared_error_sum = torch.zeros(2, dtype=torch.float64, device=DEVICE)
     count = 0
 
     with torch.inference_mode():
         for xb, yb in loader:
             xb = xb.to(DEVICE, non_blocking=True)
             yb = yb.to(DEVICE, non_blocking=True)
-            squared_error_sum += (model(xb) - yb).square().sum(dtype=torch.float64)
-            count += yb.numel()
+            squared_error_sum += (model(xb) - yb).square().sum(dim=0, dtype=torch.float64)
+            count += len(yb)
 
     assert count > 0, count
-    return float((squared_error_sum.item() / count) ** 0.5)
+    return per_score_rmse(squared_error_sum, count)
+
+
+def per_score_rmse(squared_error_sum: torch.Tensor, count: int) -> tuple[float, float]:
+    depth, size = (squared_error_sum / count).sqrt().tolist()
+    return depth, size
+
+
+def combined_rmse(scores: tuple[float, float]) -> float:
+    """What the two per-score errors are together -- the RMSE over both columns."""
+    depth, size = scores
+    return ((depth**2 + size**2) / 2) ** 0.5
 
 
 def save_metrics(config: TrainConfig, metrics: list[EpochMetrics], best_rmse: float) -> None:
