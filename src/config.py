@@ -81,7 +81,8 @@ class TrainConfig:
 
     # Everything a run writes, and it writes nothing outside `work_dir`: the
     # epoch just finished, the best epoch so far, and the metrics of every epoch
-    # behind them. Taking a finished model out of there is done by hand.
+    # behind them. `scripts/train/train_model.sh` keeps the best epoch's weights
+    # in `data/` once the run is over, under the name they carry here.
     def checkpoint_path(self) -> Path:
         return self.work_dir / f"{self.tag}.pt"
 

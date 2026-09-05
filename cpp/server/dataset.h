@@ -23,7 +23,7 @@
 #include <string>
 #include <vector>
 
-namespace serving {
+namespace server {
 
 enum class Model : uint8_t {
     kM1 = 1,
@@ -50,6 +50,10 @@ constexpr uint16_t PointDim(uint16_t bitness) { return 3 * bitness + 2; }
 
 // Two scores per case, matching `tools/score.h`.
 inline constexpr size_t kTargetsPerCase = 2;
+
+// What every console line of the daemon opens with, so its lines stand apart
+// from the Python ones they share the terminal with. Green through ANSI SGR.
+inline constexpr const char* kConsolePrefix = "\033[32m[server]\033[0m";
 
 std::string FilePath(const std::string& directory, Model model, uint16_t bitness, Split split);
 
@@ -110,4 +114,4 @@ private:
     bool targets_ready_ = false;
 };
 
-}  // namespace serving
+}  // namespace server

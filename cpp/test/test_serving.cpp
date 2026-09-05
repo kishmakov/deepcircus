@@ -14,7 +14,7 @@
 namespace {
 
 constexpr uint16_t kBitness = 8;
-constexpr serving::SamplingShape kShape{2, 4, 239};
+constexpr server::SamplingShape kShape{2, 4, 239};
 
 offline::Entry TablePair(uint64_t g_seed, uint64_t f_seed, uint8_t depth, uint16_t size) {
     return offline::Entry{{offline::FunctionKind::kTable, func::TableFunc(kBitness, g_seed).serialize()},
@@ -43,7 +43,7 @@ std::string WriteFile(const std::string& name, const std::vector<offline::Entry>
     return path;
 }
 
-bool RowBit(const serving::Cases& cases, uint32_t row, uint64_t bit) {
+bool RowBit(const server::Cases& cases, uint32_t row, uint64_t bit) {
     const uint8_t byte = cases.values[row * cases.RowBytes() + bit / 8];
     return ((byte >> (bit % 8)) & 1u) != 0;
 }
@@ -53,13 +53,13 @@ bool RowBit(const serving::Cases& cases, uint32_t row, uint64_t bit) {
 TEST(ServingTest, InstallsTargetsForEntriesWithoutOne) {
     const std::string path =
         WriteFile("deepcircus_serving_unsolved.bin", {TablePair(1, 2, 4, 11), Unsolved(3, 4), TablePair(5, 6, 2, 3)});
-    serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    server::Dataset dataset(path, server::Split::kTrain, kShape);
 
     EXPECT_EQ(dataset.Entries(), 3u);
     EXPECT_EQ(dataset.KnownCases(), 2u);
     EXPECT_EQ(dataset.UnknownCases(), 1u);
     dataset.SetUnknownTargets({1.25f, 2.5f});
-    const serving::Cases cases = dataset.Sample(1);
+    const server::Cases cases = dataset.Sample(1);
     EXPECT_EQ(cases.cases, 3u);
     EXPECT_FLOAT_EQ(cases.targets[2], 1.25f);
     EXPECT_FLOAT_EQ(cases.targets[3], 2.5f);
@@ -69,14 +69,14 @@ TEST(ServingTest, InstallsTargetsForEntriesWithoutOne) {
 
 TEST(ServingTest, SamplesBootstrapReductions) {
     const std::string path = WriteFile("deepcircus_serving_reductions.bin", {Unsolved(3, 4), Unsolved(5, 6)});
-    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    const server::Dataset dataset(path, server::Split::kTrain, kShape);
     const func::TableFunc g(kBitness, 3);
     const func::TableFunc f(kBitness, 4);
 
-    const serving::Cases primary = dataset.SamplePrimaryReductions(0, 1);
+    const server::Cases primary = dataset.SamplePrimaryReductions(0, 1);
     const uint16_t child_bitness = kBitness - 1;
     EXPECT_EQ(primary.cases, 2 * kBitness);
-    EXPECT_EQ(primary.columns, uint64_t{kShape.batches} * kShape.points_in_batch * serving::PointDim(child_bitness));
+    EXPECT_EQ(primary.columns, uint64_t{kShape.batches} * kShape.points_in_batch * server::PointDim(child_bitness));
     for (uint16_t fixed_bit = 0; fixed_bit < kBitness; ++fixed_bit) {
         for (uint16_t fixed_value = 0; fixed_value <= 1; ++fixed_value) {
             const uint32_t row = 2 * fixed_bit + fixed_value;
@@ -98,9 +98,9 @@ TEST(ServingTest, SamplesBootstrapReductions) {
         }
     }
 
-    const serving::Cases helper = dataset.SampleHelperReductions(0, 1);
+    const server::Cases helper = dataset.SampleHelperReductions(0, 1);
     EXPECT_EQ(helper.cases, 2u);
-    EXPECT_EQ(helper.columns, uint64_t{kShape.batches} * kShape.points_in_batch * serving::PointDim(kBitness));
+    EXPECT_EQ(helper.columns, uint64_t{kShape.batches} * kShape.points_in_batch * server::PointDim(kBitness));
     for (uint16_t fixed_value = 0; fixed_value <= 1; ++fixed_value) {
         std::vector<bool> input(kBitness);
         for (uint16_t bit = 0; bit < kBitness; ++bit) input[bit] = RowBit(helper, fixed_value, bit);
@@ -108,8 +108,8 @@ TEST(ServingTest, SamplesBootstrapReductions) {
         EXPECT_EQ(RowBit(helper, fixed_value, 2 * kBitness + 1), f(input) == (fixed_value != 0));
     }
 
-    const serving::Cases both = dataset.SamplePrimaryReductions(0, 2);
-    const serving::Cases second = dataset.SamplePrimaryReductions(1, 1);
+    const server::Cases both = dataset.SamplePrimaryReductions(0, 2);
+    const server::Cases second = dataset.SamplePrimaryReductions(1, 1);
     const size_t second_offset = size_t{2 * kBitness} * both.RowBytes();
     EXPECT_EQ(std::vector<uint8_t>(both.values.begin() + second_offset, both.values.end()), second.values);
 
@@ -120,17 +120,17 @@ TEST(ServingTest, PacksTheDocumentedPointLayout) {
     const uint8_t depth = 5;
     const uint16_t size = 37;
     const std::string path = WriteFile("deepcircus_serving_layout.bin", {TablePair(11, 12, depth, size)});
-    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    const server::Dataset dataset(path, server::Split::kTrain, kShape);
 
-    const serving::Cases cases = dataset.Sample(1);
+    const server::Cases cases = dataset.Sample(1);
     const uint64_t points = uint64_t{kShape.batches} * kShape.points_in_batch;
-    EXPECT_EQ(cases.columns, points * serving::PointDim(kBitness));
-    EXPECT_EQ(serving::PointDim(kBitness), 3 * kBitness + 2);
+    EXPECT_EQ(cases.columns, points * server::PointDim(kBitness));
+    EXPECT_EQ(server::PointDim(kBitness), 3 * kBitness + 2);
 
     const func::TableFunc g(kBitness, 11);
     const func::TableFunc f(kBitness, 12);
     for (uint64_t point = 0; point < points; ++point) {
-        const uint64_t base = point * serving::PointDim(kBitness);
+        const uint64_t base = point * server::PointDim(kBitness);
         std::vector<bool> input(kBitness);
         for (uint16_t bit = 0; bit < kBitness; ++bit) input[bit] = RowBit(cases, 0, base + bit);
 
@@ -154,10 +154,10 @@ TEST(ServingTest, PacksTheDocumentedPointLayout) {
 TEST(ServingTest, EachEpochResamplesTheSameCases) {
     const std::string path = WriteFile("deepcircus_serving_epochs.bin",
                                        {TablePair(21, 22, 3, 5), TablePair(23, 24, 4, 9), TablePair(25, 26, 6, 21)});
-    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    const server::Dataset dataset(path, server::Split::kTrain, kShape);
 
-    const serving::Cases first = dataset.Sample(1);
-    const serving::Cases second = dataset.Sample(2);
+    const server::Cases first = dataset.Sample(1);
+    const server::Cases second = dataset.Sample(2);
     // Same cases in the same order, drawn at inputs of the epoch's own.
     EXPECT_EQ(first.cases, second.cases);
     EXPECT_EQ(first.targets, second.targets);
@@ -171,8 +171,8 @@ TEST(ServingTest, EachEpochResamplesTheSameCases) {
 
 TEST(ServingTest, SplitsSampleDifferentInputs) {
     const std::string path = WriteFile("deepcircus_serving_splits.bin", {TablePair(31, 32, 3, 5)});
-    const serving::Dataset train(path, serving::Split::kTrain, kShape);
-    const serving::Dataset validation(path, serving::Split::kValidation, kShape);
+    const server::Dataset train(path, server::Split::kTrain, kShape);
+    const server::Dataset validation(path, server::Split::kValidation, kShape);
 
     EXPECT_NE(train.Sample(1).values, validation.Sample(1).values);
     EXPECT_EQ(train.Sample(1).targets, validation.Sample(1).targets);
@@ -184,17 +184,17 @@ TEST(ServingTest, ServesTreeBackedFunctions) {
     // serving side has to rebuild it from the kind byte alone.
     const func::TreeFunc witness(kBitness, 71);
     const std::string path = WriteFile("deepcircus_serving_tree.bin", {TreeOverSubset(witness, 72)});
-    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    const server::Dataset dataset(path, server::Split::kTrain, kShape);
 
     EXPECT_EQ(dataset.Entries(), 1u);
     EXPECT_EQ(dataset.KnownCases(), 1u);
 
-    const serving::Cases cases = dataset.Sample(1);
+    const server::Cases cases = dataset.Sample(1);
     ASSERT_EQ(cases.cases, 1u);
     const func::TableFunc subset(kBitness, 72);
     const uint64_t points = uint64_t{kShape.batches} * kShape.points_in_batch;
     for (uint64_t point = 0; point < points; ++point) {
-        const uint64_t base = point * serving::PointDim(kBitness);
+        const uint64_t base = point * server::PointDim(kBitness);
         std::vector<bool> input(kBitness);
         for (uint16_t bit = 0; bit < kBitness; ++bit) input[bit] = RowBit(cases, 0, base + bit);
 
@@ -208,7 +208,7 @@ TEST(ServingTest, ServesTreeBackedFunctions) {
 }
 
 TEST(ServingTest, NamesTheFileOfEachModel) {
-    EXPECT_EQ(serving::FilePath("data", serving::Model::kM1, 8, serving::Split::kTrain), "data/m1_08.train");
-    EXPECT_EQ(serving::FilePath("data", serving::Model::kM2, 8, serving::Split::kValidation), "data/m2_08.val");
-    EXPECT_EQ(serving::FilePath("data", serving::Model::kM2, 13, serving::Split::kTrain), "data/m2_13.train");
+    EXPECT_EQ(server::FilePath("data", server::Model::kM1, 8, server::Split::kTrain), "data/m1_08.train");
+    EXPECT_EQ(server::FilePath("data", server::Model::kM2, 8, server::Split::kValidation), "data/m2_08.val");
+    EXPECT_EQ(server::FilePath("data", server::Model::kM2, 13, server::Split::kTrain), "data/m2_13.train");
 }

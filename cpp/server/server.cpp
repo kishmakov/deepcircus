@@ -29,9 +29,9 @@ int main(int argc, char** argv) {
         port = ParsePort(argv[index + 1]);
     }
 
-    const int client = AcceptClient(port);
-    const ServingShape shape = ReadServingShape(client);
-    ServeEpochs(client, shape);
+    const int client = server::AcceptClient(port);
+    const server::ServingShape shape = server::ReadServingShape(client);
+    server::ServeEpochs(client, shape);
     const int client_close_result = close(client);
     assert(client_close_result == 0);
     return 0;

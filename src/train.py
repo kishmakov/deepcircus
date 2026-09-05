@@ -20,6 +20,16 @@ from src.model import DEVICE, make_predictor
 from src.config import MODELS, TrainConfig, load_train_config
 
 
+# Every console line of this module is marked, so it stands apart from the
+# daemon's own `[server]` lines it shares the terminal with. Green through
+# ANSI SGR, like the daemon's prefix.
+_CONSOLE_PREFIX = "\033[32m[train.py]\033[0m "
+
+
+def report(message: str) -> None:
+    print(f"{_CONSOLE_PREFIX}{message}")
+
+
 @dataclass
 class EpochMetrics:
     epoch: int
@@ -64,7 +74,9 @@ def run_training(config: TrainConfig) -> None:
 
         metrics: list[EpochMetrics] = []
         best_rmse = previous_best(config)
-        progress = tqdm(range(1, config.training.epochs + 1), desc=config.tag, unit="epoch")
+        progress = tqdm(
+            range(1, config.training.epochs + 1), desc=f"{_CONSOLE_PREFIX}{config.tag}", unit="epoch"
+        )
         for epoch in progress:
             # Every epoch is the whole training file, sampled at inputs of its
             # own -- `epochs` is the only thing that decides how long this runs.
@@ -79,12 +91,12 @@ def run_training(config: TrainConfig) -> None:
             best_rmse = min(best_rmse, validation_rmse)
 
             if train_rmse < config.training.rmse_threshold:
-                print(f"train rmse {train_rmse:.6f} below threshold {config.training.rmse_threshold}")
+                report(f"train rmse {train_rmse:.6f} below threshold {config.training.rmse_threshold}")
                 break
 
-    print(f"best validation rmse {best_rmse:.6f}")
-    print(f"weights: {config.best_checkpoint_path()}")
-    print(f"metrics: {config.metrics_path()}")
+    report(f"best validation rmse {best_rmse:.6f}")
+    report(f"weights: {config.best_checkpoint_path()}")
+    report(f"metrics: {config.metrics_path()}")
 
 
 def record_epoch(
@@ -117,12 +129,12 @@ def loader(config: TrainConfig, values: np.ndarray, targets: np.ndarray, shuffle
 
 
 def report_dataset(config: TrainConfig, sizes: DatasetSizes) -> None:
-    print(
+    report(
         f"{config.tag}: {sizes.train_entries} train cases, {sizes.validation_entries} validation cases, "
         f"{config.sampling.points} points of {sizes.point_dim} bits each"
     )
     if sizes.unknown_train:
-        print(f"reconstructed {sizes.unknown_train} targets through trained reduction models")
+        report(f"reconstructed {sizes.unknown_train} targets through trained reduction models")
 
 
 def build_model(config: TrainConfig) -> nn.Module:
@@ -131,7 +143,7 @@ def build_model(config: TrainConfig) -> nn.Module:
     checkpoint_path = config.checkpoint_path()
     if checkpoint_path.exists():
         model.load_state_dict(torch.load(checkpoint_path, map_location=DEVICE, weights_only=True))
-        print(f"continuing from {checkpoint_path}")
+        report(f"continuing from {checkpoint_path}")
     model.to(DEVICE)
     return model
 
@@ -151,7 +163,7 @@ def previous_best(config: TrainConfig) -> float:
     # The weights that scored it are the ones this run has to beat, so they have
     # to still be there.
     assert config.best_checkpoint_path().exists(), config.best_checkpoint_path()
-    print(f"previous best validation rmse {best:.6f}")
+    report(f"previous best validation rmse {best:.6f}")
     return best
 
 

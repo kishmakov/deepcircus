@@ -15,6 +15,8 @@
 #include <memory>
 #include <vector>
 
+namespace server {
+
 namespace {
 
 enum class Command : uint32_t {
@@ -114,7 +116,7 @@ struct SharedCases {
     uint64_t targets_offset = 0;
 };
 
-std::unique_ptr<SharedCases> Share(const serving::Cases& cases, uint64_t id) {
+std::unique_ptr<SharedCases> Share(const Cases& cases, uint64_t id) {
     auto shared = std::make_unique<SharedCases>();
     shared->name = "/deepcircus_" + std::to_string(getpid()) + "_" + std::to_string(id);
     const uint64_t values_bytes = cases.values.size();
@@ -136,7 +138,20 @@ std::unique_ptr<SharedCases> Share(const serving::Cases& cases, uint64_t id) {
     return shared;
 }
 
-std::vector<char> Describe(const serving::Cases& cases, const SharedCases& shared) {
+// What one epoch of `dataset` occupies in the segment `Share` builds for it:
+// the packed rows, padded to the float alignment, then two targets per case.
+// It follows from the file and the sampling shape alone, so the client knows
+// what an epoch costs before the first one is sampled.
+uint64_t EpochBytes(const SamplingShape& sampling, const Dataset& dataset) {
+    const size_t points = size_t{sampling.batches} * sampling.points_in_batch;
+    // Only the row arithmetic is wanted here, so the two buffers stay empty.
+    const Cases block{dataset.Entries(), points * PointDim(dataset.Bitness()), {}, {}};
+    const uint64_t values_bytes = uint64_t{block.cases} * block.RowBytes();
+    const uint64_t targets_offset = (values_bytes + alignof(float) - 1) / alignof(float) * alignof(float);
+    return targets_offset + uint64_t{block.cases} * kTargetsPerCase * sizeof(float);
+}
+
+std::vector<char> Describe(const Cases& cases, const SharedCases& shared) {
     std::vector<char> response;
     Append<uint32_t>(response, cases.cases);
     Append<uint64_t>(response, cases.columns);
@@ -148,7 +163,7 @@ std::vector<char> Describe(const serving::Cases& cases, const SharedCases& share
 }
 
 struct SharingState {
-    void Publish(int client, const serving::Cases& cases) {
+    void Publish(int client, const Cases& cases) {
         current.reset();
         current = Share(cases, next_id++);
         WriteResponse(client, Describe(cases, *current));
@@ -158,10 +173,10 @@ struct SharingState {
     uint64_t next_id = 0;
 };
 
-std::vector<char> DescribeDataset(uint16_t bitness, const serving::Dataset& validation, const serving::Dataset& train) {
+std::vector<char> DescribeDataset(uint16_t bitness, const Dataset& validation, const Dataset& train) {
     std::vector<char> response;
     Append<uint16_t>(response, bitness);
-    Append<uint16_t>(response, serving::PointDim(bitness));
+    Append<uint16_t>(response, PointDim(bitness));
     Append<uint32_t>(response, validation.KnownCases());
     Append<uint32_t>(response, validation.Entries());
     Append<uint32_t>(response, train.KnownCases());
@@ -169,8 +184,8 @@ std::vector<char> DescribeDataset(uint16_t bitness, const serving::Dataset& vali
     return response;
 }
 
-void InstallTargets(int client, uint64_t payload_size, serving::Dataset& train) {
-    const uint64_t target_count = uint64_t{train.UnknownCases()} * serving::kTargetsPerCase;
+void InstallTargets(int client, uint64_t payload_size, Dataset& train) {
+    const uint64_t target_count = uint64_t{train.UnknownCases()} * kTargetsPerCase;
     assert(payload_size == target_count * sizeof(float));
     std::vector<float> targets(target_count);
     const bool read = ReadExact(client, targets.data(), payload_size);
@@ -179,20 +194,20 @@ void InstallTargets(int client, uint64_t payload_size, serving::Dataset& train) 
     WriteResponse(client, {});
 }
 
-void ShareEpoch(int client, uint64_t payload_size, const serving::Dataset& validation, const serving::Dataset& train,
+void ShareEpoch(int client, uint64_t payload_size, const Dataset& validation, const Dataset& train,
                 SharingState& sharing) {
     assert(payload_size == sizeof(uint32_t));
     const uint32_t epoch = ReadValue<uint32_t>(client);
-    const serving::Cases cases = epoch == 0 ? validation.Sample(epoch) : train.Sample(epoch);
+    const Cases cases = epoch == 0 ? validation.Sample(epoch) : train.Sample(epoch);
     sharing.Publish(client, cases);
 }
 
-void ShareReductions(int client, uint64_t payload_size, bool helper, const serving::Dataset& train,
+void ShareReductions(int client, uint64_t payload_size, bool helper, const Dataset& train,
                      SharingState& sharing) {
     assert(payload_size == 2 * sizeof(uint32_t));
     const uint32_t first = ReadValue<uint32_t>(client);
     const uint32_t count = ReadValue<uint32_t>(client);
-    const serving::Cases cases =
+    const Cases cases =
         helper ? train.SampleHelperReductions(first, count) : train.SamplePrimaryReductions(first, count);
     sharing.Publish(client, cases);
 }
@@ -236,7 +251,7 @@ ServingShape ReadServingShape(int client) {
     ServingShape shape{};
     const uint16_t model = ReadValue<uint16_t>(client);
     assert(model == 1 || model == 2);
-    shape.model = static_cast<serving::Model>(model);
+    shape.model = static_cast<Model>(model);
     shape.bitness = ReadValue<uint16_t>(client);
     shape.sampling.batches = ReadValue<uint16_t>(client);
     shape.sampling.points_in_batch = ReadValue<uint16_t>(client);
@@ -249,17 +264,16 @@ ServingShape ReadServingShape(int client) {
 }
 
 void ServeEpochs(int client, const ServingShape& shape) {
-    const serving::Dataset validation(
-        serving::FilePath(shape.data_dir, shape.model, shape.bitness, serving::Split::kValidation),
-        serving::Split::kValidation, shape.sampling);
-    serving::Dataset train(serving::FilePath(shape.data_dir, shape.model, shape.bitness, serving::Split::kTrain),
-                           serving::Split::kTrain, shape.sampling);
+    const Dataset validation(FilePath(shape.data_dir, shape.model, shape.bitness, Split::kValidation),
+                             Split::kValidation, shape.sampling);
+    Dataset train(FilePath(shape.data_dir, shape.model, shape.bitness, Split::kTrain), Split::kTrain, shape.sampling);
     assert(validation.Bitness() == shape.bitness);
     assert(train.Bitness() == shape.bitness);
     assert(validation.UnknownCases() == 0);
     assert(validation.KnownCases() > 0);
     assert(train.Entries() > 0);
     WriteResponse(client, DescribeDataset(shape.bitness, validation, train));
+    std::cerr << kConsolePrefix << " " << EpochBytes(shape.sampling, train) << " bytes of cases per epoch\n";
 
     SharingState sharing;
     while (true) {
@@ -281,7 +295,7 @@ void ServeEpochs(int client, const ServingShape& shape) {
                 ShareReductions(client, payload_size, false, train, sharing);
                 break;
             case Command::HelperReductions:
-                assert(shape.model == serving::Model::kM1);
+                assert(shape.model == Model::kM1);
                 ShareReductions(client, payload_size, true, train, sharing);
                 break;
             case Command::Initialize:
@@ -292,3 +306,5 @@ void ServeEpochs(int client, const ServingShape& shape) {
         }
     }
 }
+
+}  // namespace server

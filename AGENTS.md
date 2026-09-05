@@ -11,6 +11,7 @@ This is a research project to study ML approach to handle decision trees.
 - Do not add package-presence guards (e.g. `assert torch is not None`)
 - Do not generalize code for running in other environments, it is only run on this machine
 - The generator API is bitness-based: use `uint16_t bitness`, not series ids or bit masks
+- Provide shorter comments. Do not repeat information in comments in different files.
 
 
 ## Code Layout

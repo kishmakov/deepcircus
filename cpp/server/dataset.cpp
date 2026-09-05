@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cmath>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <thread>
 #include <utility>
@@ -18,7 +19,7 @@
 #include "tools/random.h"
 #include "tools/score.h"
 
-namespace serving {
+namespace server {
 
 namespace {
 
@@ -188,6 +189,11 @@ Dataset::Dataset(std::string path, Split split, SamplingShape shape)
         targets_[kTargetsPerCase * index + 1] = tools::SizeScore(bitness_, entry.min_size);
     }
     targets_ready_ = unknown_.empty();
+
+    // stdout is for client, so console goes to stderr.
+    std::cerr << kConsolePrefix << " sourcing " << path_ << std::endl;
+    std::cerr << kConsolePrefix << " " << entries_ << " entries, " << known_cases_ << " with targets, "
+              << unknown_.size() << " without\n";
 }
 
 Cases Dataset::SamplePrimaryReductions(uint32_t first, uint32_t count) const {
@@ -280,4 +286,4 @@ Cases Dataset::Sample(uint32_t epoch) const {
     return block;
 }
 
-}  // namespace serving
+}  // namespace server

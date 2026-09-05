@@ -29,11 +29,13 @@
 
 #include "dataset.h"
 
+namespace server {
+
 // What the client asked for, read off the Initialize command.
 struct ServingShape {
-    serving::Model model;
+    Model model;
     uint16_t bitness;
-    serving::SamplingShape sampling;
+    SamplingShape sampling;
     std::string data_dir;
 };
 
@@ -48,3 +50,5 @@ ServingShape ReadServingShape(int client);
 // Answers Initialize, then serves one epoch per command until the client hangs
 // up.
 void ServeEpochs(int client, const ServingShape& shape);
+
+}  // namespace server

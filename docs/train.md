@@ -93,9 +93,11 @@ Prerequisite checkpoints must already exist in the configured `work_dir`:
 | `m1` at bitness `n` | `m1_<n-1>.best.pt` and `m2_<n>.best.pt` |
 
 Checkpoint bitnesses are zero-padded. Above bitness 12, train in increasing
-bitness, with `m2 n` before `m1 n`. Once reconstructed scores are installed,
-unknown and solved entries are served alike. Training reads the offline files
-without modifying them.
+bitness, with `m2 n` before `m1 n`. Every finished run keeps its best
+checkpoint in `data/` under that same name, so a `work_dir` emptied between
+runs is restored by copying the prerequisites back into it. Once
+reconstructed scores are installed, unknown and solved entries are served
+alike. Training reads the offline files without modifying them.
 
 ## Sampling and device input
 

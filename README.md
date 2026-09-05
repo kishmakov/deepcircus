@@ -41,8 +41,9 @@ scripts/train/train_model.sh m1 8
 
 Bitnesses through 12 have targets produced by the exact solvers. Above 12,
 train coordinates in increasing bitness: `m2 n` needs `m2 n-1`, then `m1 n`
-needs `m1 n-1` and `m2 n`. Training reads only `data/`; checkpoints and
-metrics go to the `work_dir` configured in `conf/train.yaml`.
+needs `m1 n-1` and `m2 n`. Training reads its offline data from `data/`;
+checkpoints and metrics go to the `work_dir` configured in `conf/train.yaml`,
+and each finished run keeps a copy of its best weights in `data/`.
 
 ## Layout
 
