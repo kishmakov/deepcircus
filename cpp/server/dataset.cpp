@@ -194,6 +194,7 @@ Dataset::Dataset(std::string path, Split split, SamplingShape shape)
     std::cerr << kConsolePrefix << " sourcing " << path_ << std::endl;
     std::cerr << kConsolePrefix << " " << entries_ << " entries, " << known_cases_ << " with targets, "
               << unknown_.size() << " without\n";
+    if (targets_ready_) ReportTargetQuantiles();
 }
 
 Cases Dataset::SamplePrimaryReductions(uint32_t first, uint32_t count) const {
@@ -254,6 +255,29 @@ void Dataset::SetUnknownTargets(const std::vector<float>& targets) {
         }
     }
     targets_ready_ = true;
+    ReportTargetQuantiles();
+}
+
+void Dataset::ReportTargetQuantiles() const {
+    assert(targets_ready_);
+    assert(entries_ > 0);
+    constexpr const char* names[] = {"depth_score", "size_score"};
+    std::vector<float> values(entries_);
+    for (size_t target = 0; target < kTargetsPerCase; ++target) {
+        for (size_t index = 0; index < entries_; ++index) {
+            values[index] = targets_[kTargetsPerCase * index + target];
+        }
+        std::sort(values.begin(), values.end());
+        std::cerr << kConsolePrefix << " " << names[target] << " quantiles:";
+        for (const int percentile : {1, 25, 50, 75, 99}) {
+            const double position = (values.size() - 1) * (percentile / 100.0);
+            const size_t lower = static_cast<size_t>(position);
+            const size_t upper = std::min(lower + 1, values.size() - 1);
+            const double value = std::lerp(double{values[lower]}, double{values[upper]}, position - lower);
+            std::cerr << " " << percentile << "%=" << value;
+        }
+        std::cerr << '\n';
+    }
 }
 
 Cases Dataset::Sample(uint32_t epoch) const {

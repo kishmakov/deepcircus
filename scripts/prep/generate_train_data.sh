@@ -36,14 +36,13 @@ for model in ("m1", "m2"):
         assert isinstance(train, dict), (model, bitness, "train")
         assert isinstance(validation, dict), (model, bitness, "val")
 
-        solved = train.get("solved")
-        unsolved = train.get("unsolved")
-        val_solved = validation.get("solved")
-        for name, value in (("solved", solved), ("unsolved", unsolved), ("val.solved", val_solved)):
+        tt = train.get("tt")
+        general = train.get("general")
+        val_tt = validation.get("tt")
+        for name, value in (("tt", tt), ("general", general), ("val.tt", val_tt)):
             assert type(value) is int and 0 <= value <= 0xFFFFFFFF, (model, bitness, name)
-        assert solved + unsolved <= 0xFFFFFFFF, (model, bitness, "train")
-        assert bitness > 12 or unsolved == 0, (model, bitness, "unsolved below bitness 13")
-        print(f"{model}\t{bitness}\t{solved}\t{unsolved}\t{val_solved}")
+        assert tt + general <= 0xFFFFFFFF, (model, bitness, "train")
+        print(f"{model}\t{bitness}\t{tt}\t{general}\t{val_tt}")
 PY
 }
 
@@ -60,7 +59,7 @@ jobs=("${lines[@]:2}")
 missing=()
 
 for job in "${jobs[@]}"; do
-    IFS=$'\t' read -r model bitness train_solved train_unsolved val_solved <<< "$job"
+    IFS=$'\t' read -r model bitness train_tt train_general val_tt <<< "$job"
     tag="$(printf '%02d' "$bitness")"
     train="$model"_"$tag".train
     validation="$model"_"$tag".val
@@ -82,10 +81,10 @@ fi
 mkdir -p "$DATA_DIR" "$STAGE_DIR"
 
 for job in "${missing[@]}"; do
-    IFS=$'\t' read -r model bitness train_solved train_unsolved val_solved <<< "$job"
+    IFS=$'\t' read -r model bitness train_tt train_general val_tt <<< "$job"
     tag="$(printf '%02d' "$bitness")"
-    echo "generating $model bitness $bitness: train $train_solved solved + $train_unsolved unsolved, val $val_solved"
-    "$GENERATOR" "$STAGE_DIR" "$model" "$bitness" "$SEED" "$train_solved" "$train_unsolved" "$val_solved"
+    echo "generating $model bitness $bitness: train $train_tt tt + $train_general general, val $val_tt"
+    "$GENERATOR" "$STAGE_DIR" "$model" "$bitness" "$SEED" "$train_tt" "$train_general" "$val_tt"
 
     for suffix in train val; do
         name="$model"_"$tag"."$suffix"

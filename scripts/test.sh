@@ -29,9 +29,9 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
 echo
-echo "== data_generator: solved entries at bitness 8 and one unknown target at 13"
-"$BUILD_DIR/prep/data_generator" "$WORK_DIR" m1 8 239 4 0 2
-"$BUILD_DIR/prep/data_generator" "$WORK_DIR" m2 8 239 4 0 2
+echo "== data_generator: tt and general entries at bitness 8 and 13"
+"$BUILD_DIR/prep/data_generator" "$WORK_DIR" m1 8 239 2 2 2
+"$BUILD_DIR/prep/data_generator" "$WORK_DIR" m2 8 239 2 2 2
 "$BUILD_DIR/prep/data_generator" "$WORK_DIR" m1 13 239 1 1 1
 ls "$WORK_DIR"
 

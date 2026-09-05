@@ -102,6 +102,7 @@ private:
     };
 
     Cases SampleReductions(uint32_t first, uint32_t count, Reduction reduction) const;
+    void ReportTargetQuantiles() const;
 
     std::string path_;
     Split split_;

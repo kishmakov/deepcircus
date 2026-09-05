@@ -18,7 +18,7 @@ struct Parameters {
     uint64_t seed;
 };
 
-offline::Entry SolvedEntry(const Parameters& parameters, Model model, uint16_t bitness, uint32_t index);
-offline::Entry UnsolvedEntry(const Parameters& parameters, Model model, uint16_t bitness, uint32_t index);
+offline::Entry TTEntry(const Parameters& parameters, Model model, uint16_t bitness, uint32_t index);
+offline::Entry GeneralEntry(const Parameters& parameters, Model model, uint16_t bitness, uint32_t index);
 
 }  // namespace prep

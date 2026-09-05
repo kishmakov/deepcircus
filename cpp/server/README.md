@@ -35,6 +35,10 @@ their predictions, and installs the resulting target before requesting an
 epoch. Reduction rows are streamed in bounded chunks rather than materialized
 for the whole file.
 
+Once all targets are ready, the daemon reports the 1%, 25%, 50%, 75%, and 99%
+quantiles of depth and size scores for each dataset. Quantiles use linear
+interpolation between sorted values.
+
 ## Epochs
 
 Epoch 0 is the validation file; every epoch above it is the training one. The

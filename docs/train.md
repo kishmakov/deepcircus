@@ -22,14 +22,13 @@ on `X`. Assignments outside `X` are don't-cares: a branch reaching no member of
 represents a uniformly drawn subset, typically about half of the input cube.
 
 Depth and size count the tree's depth and internal nodes. Through bitness 12,
-solved entries have exact minimum depth and size from the dynamic programming
-solvers. For `M_2`, these are `SolveForDepthRestricted` and
+both `tt` and `general` entries have exact minimum depth and size from the
+dynamic programming solvers. For `M_2`, these are `SolveForDepthRestricted` and
 `SolveForSizeRestricted` in
 [`tools/solver.h`](../cpp/common/tools/solver.h).
 
-Above bitness 12, solved entries use the depth and size of a witness tree as
-upper bounds on the minima. For `M_2`, the witness computes `g` on the whole
-cube, so its bounds may be loose when only `X` is constrained.
+Above bitness 12, `tt` entries use the depth and size of a witness tree as
+upper bounds on the minima; `general` entries need bootstrapped targets.
 
 ## Offline preparation
 
@@ -37,22 +36,26 @@ Preparation is configured in [`conf/preparation.yaml`](../conf/preparation.yaml)
 and implemented in [`cpp/prep/`](../cpp/prep/README.md). Generation is
 deterministic from `(bitness, seed)`.
 
-For `M_1`, a solved entry pairs a `tree-over-table` function `g` with its
-matching `table` function `f`. An unsolved entry uses independent `table`
-functions and the unknown-target marker.
+Training counts are configured as `train.tt` and `train.general`; validation
+contains `val.tt` cases only. The two categories describe how functions are
+generated, independently of whether their targets are exact or bootstrapped.
 
-For `M_2`:
+For both models and every bitness, a `tt` entry pairs a `tree-over-table`
+function `g` with its matching `table` function. For `M_1`, that table is the
+helper `f`. For `M_2`, it is the indicator of `X`: the table equals one on
+`X`, so fixing the witness's helper queries to one gives a tree using only
+primary inputs. The original witness's depth and size remain upper bounds
+for this restricted tree. Through bitness 12, the exact solvers replace the
+witness bounds with minimum targets.
 
-- Through bitness 12, a solved entry uses independent `table` functions for
-  `g` and the indicator of `X`, with exact restricted targets.
-- Above bitness 12, a solved entry uses a `tree` witness for `g`, a `table`
-  indicator, and the witness's raw depth and size.
-- An unsolved entry uses independent `table` functions in both slots and the
-  unknown-target marker.
+A `general` entry uses independent `table` functions in both slots. Through
+bitness 12, preparation computes exact targets with the appropriate `M_1` or
+`M_2` solvers. Above 12, it writes the unknown-target marker; training startup
+reconstructs targets through the prerequisite models described below.
 
-`M_2` preparation produces only `table` and `tree` functions, although the
-shared storage format also permits `tree-over-table`. Validation contains only
-solved entries for both models.
+The preparation script skips existing complete train/validation pairs. Move
+old pairs out of `data/` before rerunning preparation to apply changed counts
+or generation rules.
 
 ## Training scores
 
@@ -96,7 +99,7 @@ Checkpoint bitnesses are zero-padded. Above bitness 12, train in increasing
 bitness, with `m2 n` before `m1 n`. Every finished run keeps its best
 checkpoint in `data/` under that same name, so a `work_dir` emptied between
 runs is restored by copying the prerequisites back into it. Once
-reconstructed scores are installed, unknown and solved entries are served
+reconstructed scores are installed, `tt` and `general` entries are served
 alike. Training reads the offline files without modifying them.
 
 ## Sampling and device input
