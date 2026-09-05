@@ -119,5 +119,4 @@ def _missing_model_message(path: Path, model_name: str, bitness: int) -> str:
 
 
 def _release_device_cache() -> None:
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
+    torch.cuda.empty_cache()

@@ -4,7 +4,8 @@ import torch.nn as nn
 
 from src.config import TrainConfig
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+assert torch.cuda.is_available(), "CUDA is required for training"
+DEVICE = "cuda"
 
 # ── Model ─────────────────────────────────────────────────────────────────────
 

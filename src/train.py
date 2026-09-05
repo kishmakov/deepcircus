@@ -124,7 +124,7 @@ def loader(config: TrainConfig, values: np.ndarray, targets: np.ndarray, shuffle
         batch_size=config.training.batch_size,
         shuffle=shuffle,
         drop_last=False,
-        pin_memory=DEVICE == "cuda",
+        pin_memory=True,
     )
 
 
