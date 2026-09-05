@@ -47,10 +47,12 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from src.bootstrap import combine_helper_predictions, combine_primary_predictions
 from src.config import ModelConfig, OptimizerConfig, SamplingConfig, TrainConfig, TrainingConfig
 from src.daemon.client import VALIDATION_EPOCH, Client
+from src.model import make_predictor, statistics_shape, unpack_bits
 from src.train import run_training
 
 client = Client("m1", 8, Path(sys.argv[1]), 239, 2, 4)
@@ -93,14 +95,44 @@ for model_name in ("m1", "m2"):
         seed=239,
         sampling=SamplingConfig(batches=2, points_in_batch=4),
         training=TrainingConfig(epochs=1, batch_size=4, rmse_threshold=0.0001),
-        model=ModelConfig(phi_hidden=8, phi_out=4, rho_hidden=8, dropout=0.0),
-        optimizer=OptimizerConfig(lr=0.001, scheduler_patience=1, scheduler_factor=0.5),
+        model=ModelConfig(
+            phi_hidden=8, phi_out=4, psi_hidden=8, psi_out=4, rho_hidden=8, rho_out=4, dropout=0.0
+        ),
+        optimizer=OptimizerConfig(
+            lr=0.001, scheduler_patience=1, scheduler_factor=0.5, scheduler_min_lr=0.0001
+        ),
     )
     run_training(config)
     assert config.checkpoint_path().is_file(), config.checkpoint_path()
     assert config.best_checkpoint_path().is_file(), config.best_checkpoint_path()
     assert config.metrics_path().is_file(), config.metrics_path()
-print("trained M1 and M2 for one epoch each")
+    model = make_predictor(config).cuda().eval()
+    packed = torch.randint(256, (3, 26), dtype=torch.uint8, device="cuda")
+    points = model.unpacked(packed)
+    torch.testing.assert_close(points, unpack_bits(packed, 8 * 26).reshape(3, 8, 26))
+    permutation = torch.randperm(8, device="cuda")
+    columns = torch.cat((permutation, torch.tensor([8], device="cuda"),
+                         9 + permutation, torch.tensor([17], device="cuda"), 18 + permutation))
+    with torch.inference_mode():
+        assert model(packed).shape == (3, 2), model(packed).shape
+        # The invariances below are psi's; phi still reads the points of a batch
+        # in the order they were sampled, so the whole model does not have them.
+        statistics = model.statistics(points)
+        assert statistics.shape == (3, *statistics_shape(8)), statistics.shape
+        torch.testing.assert_close(model.statistics(points[:, permutation]), statistics)
+        torch.testing.assert_close(model.statistics(torch.ones_like(points)),
+                                   torch.ones(3, *statistics_shape(8), device="cuda"))
+        # Permuting the input bits permutes each block along both of its axes.
+        permuted = model.statistics(points[:, :, columns])
+        edges = torch.cat((torch.tensor([0], device="cuda"), 1 + permutation))
+        offset = 0
+        for rows in (permutation, permutation, edges):
+            block = statistics[:, offset : offset + len(rows)]
+            torch.testing.assert_close(permuted[:, offset : offset + len(rows)],
+                                       block[:, rows][:, :, edges])
+            offset += len(rows)
+        assert offset == statistics.shape[1], (offset, statistics.shape)
+print("trained M1 and M2 for one epoch each; checked moment invariance")
 PY
 
 echo

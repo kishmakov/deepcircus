@@ -37,7 +37,10 @@ class TrainingConfig:
 class ModelConfig:
     phi_hidden: int
     phi_out: int
+    psi_hidden: int
+    psi_out: int
     rho_hidden: int
+    rho_out: int
     dropout: float
 
 
@@ -46,6 +49,7 @@ class OptimizerConfig:
     lr: float
     scheduler_patience: int
     scheduler_factor: float
+    scheduler_min_lr: float
 
 
 @dataclass(frozen=True)
@@ -157,12 +161,18 @@ def _model(raw: Any) -> ModelConfig:
     model = ModelConfig(
         phi_hidden=int(raw["phi_hidden"]),
         phi_out=int(raw["phi_out"]),
+        psi_hidden=int(raw["psi_hidden"]),
+        psi_out=int(raw["psi_out"]),
         rho_hidden=int(raw["rho_hidden"]),
+        rho_out=int(raw["rho_out"]),
         dropout=float(raw["dropout"]),
     )
     assert model.phi_hidden > 0, model
     assert model.phi_out > 0, model
+    assert model.psi_hidden > 0, model
+    assert model.psi_out > 0, model
     assert model.rho_hidden > 0, model
+    assert model.rho_out > 0, model
     assert 0.0 <= model.dropout < 1.0, model
     return model
 
@@ -173,8 +183,10 @@ def _optimizer(raw: Any) -> OptimizerConfig:
         lr=float(raw["lr"]),
         scheduler_patience=int(scheduler["patience"]),
         scheduler_factor=float(scheduler["factor"]),
+        scheduler_min_lr=float(scheduler["min_lr"]),
     )
     assert optimizer.lr > 0.0, optimizer
     assert optimizer.scheduler_patience >= 0, optimizer
     assert 0.0 < optimizer.scheduler_factor < 1.0, optimizer
+    assert 0.0 <= optimizer.scheduler_min_lr <= optimizer.lr, optimizer
     return optimizer

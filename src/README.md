@@ -53,6 +53,10 @@ one set of targets. One epoch is one pass over the whole training file, freshly
 sampled; `training.epochs` is the only duration knob, with the RMSE threshold
 able to end the run early.
 
+`seed` initializes PyTorch as well as daemon sampling. The plateau scheduler's
+`min_lr` keeps optimization active after repeated reductions. Metrics include
+the network and optimizer settings used for the run.
+
 Everything a run writes goes to `work_dir`, and nothing goes anywhere else:
 `<tag>.pt` after every epoch, `<tag>.best.pt` whenever validation improves, and
 `<tag>.metrics.json` behind them. So a killed run keeps what it reached, the
@@ -70,11 +74,31 @@ immediately with the coordinate that must be trained first.
 
 ## model.py
 
-`DeepSetPredictor`: input `(batch, batches * points_in_batch, point_dim)` is
-split into `batches` groups, each processed by its own dedicated 2-layer `phi`
-MLP (an `nn.ModuleList`, no weight sharing), the outputs concatenated into a
-`batches * phi_out` vector and fed to a single `rho` head.
+`DeepSetPredictor` reads the same points down two channels and concatenates both
+into `rho`, which returns the depth and size scores.
+
+`phi` is the raw channel: input `(batch, batches * points_in_batch, point_dim)`
+is split into `batches` groups, and one shared 2-layer MLP reads each group's
+points flattened, with mean and max pooling over the groups behind it.
+
+`psi` is the pooled channel. A point is three blocks -- the `n` inputs, the
+`n + 1` values of `g`, the `n + 1` values of `h` -- and `statistics` averages
+every product of two different blocks over the points: `x_i * h_j`, `x_i * g_j`,
+`h_i * g_j`, in that order. Each block is against `h` or `g`, so all of them are
+`n + 1` wide and they stack into one `statistics_shape(n) = (3n + 1, n + 1)`
+matrix. `psi` is shared over its `3n + 1` rows, and mean and max pooling over
+them follow it, so `rho` takes `2 * phi_out + 2 * psi_out` at its input.
+
+Products within a block are not taken, so nothing here is `g` against itself:
+the edge terms `g(x) * g(x^e_i)` that measure the influence of bit `i` are
+absent, and so are the plain block averages.
+
+The pooled channel is invariant to point order, and permuting the input bits
+permutes each of its blocks along both axes. Pooling makes `phi` blind to the
+order of the batches, but not to the order of the points inside one, so the
+model as a whole has neither property.
 
 `unpack_bits` expands packed rows into ±1 float32 (little-endian, bit `b` ->
-`2*b - 1`) on the device. `forward` unpacks uint8 input itself; float32 input
-passes through.
+`2*b - 1`) on the device. `forward` takes the packed uint8 rows the daemon
+serves and calls `unpacked` on them itself; `statistics` takes the expanded
+points, shaped `(batch, batches * points_in_batch, point_dim)`.

@@ -19,7 +19,6 @@ import numpy as np
 
 SERVER_NAME = "offline_server"
 MODELS = ("m1", "m2")
-_CONSOLE_PREFIX = "\033[32m[client.py]\033[0m "
 
 _HEADER = struct.Struct("<IQ")
 _INITIALIZE_PAYLOAD = struct.Struct("<HHHHQ")
@@ -66,6 +65,11 @@ class DatasetSizes:
         """Training entries whose targets are reconstructed before epochs begin."""
         return self.train_entries - self.train_known
 
+    def epoch_bytes(self, points: int) -> int:
+        """What one training epoch copies out: the packed rows and their targets."""
+        row_bytes = (points * self.point_dim + 7) // 8
+        return self.train_entries * (row_bytes + 2 * np.dtype(np.float32).itemsize)
+
 
 @dataclass(frozen=True)
 class Cases:
@@ -99,7 +103,6 @@ class Client:
             f"{self.server_path} is not built; run scripts/train/build_server.sh"
         )
         self.bitness = bitness
-        self._first_training_fetch = True
         self._process: subprocess.Popen[str] | None = None
         self._socket: socket.socket | None = None
         try:
@@ -147,14 +150,6 @@ class Client:
         """Samples `epoch` and copies it out of shared memory."""
         cases = self._fetch_cases(_EPOCH, _EPOCH_PAYLOAD.pack(epoch), with_targets=True)
         assert cases.columns % self.sizes.point_dim == 0, cases.columns
-        if epoch > VALIDATION_EPOCH and self._first_training_fetch:
-            size = cases.values.nbytes + cases.targets.nbytes
-            print(
-                f"{_CONSOLE_PREFIX}fetched training epoch {epoch}: {size:,} "
-                "bytes, including packed values and targets",
-                flush=True,
-            )
-            self._first_training_fetch = False
         return cases
 
     def primary_reductions(self, first: int, count: int) -> Cases:

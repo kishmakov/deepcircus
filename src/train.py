@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import shutil
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from os import replace
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -59,6 +59,7 @@ def main(argv: list[str] | None = None) -> None:
 
 def run_training(config: TrainConfig) -> None:
     config.work_dir.mkdir(parents=True, exist_ok=True)
+    torch.manual_seed(config.seed)
 
     with open_training_data(config) as data:
         report_dataset(config, data.sizes)
@@ -70,6 +71,7 @@ def run_training(config: TrainConfig) -> None:
             optimizer,
             patience=config.optimizer.scheduler_patience,
             factor=config.optimizer.scheduler_factor,
+            min_lr=config.optimizer.scheduler_min_lr,
         )
 
         metrics: list[EpochMetrics] = []
@@ -132,6 +134,9 @@ def report_dataset(config: TrainConfig, sizes: DatasetSizes) -> None:
     report(
         f"{config.tag}: {sizes.train_entries} train cases, {sizes.validation_entries} validation cases, "
         f"{config.sampling.points} points of {sizes.point_dim} bits each"
+    )
+    report(
+        f"one epoch is {sizes.epoch_bytes(config.sampling.points):,} bytes of packed values and targets"
     )
     if sizes.unknown_train:
         report(f"reconstructed {sizes.unknown_train} targets through trained reduction models")
@@ -211,6 +216,8 @@ def save_metrics(config: TrainConfig, metrics: list[EpochMetrics], best_rmse: fl
         "model": config.model_name,
         "bitness": config.bitness,
         "seed": config.seed,
+        "network": asdict(config.model),
+        "optimizer": asdict(config.optimizer),
         "sampling": {
             "batches": config.sampling.batches,
             "points_in_batch": config.sampling.points_in_batch,
