@@ -20,8 +20,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <memory>
 #include <string>
 #include <vector>
+
+#include "func/func.h"
 
 namespace server {
 
@@ -72,10 +75,10 @@ struct Cases {
 // One offline file, read once for what is in it and sampled once per epoch.
 class Dataset {
 public:
-    Dataset(std::string path, Split split, SamplingShape shape);
+    Dataset(const std::string& path, Split split, SamplingShape shape);
 
     uint16_t Bitness() const { return bitness_; }
-    uint32_t Entries() const { return entries_; }
+    uint32_t Entries() const { return static_cast<uint32_t>(entries_.size()); }
     uint32_t KnownCases() const { return known_cases_; }
     uint32_t UnknownCases() const { return static_cast<uint32_t>(unknown_.size()); }
 
@@ -96,6 +99,11 @@ public:
     Cases Sample(uint32_t epoch) const;
 
 private:
+    struct Entry {
+        std::unique_ptr<const func::Func> g;
+        std::unique_ptr<const func::Func> f;
+    };
+
     enum class Reduction {
         kPrimary,
         kHelper,
@@ -104,11 +112,10 @@ private:
     Cases SampleReductions(uint32_t first, uint32_t count, Reduction reduction) const;
     void ReportTargetQuantiles() const;
 
-    std::string path_;
     Split split_;
     SamplingShape shape_;
     uint16_t bitness_ = 0;
-    uint32_t entries_ = 0;
+    std::vector<Entry> entries_;
     uint32_t known_cases_ = 0;
     std::vector<uint32_t> unknown_;
     std::vector<float> targets_;

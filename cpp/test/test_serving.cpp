@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <numeric>
 #include <string>
 #include <vector>
 
@@ -48,12 +50,42 @@ bool RowBit(const server::Cases& cases, uint32_t row, uint64_t bit) {
     return ((byte >> (bit % 8)) & 1u) != 0;
 }
 
+// Recover a shared coordinate permutation from observed values and all their bit flips.
+std::vector<uint16_t> FindPermutation(const server::Cases& cases, uint32_t row, const func::Func& g,
+                                      const func::Func& f) {
+    const std::vector<bool> tables[] = {g.TruthTable(), f.TruthTable()};
+    std::vector<uint16_t> permutation(kBitness);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    const auto matches = [&] {
+        for (uint64_t base = 0; base < cases.columns; base += server::PointDim(kBitness)) {
+            size_t input = 0;
+            for (uint16_t bit = 0; bit < kBitness; ++bit) {
+                input |= size_t{RowBit(cases, row, base + bit)} << permutation[bit];
+            }
+            for (size_t function = 0; function < 2; ++function) {
+                const uint64_t offset = base + kBitness + function * (kBitness + 1);
+                if (RowBit(cases, row, offset) != tables[function][input]) return false;
+                for (uint16_t bit = 0; bit < kBitness; ++bit) {
+                    if (RowBit(cases, row, offset + 1 + bit) !=
+                        tables[function][input ^ (size_t{1} << permutation[bit])]) return false;
+                }
+            }
+        }
+        return true;
+    };
+    do {
+        if (matches()) return permutation;
+    } while (std::next_permutation(permutation.begin(), permutation.end()));
+    return {};
+}
+
 }  // namespace
 
 TEST(ServingTest, InstallsTargetsForEntriesWithoutOne) {
     const std::string path =
         WriteFile("deepcircus_serving_unsolved.bin", {TablePair(1, 2, 4, 11), Unsolved(3, 4), TablePair(5, 6, 2, 3)});
     server::Dataset dataset(path, server::Split::kTrain, kShape);
+    ASSERT_TRUE(std::filesystem::remove(path));
 
     EXPECT_EQ(dataset.Entries(), 3u);
     EXPECT_EQ(dataset.KnownCases(), 2u);
@@ -63,13 +95,12 @@ TEST(ServingTest, InstallsTargetsForEntriesWithoutOne) {
     EXPECT_EQ(cases.cases, 3u);
     EXPECT_FLOAT_EQ(cases.targets[2], 1.25f);
     EXPECT_FLOAT_EQ(cases.targets[3], 2.5f);
-
-    std::filesystem::remove(path);
 }
 
 TEST(ServingTest, SamplesBootstrapReductions) {
     const std::string path = WriteFile("deepcircus_serving_reductions.bin", {Unsolved(3, 4), Unsolved(5, 6)});
     const server::Dataset dataset(path, server::Split::kTrain, kShape);
+    ASSERT_TRUE(std::filesystem::remove(path));
     const func::TableFunc g(kBitness, 3);
     const func::TableFunc f(kBitness, 4);
 
@@ -112,15 +143,13 @@ TEST(ServingTest, SamplesBootstrapReductions) {
     const server::Cases second = dataset.SamplePrimaryReductions(1, 1);
     const size_t second_offset = size_t{2 * kBitness} * both.RowBytes();
     EXPECT_EQ(std::vector<uint8_t>(both.values.begin() + second_offset, both.values.end()), second.values);
-
-    std::filesystem::remove(path);
 }
 
 TEST(ServingTest, PacksTheDocumentedPointLayout) {
     const uint8_t depth = 5;
     const uint16_t size = 37;
     const std::string path = WriteFile("deepcircus_serving_layout.bin", {TablePair(11, 12, depth, size)});
-    const server::Dataset dataset(path, server::Split::kTrain, kShape);
+    const server::Dataset dataset(path, server::Split::kValidation, kShape);
 
     const server::Cases cases = dataset.Sample(1);
     const uint64_t points = uint64_t{kShape.batches} * kShape.points_in_batch;
@@ -155,6 +184,7 @@ TEST(ServingTest, EachEpochResamplesTheSameCases) {
     const std::string path = WriteFile("deepcircus_serving_epochs.bin",
                                        {TablePair(21, 22, 3, 5), TablePair(23, 24, 4, 9), TablePair(25, 26, 6, 21)});
     const server::Dataset dataset(path, server::Split::kTrain, kShape);
+    ASSERT_TRUE(std::filesystem::remove(path));
 
     const server::Cases first = dataset.Sample(1);
     const server::Cases second = dataset.Sample(2);
@@ -163,10 +193,20 @@ TEST(ServingTest, EachEpochResamplesTheSameCases) {
     EXPECT_EQ(first.targets, second.targets);
     EXPECT_NE(first.values, second.values);
 
+    const func::TableFunc g(kBitness, 21), f(kBitness, 22);
+    const auto first_permutation = FindPermutation(first, 0, g, f);
+    const auto second_permutation = FindPermutation(second, 0, g, f);
+    const auto next_entry_permutation =
+        FindPermutation(first, 1, func::TableFunc(kBitness, 23), func::TableFunc(kBitness, 24));
+    ASSERT_EQ(first_permutation.size(), kBitness);
+    ASSERT_EQ(second_permutation.size(), kBitness);
+    ASSERT_EQ(next_entry_permutation.size(), kBitness);
+    EXPECT_NE(first_permutation, second_permutation);
+    EXPECT_NE(first_permutation, next_entry_permutation);
+
     // An epoch asked for twice is the same epoch, however many threads sampled
     // it.
     EXPECT_EQ(dataset.Sample(1).values, first.values);
-    std::filesystem::remove(path);
 }
 
 TEST(ServingTest, SplitsSampleDifferentInputs) {
@@ -192,11 +232,13 @@ TEST(ServingTest, ServesTreeBackedFunctions) {
     const server::Cases cases = dataset.Sample(1);
     ASSERT_EQ(cases.cases, 1u);
     const func::TableFunc subset(kBitness, 72);
+    const auto permutation = FindPermutation(cases, 0, witness, subset);
+    ASSERT_EQ(permutation.size(), kBitness);
     const uint64_t points = uint64_t{kShape.batches} * kShape.points_in_batch;
     for (uint64_t point = 0; point < points; ++point) {
         const uint64_t base = point * server::PointDim(kBitness);
         std::vector<bool> input(kBitness);
-        for (uint16_t bit = 0; bit < kBitness; ++bit) input[bit] = RowBit(cases, 0, base + bit);
+        for (uint16_t bit = 0; bit < kBitness; ++bit) input[permutation[bit]] = RowBit(cases, 0, base + bit);
 
         EXPECT_EQ(RowBit(cases, 0, base + kBitness), witness(input));
         EXPECT_EQ(RowBit(cases, 0, base + 2 * kBitness + 1), subset(input));

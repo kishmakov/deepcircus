@@ -41,7 +41,17 @@ interpolation between sorted values.
 
 ## Epochs
 
+Each dataset loads its function pairs into memory once at construction.
+Epoch sampling and bootstrap reductions reuse those functions.
+
 Epoch 0 is the validation file; every epoch above it is the training one. The
 epoch id enters the seed, so each one draws its own inputs for the same pairs
 and the same epoch asked for twice draws the same ones -- which is also why the
 sampling can be spread over threads without changing what comes out.
+
+Training also permutes input coordinates once per entry and epoch, using a
+separate random stream keyed by the run seed, bitness, entry index, and epoch.
+Both functions and their single-bit flips use the same permutation; validation
+and bootstrap reductions keep the original coordinate order. This preserves
+both targets: input relabeling preserves decision-tree depth and size for M_1
+and, after relabeling the subset indicator too, for M_2.

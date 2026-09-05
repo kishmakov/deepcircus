@@ -176,6 +176,20 @@ void CheckAgainstReference(uint16_t bitness, const std::vector<bool>& truth_tabl
 
 }  // namespace
 
+TEST(SolverTest, InputPermutationPreservesBothModelTargets) {
+    for (const auto& example : kSolverGoldenCases) {
+        const auto g = TableFromBits(example.bitness, example.truth_bits);
+        const auto f = TableFromBits(example.bitness, example.second_bits);
+        std::vector<bool> permuted_g(g.size()), permuted_f(f.size());
+        for (size_t input = 0; input < g.size(); ++input) {
+            const size_t rotated = ((input << 1) & (g.size() - 1)) | (input >> (example.bitness - 1));
+            permuted_g[input] = g[rotated];
+            permuted_f[input] = f[rotated];
+        }
+        CheckGolden(example.bitness, permuted_g, permuted_f, example.targets);
+    }
+}
+
 TEST(SolverTest, GoldenTargets) {
     for (const SolverGoldenCase& c : kSolverGoldenCases) {
         CheckGolden(c.bitness, TableFromBits(c.bitness, c.truth_bits), TableFromBits(c.bitness, c.second_bits),

@@ -19,6 +19,7 @@ import numpy as np
 
 SERVER_NAME = "offline_server"
 MODELS = ("m1", "m2")
+_CONSOLE_PREFIX = "\033[32m[client.py]\033[0m "
 
 _HEADER = struct.Struct("<IQ")
 _INITIALIZE_PAYLOAD = struct.Struct("<HHHHQ")
@@ -98,6 +99,7 @@ class Client:
             f"{self.server_path} is not built; run scripts/train/build_server.sh"
         )
         self.bitness = bitness
+        self._first_training_fetch = True
         self._process: subprocess.Popen[str] | None = None
         self._socket: socket.socket | None = None
         try:
@@ -145,6 +147,14 @@ class Client:
         """Samples `epoch` and copies it out of shared memory."""
         cases = self._fetch_cases(_EPOCH, _EPOCH_PAYLOAD.pack(epoch), with_targets=True)
         assert cases.columns % self.sizes.point_dim == 0, cases.columns
+        if epoch > VALIDATION_EPOCH and self._first_training_fetch:
+            size = cases.values.nbytes + cases.targets.nbytes
+            print(
+                f"{_CONSOLE_PREFIX}fetched training epoch {epoch}: {size:,} "
+                "bytes, including packed values and targets",
+                flush=True,
+            )
+            self._first_training_fetch = False
         return cases
 
     def primary_reductions(self, first: int, count: int) -> Cases:

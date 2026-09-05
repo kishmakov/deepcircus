@@ -7,8 +7,8 @@
 #include <cstring>
 #include <iostream>
 #include <memory>
+#include <numeric>
 #include <thread>
-#include <utility>
 
 #include "func/func.h"
 #include "func/table.h"
@@ -27,6 +27,7 @@ namespace {
 // burned on the same coordinates. The epoch is added to it, so each epoch draws
 // from a domain of its own.
 constexpr uint64_t kInputDomain = 0x696e707574735f30ull;
+constexpr uint64_t kPermutationDomain = 0x7065726d75746530ull;
 constexpr uint64_t kPrimaryDomain = 0x7265647563655f70ull;
 constexpr uint64_t kHelperDomain = 0x7265647563655f66ull;
 
@@ -56,16 +57,19 @@ std::unique_ptr<func::Func> MakeFunc(uint16_t bitness, const offline::Function& 
 
 // The function's value at `point`, then its value at each single-bit flip.
 // `point` is restored before returning.
-void AppendBlock(std::vector<bool>& row, const func::Func& function, std::vector<bool>& point, bool invert = false) {
+void AppendBlock(std::vector<bool>& row, const func::Func& function, std::vector<bool>& point,
+                 const std::vector<uint16_t>& permutation, bool invert = false) {
     row.push_back(function(point) != invert);
-    for (size_t bit = 0; bit < point.size(); ++bit) {
+    for (uint16_t bit : permutation) {
         point[bit] = !point[bit];
         row.push_back(function(point) != invert);
         point[bit] = !point[bit];
     }
 }
 
-std::vector<bool> SamplePair(const SampledPair& pair, tools::Random& random, bool invert_f = false) {
+std::vector<bool> SamplePair(const SampledPair& pair, const std::vector<uint16_t>& permutation,
+                             tools::Random& random, bool invert_f = false) {
+    assert(permutation.size() == pair.bitness);
     const tools::InputShape input_shape{pair.shape.batches, pair.shape.points_in_batch};
     const std::vector<bool> inputs =
         tools::SampleInputs(input_shape, pair.bitness, [&random] { return random.Bool(); });
@@ -76,20 +80,15 @@ std::vector<bool> SamplePair(const SampledPair& pair, tools::Random& random, boo
     row.reserve(points * PointDim(pair.bitness));
     std::vector<bool> point(pair.bitness);
     for (size_t id = 0; id < points; ++id) {
-        std::copy(inputs.begin() + id * pair.bitness, inputs.begin() + (id + 1) * pair.bitness, point.begin());
-        row.insert(row.end(), point.begin(), point.end());
-        AppendBlock(row, pair.g, point);
-        AppendBlock(row, pair.f, point, invert_f);
+        const auto begin = inputs.begin() + id * pair.bitness;
+        row.insert(row.end(), begin, begin + pair.bitness);
+        // Displayed bit i feeds original input permutation[i] in both functions.
+        for (uint16_t bit = 0; bit < pair.bitness; ++bit) point[permutation[bit]] = inputs[id * pair.bitness + bit];
+        AppendBlock(row, pair.g, point, permutation);
+        AppendBlock(row, pair.f, point, permutation, invert_f);
     }
     assert(row.size() == points * PointDim(pair.bitness));
     return row;
-}
-
-std::vector<bool> SampleCase(const offline::Entry& entry, uint16_t bitness, SamplingShape shape, uint64_t seed) {
-    const std::unique_ptr<func::Func> g = MakeFunc(bitness, entry.g);
-    const std::unique_ptr<func::Func> f = MakeFunc(bitness, entry.f);
-    tools::Random random(seed);
-    return SamplePair({*g, *f, bitness, shape}, random);
 }
 
 uint16_t FullBitId(uint16_t free_bit, uint16_t fixed_bit) { return free_bit < fixed_bit ? free_bit : free_bit + 1; }
@@ -105,6 +104,7 @@ void AppendRestrictedBlock(std::vector<bool>& row, const func::Func& function, s
     }
 }
 
+// Samples the pair with one input bit fixed, omitting that bit from the point layout.
 std::vector<bool> SamplePrimaryReduction(const SampledPair& pair, uint16_t fixed_bit, bool fixed_value,
                                          tools::Random& random) {
     const uint16_t free_bits = pair.bitness - 1;
@@ -130,14 +130,11 @@ std::vector<bool> SamplePrimaryReduction(const SampledPair& pair, uint16_t fixed
     return row;
 }
 
-std::vector<std::vector<bool>> SamplePrimaryRows(const offline::Entry& entry, uint16_t bitness, SamplingShape shape,
-                                                 tools::Random& random) {
-    const std::unique_ptr<func::Func> g = MakeFunc(bitness, entry.g);
-    const std::unique_ptr<func::Func> f = MakeFunc(bitness, entry.f);
-    const SampledPair pair{*g, *f, bitness, shape};
+// Samples both fixed values of every input bit, ordered by bit then value.
+std::vector<std::vector<bool>> SamplePrimaryRows(const SampledPair& pair, tools::Random& random) {
     std::vector<std::vector<bool>> rows;
-    rows.reserve(2 * bitness);
-    for (uint16_t fixed_bit = 0; fixed_bit < bitness; ++fixed_bit) {
+    rows.reserve(2 * pair.bitness);
+    for (uint16_t fixed_bit = 0; fixed_bit < pair.bitness; ++fixed_bit) {
         for (uint16_t fixed_value = 0; fixed_value <= 1; ++fixed_value) {
             rows.push_back(SamplePrimaryReduction(pair, fixed_bit, fixed_value != 0, random));
         }
@@ -145,12 +142,11 @@ std::vector<std::vector<bool>> SamplePrimaryRows(const offline::Entry& entry, ui
     return rows;
 }
 
-std::vector<std::vector<bool>> SampleHelperRows(const offline::Entry& entry, uint16_t bitness, SamplingShape shape,
-                                                tools::Random& random) {
-    const std::unique_ptr<func::Func> g = MakeFunc(bitness, entry.g);
-    const std::unique_ptr<func::Func> f = MakeFunc(bitness, entry.f);
-    const SampledPair pair{*g, *f, bitness, shape};
-    return {SamplePair(pair, random, true), SamplePair(pair, random, false)};
+// Samples g paired with the indicators of f = 0 and f = 1, in that order.
+std::vector<std::vector<bool>> SampleHelperRows(const SampledPair& pair, tools::Random& random) {
+    std::vector<uint16_t> permutation(pair.bitness);
+    std::iota(permutation.begin(), permutation.end(), 0);
+    return {SamplePair(pair, permutation, random, true), SamplePair(pair, permutation, random, false)};
 }
 
 void PackRow(const std::vector<bool>& bits, uint8_t* row) {
@@ -168,18 +164,18 @@ std::string FilePath(const std::string& directory, Model model, uint16_t bitness
     return directory + "/" + name + "_" + BitnessTag(bitness) + suffix;
 }
 
-Dataset::Dataset(std::string path, Split split, SamplingShape shape)
-    : path_(std::move(path)), split_(split), shape_(shape) {
+Dataset::Dataset(const std::string& path, Split split, SamplingShape shape) : split_(split), shape_(shape) {
     assert(shape_.batches > 1);
     assert(shape_.points_in_batch > 1);
     assert(std::has_single_bit(shape_.points_in_batch));
 
-    offline::Reader reader(path_);
+    offline::Reader reader(path);
     bitness_ = reader.Bitness();
-    entries_ = reader.Entries();
-    targets_.resize(kTargetsPerCase * entries_);
-    for (uint32_t index = 0; index < entries_; ++index) {
+    entries_.reserve(reader.Entries());
+    targets_.resize(kTargetsPerCase * reader.Entries());
+    for (uint32_t index = 0; index < reader.Entries(); ++index) {
         const offline::Entry entry = reader.Read(index);
+        entries_.push_back({MakeFunc(bitness_, entry.g), MakeFunc(bitness_, entry.f)});
         if (!entry.TargetKnown()) {
             unknown_.push_back(index);
             continue;
@@ -191,8 +187,8 @@ Dataset::Dataset(std::string path, Split split, SamplingShape shape)
     targets_ready_ = unknown_.empty();
 
     // stdout is for client, so console goes to stderr.
-    std::cerr << kConsolePrefix << " sourcing " << path_ << std::endl;
-    std::cerr << kConsolePrefix << " " << entries_ << " entries, " << known_cases_ << " with targets, "
+    std::cerr << kConsolePrefix << " sourcing " << path << std::endl;
+    std::cerr << kConsolePrefix << " " << Entries() << " entries, " << known_cases_ << " with targets, "
               << unknown_.size() << " without\n";
     if (targets_ready_) ReportTargetQuantiles();
 }
@@ -225,13 +221,11 @@ Cases Dataset::SampleReductions(uint32_t first, uint32_t count, Reduction reduct
     threads.reserve(workers);
     for (size_t worker = 0; worker < workers; ++worker) {
         threads.emplace_back([this, &block, domain, first, count, rows_per_parent, sample_rows, worker, workers] {
-            offline::Reader reader(path_);
             for (size_t position = worker; position < count; position += workers) {
                 const uint32_t index = unknown_[first + position];
-                const offline::Entry entry = reader.Read(index);
-                assert(!entry.TargetKnown());
+                const Entry& entry = entries_[index];
                 tools::Random random(tools::EntrySeed(domain, 0, bitness_, index));
-                const std::vector<std::vector<bool>> rows = sample_rows(entry, bitness_, shape_, random);
+                const std::vector<std::vector<bool>> rows = sample_rows({*entry.g, *entry.f, bitness_, shape_}, random);
                 assert(rows.size() == rows_per_parent);
                 for (size_t reduction_id = 0; reduction_id < rows.size(); ++reduction_id) {
                     const size_t row_id = position * rows_per_parent + reduction_id;
@@ -260,11 +254,11 @@ void Dataset::SetUnknownTargets(const std::vector<float>& targets) {
 
 void Dataset::ReportTargetQuantiles() const {
     assert(targets_ready_);
-    assert(entries_ > 0);
+    assert(!entries_.empty());
     constexpr const char* names[] = {"depth_score", "size_score"};
-    std::vector<float> values(entries_);
+    std::vector<float> values(entries_.size());
     for (size_t target = 0; target < kTargetsPerCase; ++target) {
-        for (size_t index = 0; index < entries_; ++index) {
+        for (size_t index = 0; index < entries_.size(); ++index) {
             values[index] = targets_[kTargetsPerCase * index + target];
         }
         std::sort(values.begin(), values.end());
@@ -281,28 +275,36 @@ void Dataset::ReportTargetQuantiles() const {
 }
 
 Cases Dataset::Sample(uint32_t epoch) const {
-    assert(entries_ > 0);
+    assert(!entries_.empty());
     assert(targets_ready_);
 
     const size_t points = size_t{shape_.batches} * shape_.points_in_batch;
-    Cases block{entries_, points * PointDim(bitness_), {}, targets_};
-    block.values.assign(size_t{entries_} * block.RowBytes(), 0);
+    Cases block{Entries(), points * PointDim(bitness_), {}, targets_};
+    block.values.assign(entries_.size() * block.RowBytes(), 0);
 
-    // Each case is written to a row of its own, so the workers share the two
-    // buffers without touching each other's bytes. A reader is a file position,
-    // though, so each one opens the file for itself.
-    const size_t workers = std::min<size_t>(std::max(std::thread::hardware_concurrency(), 1u), entries_);
+    // Each worker writes separate rows and samples immutable functions.
+    const size_t workers = std::min<size_t>(std::max(std::thread::hardware_concurrency(), 1u), entries_.size());
     const uint64_t domain = tools::DomainSeed(shape_.seed, kInputDomain + epoch, bitness_);
+    const uint64_t permutation_domain = tools::DomainSeed(shape_.seed, kPermutationDomain + epoch, bitness_);
     std::vector<std::thread> threads;
     threads.reserve(workers);
     for (size_t worker = 0; worker < workers; ++worker) {
-        threads.emplace_back([this, &block, domain, worker, workers] {
-            offline::Reader reader(path_);
-            for (size_t index = worker; index < entries_; index += workers) {
-                const offline::Entry entry = reader.Read(index);
+        threads.emplace_back([this, &block, domain, permutation_domain, worker, workers] {
+            for (size_t index = worker; index < entries_.size(); index += workers) {
+                const Entry& entry = entries_[index];
 
+                std::vector<uint16_t> permutation(bitness_);
+                std::iota(permutation.begin(), permutation.end(), 0);
+                if (split_ == Split::kTrain) {
+                    tools::Random permutation_random(tools::EntrySeed(permutation_domain, 0, bitness_, index));
+                    for (size_t remaining = permutation.size(); remaining > 1; --remaining) {
+                        std::swap(permutation[remaining - 1], permutation[permutation_random.Below(remaining)]);
+                    }
+                }
                 const uint64_t seed = tools::EntrySeed(domain, static_cast<uint16_t>(split_), bitness_, index);
-                PackRow(SampleCase(entry, bitness_, shape_, seed), block.values.data() + index * block.RowBytes());
+                tools::Random random(seed);
+                PackRow(SamplePair({*entry.g, *entry.f, bitness_, shape_}, permutation, random),
+                        block.values.data() + index * block.RowBytes());
             }
         });
     }
