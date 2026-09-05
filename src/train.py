@@ -16,7 +16,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
 from src.daemon import DatasetSizes, TrainingData, open_training_data
-from src.model import DEVICE, DeepSetPredictor
+from src.model import DEVICE, make_predictor
 from src.config import MODELS, TrainConfig, load_train_config
 
 
@@ -112,30 +112,21 @@ def loader(config: TrainConfig, values: np.ndarray, targets: np.ndarray, shuffle
         batch_size=config.training.batch_size,
         shuffle=shuffle,
         drop_last=False,
+        pin_memory=DEVICE == "cuda",
     )
 
 
 def report_dataset(config: TrainConfig, sizes: DatasetSizes) -> None:
     print(
-        f"{config.tag}: {sizes.train_cases} train cases, {sizes.validation_cases} validation cases, "
+        f"{config.tag}: {sizes.train_entries} train cases, {sizes.validation_entries} validation cases, "
         f"{config.sampling.points} points of {sizes.point_dim} bits each"
     )
-    if sizes.skipped:
-        # Bootstrapping these through the lower-arity models is not wired up
-        # yet, so they sit in the file unused.
-        print(f"skipped {sizes.skipped} entries with an unknown target")
+    if sizes.unknown_train:
+        print(f"reconstructed {sizes.unknown_train} targets through trained reduction models")
 
 
 def build_model(config: TrainConfig) -> nn.Module:
-    model = DeepSetPredictor(
-        point_dim=config.point_dim,
-        batches=config.sampling.batches,
-        points_in_batch=config.sampling.points_in_batch,
-        phi_hidden=config.model.phi_hidden,
-        phi_out=config.model.phi_out,
-        rho_hidden=config.model.rho_hidden,
-        dropout=config.model.dropout,
-    )
+    model = make_predictor(config)
     # Where the last run of this coordinate left off, if it left anything.
     checkpoint_path = config.checkpoint_path()
     if checkpoint_path.exists():
@@ -165,42 +156,42 @@ def previous_best(config: TrainConfig) -> float:
 
 
 def train_epoch(model: nn.Module, optimizer: torch.optim.Optimizer, loader: DataLoader) -> float:
-    criterion = nn.MSELoss()
     model.train()
-    squared_error_sum = 0.0
+    squared_error_sum = torch.zeros((), dtype=torch.float64, device=DEVICE)
     count = 0
 
     for xb, yb in loader:
         # xb stays packed uint8; the model unpacks it on-device.
-        xb = xb.to(DEVICE)
-        yb = yb.to(DEVICE)
+        xb = xb.to(DEVICE, non_blocking=True)
+        yb = yb.to(DEVICE, non_blocking=True)
         optimizer.zero_grad()
         prediction = model(xb)
-        loss = criterion(prediction, yb)
+        squared_errors = (prediction - yb).square()
+        loss = squared_errors.mean()
         loss.backward()
         optimizer.step()
 
-        errors = prediction.detach() - yb
-        squared_error_sum += float(torch.sum(errors.square()).item())
+        squared_error_sum += squared_errors.detach().sum(dtype=torch.float64)
         count += yb.numel()
 
-    return float((squared_error_sum / count) ** 0.5)
+    assert count > 0, count
+    return float((squared_error_sum.item() / count) ** 0.5)
 
 
 def evaluate(model: nn.Module, loader: DataLoader) -> float:
     model.eval()
-    squared_error_sum = 0.0
+    squared_error_sum = torch.zeros((), dtype=torch.float64, device=DEVICE)
     count = 0
 
-    with torch.no_grad():
+    with torch.inference_mode():
         for xb, yb in loader:
-            xb = xb.to(DEVICE)
-            yb = yb.to(DEVICE)
-            errors = model(xb) - yb
-            squared_error_sum += float(torch.sum(errors.square()).item())
+            xb = xb.to(DEVICE, non_blocking=True)
+            yb = yb.to(DEVICE, non_blocking=True)
+            squared_error_sum += (model(xb) - yb).square().sum(dtype=torch.float64)
             count += yb.numel()
 
-    return float((squared_error_sum / count) ** 0.5)
+    assert count > 0, count
+    return float((squared_error_sum.item() / count) ** 0.5)
 
 
 def save_metrics(config: TrainConfig, metrics: list[EpochMetrics], best_rmse: float) -> None:

@@ -24,8 +24,6 @@ public:
     TTFunc(uint16_t bitness, TableFunc table, TreeFunc tree);
     TTFunc(uint16_t bitness, const std::vector<uint8_t>& bytes);
 
-    // Keep the inherited batch overload visible.
-    using Func::operator();
     bool operator()(const FuncInput& input) const override;
 
     // The two children's bytes, the table's behind a uint32_t length so the

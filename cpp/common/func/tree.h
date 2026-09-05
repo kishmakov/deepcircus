@@ -23,7 +23,6 @@ public:
     TreeFunc(uint16_t bitness, tools::BinaryTree tree);
     TreeFunc(uint16_t bitness, const std::vector<uint8_t>& bytes);
 
-    using Func::operator();
     bool operator()(const FuncInput& input) const override;
 
     // Pre-order: uint32_t node count, then bit ids or high-bit-marked leaves.

@@ -14,8 +14,6 @@ public:
     TableFunc(uint16_t bitness, uint64_t seed);
     TableFunc(uint16_t bitness, std::vector<uint8_t> bytes);
 
-    // The point overload alone would hide the batch one inherited from Func.
-    using Func::operator();
     bool operator()(const FuncInput& input) const override;
     std::vector<uint8_t> serialize() const override;
 

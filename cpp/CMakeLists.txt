@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16)
 set(CMAKE_C_FLAGS_RELEASE_INIT "-O2 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_RELEASE_INIT "-O2 -DNDEBUG")
 
-project(deepcircus_generator LANGUAGES C CXX)
+project(deepcircus LANGUAGES C CXX)
 
 find_package(Threads REQUIRED)
 
@@ -16,19 +16,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(FetchContent)
-
-FetchContent_Declare(
-    aiger
-    GIT_REPOSITORY https://github.com/arminbiere/aiger.git
-    GIT_TAG rel-1.9.20
-)
-FetchContent_MakeAvailable(aiger)
-
-add_library(aiger STATIC "${aiger_SOURCE_DIR}/aiger.c")
-target_include_directories(aiger PUBLIC "${aiger_SOURCE_DIR}")
-# aiger's REALLOCN grows fresh arrays with memcpy(res, NULL, 0), which trips
-# UBSan's nonnull-attribute check; silence it for this vendored file only.
-target_compile_options(aiger PRIVATE -fno-sanitize=nonnull-attribute)
 
 add_library(common
     common/func/func.h
@@ -53,38 +40,13 @@ target_include_directories(common PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/common")
 # File validation uses assertions and must remain active in Release builds.
 set_source_files_properties(common/offline/read_write.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
-# Standalone bit/sampling pieces. Deliberately does not link `gen`:
-# tools knows nothing about cases, tables, trees, or circuits, so the include
-# direction runs generator -> tools only.
+# Standalone input sampling. It knows nothing about function representations
+# or offline files and is shared by serving and its tests.
 add_library(tools
     tools/sample.cpp
     tools/sample.h
 )
 target_include_directories(tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tools")
-
-add_library(gen
-    generator/aig.cpp
-    generator/aig.h
-    generator/case.cpp
-    generator/case.h
-    generator/generator.cpp
-    generator/generator.h
-    generator/utils.cpp
-    generator/utils.h
-)
-
-target_include_directories(gen PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/generator")
-target_link_libraries(gen PUBLIC common tools)
-target_link_libraries(gen PRIVATE aiger)
-
-add_library(producer
-    producer/task_queue.cpp
-    producer/task_queue.h
-    producer/thread_pool.cpp
-    producer/thread_pool.h
-)
-target_include_directories(producer PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/producer")
-target_link_libraries(producer PUBLIC gen Threads::Threads)
 
 # Offline files as point clouds. Links `common` and `tools` only: reading a
 # prepared file has nothing to do with generating one.
@@ -105,13 +67,10 @@ target_link_libraries(offline_server PRIVATE serving)
 # a Release build.
 set_source_files_properties(server/daemon.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
-add_executable(expand_inputs tools/expand_inputs.cpp)
-target_link_libraries(expand_inputs PRIVATE tools)
-
 add_subdirectory(prep)
 add_subdirectory(validation)
 
-option(DEEPCIRCUS_BUILD_TESTS "Build the Google Test suite" ON)
+option(DEEPCIRCUS_BUILD_TESTS "Build the Google Test suite" OFF)
 if(DEEPCIRCUS_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)

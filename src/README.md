@@ -8,7 +8,8 @@ that knows how to ask for the result.
 | File | What it owns |
 | --- | --- |
 | `config.py` | `conf/train.yaml` for one `(model, bitness)` run |
-| `daemon/` | everything about where the data comes from |
+| [`daemon/`](daemon/README.md) | everything about where the data comes from |
+| `bootstrap.py` | reconstructing unknown targets through prerequisite models |
 | `train.py` | the training loop of one run, and its weights and metrics |
 | `model.py` | `DeepSetPredictor` and the on-device unpacking |
 
@@ -30,12 +31,17 @@ The one place that knows the data is sampled by a C++ process over a socket.
 `model.unpack_bits`. Each epoch is copied out of shared memory before the next
 one is asked for.
 
-`client.py` holds the process, the two commands and the segment. `__init__.py`
-is what the rest of `src/` imports, and it says nothing about either.
+`client.py` holds the process, commands and shared-memory segment. `__init__.py`
+is what the rest of `src/` imports, and it says nothing about either. Before
+the first epoch, unknown training entries are streamed through `bootstrap.py`
+in bounded chunks. The daemon samples every primary-input restriction; for an
+`M_1` entry it also samples the two subsets reached by splitting on `f`.
+Python evaluates those rows with already trained models and sends the combined
+targets back, after which unknown and exact entries are served alike.
 
 Each epoch resamples every case at inputs of its own, so no two epochs train on
-the same points. `DatasetSizes.skipped` counts the entries the daemon left
-behind because their target is the unknown marker.
+the same points. `DatasetSizes.unknown_train` counts entries whose targets were
+reconstructed during startup.
 
 ## train.py
 
@@ -56,6 +62,11 @@ cannot overwrite `<tag>.best.pt` with something worse.
 
 `data/` is read-only to training: the two files the daemon serves are all it
 touches there.
+
+For bitness above 12, models must be trained in dependency order. `M_2^n`
+requires `<work_dir>/m2_<n-1>.best.pt`; `M_1^n` requires both
+`m1_<n-1>.best.pt` and `m2_<n>.best.pt`. Missing prerequisite weights fail
+immediately with the coordinate that must be trained first.
 
 ## model.py
 

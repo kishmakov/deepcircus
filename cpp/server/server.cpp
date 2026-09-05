@@ -1,6 +1,6 @@
 // The `offline_server` daemon: see `daemon.h` for what it serves and how it is
-// asked. Started by `src/offline.py`, which passes `--port 0` and reads the
-// bound port off the first line of its output.
+// asked. Started by `src/daemon/client.py`, which passes `--port 0` and reads
+// the bound port off the first line of its output.
 
 #include <unistd.h>
 

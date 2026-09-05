@@ -9,7 +9,7 @@ to know it exists.
 
 | File | What is in it |
 | --- | --- |
-| [`daemon.h`](daemon.h) | the protocol: one client accepted once, two commands, one shared-memory segment alive at a time |
+| [`daemon.h`](daemon.h) | the protocol: one client accepted once, bootstrap and epoch commands, one shared-memory segment alive at a time |
 | [`dataset.h`](dataset.h) | one offline file as cases |
 
 ## The point layout
@@ -29,9 +29,11 @@ decides only its name.
 
 The two targets are the scores of
 [`tools/score.h`](../common/tools/score.h), not the raw depth and size the file
-stores. Entries carrying the unknown marker are skipped -- bootstrapping them
-through the lower-arity models belongs to the training loop, and nothing here
-can score them.
+stores. For an unknown entry the daemon additionally exposes packed rows for
+each reduction in the paper. Python queries the prerequisite models, combines
+their predictions, and installs the resulting target before requesting an
+epoch. Reduction rows are streamed in bounded chunks rather than materialized
+for the whole file.
 
 ## Epochs
 

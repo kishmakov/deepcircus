@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -7,10 +8,19 @@
 #include <vector>
 
 #include "func/table.h"
-#include "sample.h"
 #include "tools/solver.h"
 
 namespace {
+
+std::vector<bool> BitsFromChars(std::string_view input) {
+    std::vector<bool> bits;
+    bits.reserve(input.size());
+    for (char value : input) {
+        assert(value == '0' || value == '1');
+        bits.push_back(value == '1');
+    }
+    return bits;
+}
 
 struct TableGoldenCase {
     uint16_t bitness;
@@ -69,7 +79,7 @@ constexpr TableBigGoldenCase kTableBigGoldenCases[] = {
 
 std::string TableValue(uint16_t bitness, uint64_t seed, std::string_view input) {
     func::TableFunc table(bitness, seed);
-    std::vector<bool> point = tools::BitsFromChars(input);
+    std::vector<bool> point = BitsFromChars(input);
 
     std::string value(input);
     value.push_back(table(point) ? '1' : '0');

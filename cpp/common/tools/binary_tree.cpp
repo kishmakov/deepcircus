@@ -78,9 +78,13 @@ void AssignLeaves(BinaryTree& tree, Random& random) {
 
 }  // namespace
 
-BinaryTree BinaryTree::Sample(uint64_t seed, uint32_t max_depth, uint32_t size, const std::vector<uint32_t>& ids) {
+BinaryTree BinaryTree::Sample(uint64_t seed, uint32_t max_depth, uint32_t size, uint32_t ids_num) {
     assert(max_depth > 0);
     assert(size <= Capacity(max_depth));
+    assert(ids_num >= max_depth);
+
+    std::vector<uint32_t> ids(ids_num);
+    std::iota(ids.begin(), ids.end(), uint32_t{0});
 
     Random random(seed);
     BinaryTree tree;
@@ -88,12 +92,6 @@ BinaryTree BinaryTree::Sample(uint64_t seed, uint32_t max_depth, uint32_t size, 
     AssignIds(tree, random, 0, ids);
     AssignLeaves(tree, random);
     return tree;
-}
-
-BinaryTree BinaryTree::Sample(uint64_t seed, uint32_t max_depth, uint32_t size, uint32_t ids_num) {
-    std::vector<uint32_t> ids(ids_num);
-    std::iota(ids.begin(), ids.end(), uint32_t{0});
-    return Sample(seed, max_depth, size, ids);
 }
 
 std::array<uint32_t, 2> BinaryTree::Split(uint32_t leaf) {

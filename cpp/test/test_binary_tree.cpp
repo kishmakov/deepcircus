@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <numeric>
 #include <vector>
 
 #include "tools/binary_tree.h"
@@ -93,8 +92,8 @@ TEST(BinaryTreeTest, SamplingIsDeterministic) {
 namespace {
 
 // Walks every root-to-leaf path, checking that no id repeats along it and that
-// each one came out of `ids`.
-void CheckPath(const tools::BinaryTree& tree, uint32_t node, const std::vector<uint32_t>& ids,
+// each one came out of the requested id range.
+void CheckPath(const tools::BinaryTree& tree, uint32_t node, uint32_t ids_num,
                std::vector<uint32_t>& path) {
     if (tree[node].IsLeaf()) {
         EXPECT_LE(tree[node].value, 1u) << "a leaf holds an output, not an id";
@@ -102,12 +101,12 @@ void CheckPath(const tools::BinaryTree& tree, uint32_t node, const std::vector<u
     }
 
     const uint32_t id = tree[node].value;
-    EXPECT_NE(std::find(ids.begin(), ids.end(), id), ids.end()) << "id " << id << " was never offered";
+    EXPECT_LT(id, ids_num);
     EXPECT_EQ(std::find(path.begin(), path.end(), id), path.end()) << "id " << id << " repeats along a path";
 
     path.push_back(id);
-    CheckPath(tree, tree[node].child[tools::BinaryTree::kLeft], ids, path);
-    CheckPath(tree, tree[node].child[tools::BinaryTree::kRight], ids, path);
+    CheckPath(tree, tree[node].child[tools::BinaryTree::kLeft], ids_num, path);
+    CheckPath(tree, tree[node].child[tools::BinaryTree::kRight], ids_num, path);
     path.pop_back();
 }
 
@@ -118,14 +117,11 @@ TEST(BinaryTreeTest, SamplesIdsUnrepeatedAlongPaths) {
         const uint32_t capacity = (uint32_t{1} << max_depth) - 1;
         for (uint32_t size = 0; size <= capacity; ++size) {
             for (uint64_t seed = 0; seed < 4; ++seed) {
-                // More ids than the depth needs, plus one carrying weight.
-                std::vector<uint32_t> ids(max_depth + 2);
-                std::iota(ids.begin(), ids.end(), 0u);
-                ids.insert(ids.end(), 5, ids.back());
-
-                const tools::BinaryTree tree = tools::BinaryTree::Sample(seed * 17 + size, max_depth, size, ids);
+                const uint32_t ids_num = max_depth + 2;
+                const tools::BinaryTree tree =
+                    tools::BinaryTree::Sample(seed * 17 + size, max_depth, size, ids_num);
                 std::vector<uint32_t> path;
-                CheckPath(tree, 0, ids, path);
+                CheckPath(tree, 0, ids_num, path);
             }
         }
     }
@@ -141,20 +137,5 @@ TEST(BinaryTreeTest, SamplesSiblingLeavesApart) {
         const uint32_t one = tree[node].child[tools::BinaryTree::kRight];
         if (!tree[zero].IsLeaf() || !tree[one].IsLeaf()) continue;
         EXPECT_NE(tree[zero].value, tree[one].value) << "node " << node << " has two leaves that agree";
-    }
-}
-
-TEST(BinaryTreeTest, SamplesIdsAsIota) {
-    const uint32_t max_id = 5;
-    std::vector<uint32_t> ids(max_id);
-    std::iota(ids.begin(), ids.end(), 0u);
-
-    const tools::BinaryTree spelled = tools::BinaryTree::Sample(11, 5, 12, ids);
-    const tools::BinaryTree counted = tools::BinaryTree::Sample(11, 5, 12, max_id);
-
-    ASSERT_EQ(spelled.InternalNodes(), counted.InternalNodes());
-    for (uint32_t node = 0; node < 2 * spelled.InternalNodes() + 1; ++node) {
-        EXPECT_EQ(spelled[node].value, counted[node].value);
-        EXPECT_EQ(spelled[node].child[tools::BinaryTree::kLeft], counted[node].child[tools::BinaryTree::kLeft]);
     }
 }

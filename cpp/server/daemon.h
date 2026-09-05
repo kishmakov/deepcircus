@@ -1,21 +1,27 @@
 #pragma once
 
 // The daemon that feeds Python its training data. One client, accepted once:
-// `src/offline.py` starts it, says what to serve, and then asks for one epoch
-// at a time until it hangs up, at which point the daemon exits.
+// `src/daemon/client.py` starts it, says what to serve, and then asks for
+// bootstrap reductions or epochs until it hangs up, at which point the daemon
+// exits.
 //
-// Two commands, each a `uint32_t` id and a `uint64_t` payload size followed by
-// the payload; each answer is a `uint32_t` status of 0 and its own size-prefixed
+// Commands are a `uint32_t` id and a `uint64_t` payload size followed by the
+// payload; each answer is a `uint32_t` status of 0 and its own size-prefixed
 // payload.
 //
 //   Initialize | model, bitness, batches, points_in_batch, seed, data directory
 //              -> bitness, point dim, and the case and entry counts of both files
+//   Primary reductions | first unknown entry, number of entries
+//              -> packed lower-arity rows for both values of every fixed input
+//   Helper reductions | first unknown entry, number of entries
+//              -> packed M_2 rows for the two values of M_1's helper
+//   Targets    | two reconstructed float32 scores per unknown training entry
 //   Epoch      | the epoch id, 0 being the validation file and anything above it
 //              | the training one
 //              -> the shared-memory segment that epoch's cases were written to
 //
-// One segment exists at a time: the next Epoch command frees the one before it,
-// which the client has copied out by then.
+// One segment exists at a time: the next response carrying cases frees the one
+// before it, which the client has copied out by then.
 
 #include <stdint.h>
 

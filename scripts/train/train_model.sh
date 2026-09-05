@@ -7,6 +7,7 @@ set -euo pipefail
 #
 # Everything else about the run is `conf/train.yaml`. The weights and the
 # per-epoch metrics land in that config's `work_dir`; `data/` is only read.
+# Above bitness 12, M2 needs M2 at n-1; M1 needs M1 at n-1 and M2 at n.
 
 if [ "$#" -ne 2 ]; then
     echo "usage: $0 <m1|m2> <bitness>" >&2

@@ -1,4 +1,4 @@
-"""The wire: the daemon process, its two commands, and its shared memory.
+"""The wire: the daemon process, its commands, and its shared memory.
 
 Nothing outside this package should have to know any of it exists. What leaves
 here is arrays.
@@ -24,12 +24,16 @@ _HEADER = struct.Struct("<IQ")
 _INITIALIZE_PAYLOAD = struct.Struct("<HHHHQ")
 _DATASET = struct.Struct("<HHIIII")
 _EPOCH_PAYLOAD = struct.Struct("<I")
+_REDUCTIONS_PAYLOAD = struct.Struct("<II")
 _CASES = struct.Struct("<IQQ")
-_TARGETS = struct.Struct("<QQ")
+_TARGETS_DESCRIPTOR = struct.Struct("<QQ")
 _STRING_SIZE = struct.Struct("<I")
 
 _INITIALIZE = 1
 _EPOCH = 2
+_PRIMARY_REDUCTIONS = 3
+_HELPER_REDUCTIONS = 4
+_SET_TARGETS = 5
 
 # The daemon's own convention: epoch 0 is the validation file, and every epoch
 # above it is the training one, sampled at inputs of that epoch's own.
@@ -51,17 +55,15 @@ class DatasetSizes:
 
     bitness: int
     point_dim: int
-    validation_cases: int
+    validation_known: int
     validation_entries: int
-    train_cases: int
+    train_known: int
     train_entries: int
 
     @property
-    def skipped(self) -> int:
-        """Entries left behind because their target is the unknown marker."""
-        return (self.train_entries - self.train_cases) + (
-            self.validation_entries - self.validation_cases
-        )
+    def unknown_train(self) -> int:
+        """Training entries whose targets are reconstructed before epochs begin."""
+        return self.train_entries - self.train_known
 
 
 @dataclass(frozen=True)
@@ -98,8 +100,12 @@ class Client:
         self.bitness = bitness
         self._process: subprocess.Popen[str] | None = None
         self._socket: socket.socket | None = None
-        self._connect()
-        self.sizes = self._initialize(model_name, data_dir, seed, batches, points_in_batch)
+        try:
+            self._connect()
+            self.sizes = self._initialize(model_name, data_dir, seed, batches, points_in_batch)
+        except BaseException:
+            self._close(check_return_code=False)
+            raise
 
     def _connect(self) -> None:
         self._process = subprocess.Popen(
@@ -137,7 +143,38 @@ class Client:
 
     def fetch(self, epoch: int) -> Cases:
         """Samples `epoch` and copies it out of shared memory."""
-        payload = self._request(_EPOCH, _EPOCH_PAYLOAD.pack(epoch))
+        cases = self._fetch_cases(_EPOCH, _EPOCH_PAYLOAD.pack(epoch), with_targets=True)
+        assert cases.columns % self.sizes.point_dim == 0, cases.columns
+        return cases
+
+    def primary_reductions(self, first: int, count: int) -> Cases:
+        cases = self._fetch_cases(
+            _PRIMARY_REDUCTIONS,
+            _REDUCTIONS_PAYLOAD.pack(first, count),
+            with_targets=False,
+        )
+        assert cases.values.shape[0] == count * 2 * self.bitness, cases.values.shape
+        assert cases.columns % (3 * (self.bitness - 1) + 2) == 0, cases.columns
+        return cases
+
+    def helper_reductions(self, first: int, count: int) -> Cases:
+        cases = self._fetch_cases(
+            _HELPER_REDUCTIONS,
+            _REDUCTIONS_PAYLOAD.pack(first, count),
+            with_targets=False,
+        )
+        assert cases.values.shape[0] == count * 2, cases.values.shape
+        assert cases.columns % self.sizes.point_dim == 0, cases.columns
+        return cases
+
+    def set_unknown_targets(self, targets: np.ndarray) -> None:
+        assert targets.shape == (self.sizes.unknown_train, 2), targets.shape
+        assert targets.dtype == np.float32, targets.dtype
+        response = self._request(_SET_TARGETS, targets.tobytes(order="C"))
+        assert not response, response
+
+    def _fetch_cases(self, command: int, request: bytes, with_targets: bool) -> Cases:
+        payload = self._request(command, request)
 
         offset = 0
         cases, columns, shared_size = _CASES.unpack_from(payload, offset)
@@ -146,11 +183,10 @@ class Client:
         offset += _STRING_SIZE.size
         name = payload[offset : offset + name_size].decode("ascii")
         offset += name_size
-        targets_offset, target_count = _TARGETS.unpack_from(payload, offset)
-        offset += _TARGETS.size
+        targets_offset, target_count = _TARGETS_DESCRIPTOR.unpack_from(payload, offset)
+        offset += _TARGETS_DESCRIPTOR.size
         assert offset == len(payload), (offset, len(payload))
-        assert columns == self.sizes.point_dim * (columns // self.sizes.point_dim), columns
-        assert target_count == 2 * cases, (target_count, cases)
+        assert target_count == (2 * cases if with_targets else 0), (target_count, cases)
 
         memory = shared_memory.SharedMemory(name=name)
         try:
@@ -159,8 +195,10 @@ class Client:
             # Copied out, so the epoch outlives the segment the daemon frees
             # when the next one is asked for.
             values = np.array(np.ndarray((cases, row_bytes), dtype=np.uint8, buffer=memory.buf))
-            targets = np.array(
-                np.ndarray((cases, 2), dtype=np.float32, buffer=memory.buf, offset=targets_offset)
+            targets = (
+                np.array(np.ndarray((cases, 2), dtype=np.float32, buffer=memory.buf, offset=targets_offset))
+                if with_targets
+                else np.empty((cases, 0), dtype=np.float32)
             )
         finally:
             # Unlinked from here as well as by the daemon; whichever call comes
@@ -171,14 +209,22 @@ class Client:
 
     def close(self) -> None:
         # Hanging up is the goodbye: the daemon exits once the socket closes.
-        if self._socket is None:
-            return
-        self._socket.close()
-        self._socket = None
+        self._close(check_return_code=True)
+
+    def _close(self, check_return_code: bool) -> None:
+        connected = self._socket is not None
+        if connected:
+            self._socket.close()
+            self._socket = None
         if self._process is not None:
+            # Before connection there is nobody to hang up; stop a daemon that
+            # is still waiting in accept().
+            if not connected and self._process.poll() is None:
+                self._process.terminate()
             return_code = self._process.wait()
-            assert return_code == 0, return_code
             self._process = None
+            if check_return_code:
+                assert return_code == 0, return_code
 
     def _request(self, command: int, payload: bytes = b"") -> bytearray:
         assert self._socket is not None, "closed client"

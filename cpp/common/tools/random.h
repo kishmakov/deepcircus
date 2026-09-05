@@ -31,14 +31,8 @@ private:
 // burned. Salt `seed` (`Mix(seed) ^ stream`) to keep one kind of entry's stream clear of another's.
 uint64_t EntrySeed(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index);
 
-// Seed of one generation task, derived from the run seed.
-uint64_t TaskSeed(uint64_t seed, uint16_t bitness, uint64_t iteration);
-
 // Seed of one sampling domain within a task, so that domains draw independently.
 uint64_t DomainSeed(uint64_t seed, uint64_t domain, uint16_t bitness);
-
-// Returns seeds for initialization of cases.
-std::vector<uint64_t> SampleSeeds(size_t count, uint64_t task_seed);
 
 // Value of a random function of `bitness` bits at the input.
 bool RandomFuncValue(uint16_t bitness, uint64_t seed, const std::vector<bool>& bits);

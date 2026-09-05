@@ -13,10 +13,11 @@ read_config() {
     "$ROOT/.venv/bin/python" - "$CONFIG" <<'PY'
 import sys
 
-from omegaconf import OmegaConf
+from yaml import safe_load
 
 path = sys.argv[1]
-config = OmegaConf.to_container(OmegaConf.load(path), resolve=True)
+with open(path, encoding="utf-8") as f:
+    config = safe_load(f)
 assert isinstance(config, dict), path
 assert isinstance(config.get("work_dir"), str) and "\n" not in config["work_dir"], "work_dir"
 assert type(config.get("seed")) is int and 0 <= config["seed"] <= 0xFFFFFFFFFFFFFFFF, "seed"

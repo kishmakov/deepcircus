@@ -20,6 +20,9 @@ namespace {
 enum class Command : uint32_t {
     Initialize = 1,
     Epoch = 2,
+    PrimaryReductions = 3,
+    HelperReductions = 4,
+    Targets = 5,
 };
 
 // False once the client has hung up; anything else that goes wrong asserts.
@@ -111,9 +114,9 @@ struct SharedCases {
     uint64_t targets_offset = 0;
 };
 
-std::unique_ptr<SharedCases> Share(const serving::Cases& cases, uint32_t epoch) {
+std::unique_ptr<SharedCases> Share(const serving::Cases& cases, uint64_t id) {
     auto shared = std::make_unique<SharedCases>();
-    shared->name = "/deepcircus_" + std::to_string(getpid()) + "_" + std::to_string(epoch);
+    shared->name = "/deepcircus_" + std::to_string(getpid()) + "_" + std::to_string(id);
     const uint64_t values_bytes = cases.values.size();
     shared->targets_offset = (values_bytes + alignof(float) - 1) / alignof(float) * alignof(float);
     shared->size = shared->targets_offset + cases.targets.size() * sizeof(float);
@@ -127,7 +130,9 @@ std::unique_ptr<SharedCases> Share(const serving::Cases& cases, uint32_t epoch) 
 
     char* destination = static_cast<char*>(shared->mapping);
     std::memcpy(destination, cases.values.data(), values_bytes);
-    std::memcpy(destination + shared->targets_offset, cases.targets.data(), cases.targets.size() * sizeof(float));
+    if (!cases.targets.empty()) {
+        std::memcpy(destination + shared->targets_offset, cases.targets.data(), cases.targets.size() * sizeof(float));
+    }
     return shared;
 }
 
@@ -142,15 +147,54 @@ std::vector<char> Describe(const serving::Cases& cases, const SharedCases& share
     return response;
 }
 
+struct SharingState {
+    void Publish(int client, const serving::Cases& cases) {
+        current.reset();
+        current = Share(cases, next_id++);
+        WriteResponse(client, Describe(cases, *current));
+    }
+
+    std::unique_ptr<SharedCases> current;
+    uint64_t next_id = 0;
+};
+
 std::vector<char> DescribeDataset(uint16_t bitness, const serving::Dataset& validation, const serving::Dataset& train) {
     std::vector<char> response;
     Append<uint16_t>(response, bitness);
     Append<uint16_t>(response, serving::PointDim(bitness));
-    Append<uint32_t>(response, validation.CaseCount());
+    Append<uint32_t>(response, validation.KnownCases());
     Append<uint32_t>(response, validation.Entries());
-    Append<uint32_t>(response, train.CaseCount());
+    Append<uint32_t>(response, train.KnownCases());
     Append<uint32_t>(response, train.Entries());
     return response;
+}
+
+void InstallTargets(int client, uint64_t payload_size, serving::Dataset& train) {
+    const uint64_t target_count = uint64_t{train.UnknownCases()} * serving::kTargetsPerCase;
+    assert(payload_size == target_count * sizeof(float));
+    std::vector<float> targets(target_count);
+    const bool read = ReadExact(client, targets.data(), payload_size);
+    assert(read);
+    train.SetUnknownTargets(targets);
+    WriteResponse(client, {});
+}
+
+void ShareEpoch(int client, uint64_t payload_size, const serving::Dataset& validation, const serving::Dataset& train,
+                SharingState& sharing) {
+    assert(payload_size == sizeof(uint32_t));
+    const uint32_t epoch = ReadValue<uint32_t>(client);
+    const serving::Cases cases = epoch == 0 ? validation.Sample(epoch) : train.Sample(epoch);
+    sharing.Publish(client, cases);
+}
+
+void ShareReductions(int client, uint64_t payload_size, bool helper, const serving::Dataset& train,
+                     SharingState& sharing) {
+    assert(payload_size == 2 * sizeof(uint32_t));
+    const uint32_t first = ReadValue<uint32_t>(client);
+    const uint32_t count = ReadValue<uint32_t>(client);
+    const serving::Cases cases =
+        helper ? train.SampleHelperReductions(first, count) : train.SamplePrimaryReductions(first, count);
+    sharing.Publish(client, cases);
 }
 
 }  // namespace
@@ -208,15 +252,16 @@ void ServeEpochs(int client, const ServingShape& shape) {
     const serving::Dataset validation(
         serving::FilePath(shape.data_dir, shape.model, shape.bitness, serving::Split::kValidation),
         serving::Split::kValidation, shape.sampling);
-    const serving::Dataset train(serving::FilePath(shape.data_dir, shape.model, shape.bitness, serving::Split::kTrain),
-                                 serving::Split::kTrain, shape.sampling);
+    serving::Dataset train(serving::FilePath(shape.data_dir, shape.model, shape.bitness, serving::Split::kTrain),
+                           serving::Split::kTrain, shape.sampling);
     assert(validation.Bitness() == shape.bitness);
     assert(train.Bitness() == shape.bitness);
-    assert(validation.CaseCount() > 0);
-    assert(train.CaseCount() > 0);
+    assert(validation.UnknownCases() == 0);
+    assert(validation.KnownCases() > 0);
+    assert(train.Entries() > 0);
     WriteResponse(client, DescribeDataset(shape.bitness, validation, train));
 
-    std::unique_ptr<SharedCases> current;
+    SharingState sharing;
     while (true) {
         // The client hangs up when it has trained its last epoch.
         uint32_t command_value = 0;
@@ -224,15 +269,26 @@ void ServeEpochs(int client, const ServingShape& shape) {
             return;
         }
         const uint64_t payload_size = ReadValue<uint64_t>(client);
-        assert(static_cast<Command>(command_value) == Command::Epoch);
-        assert(payload_size == sizeof(uint32_t));
-        const uint32_t epoch = ReadValue<uint32_t>(client);
-
-        // The client copies a segment out before asking for the next one, so
-        // the previous one has no reader left by now.
-        current.reset();
-        const serving::Cases cases = epoch == 0 ? validation.Sample(epoch) : train.Sample(epoch);
-        current = Share(cases, epoch);
-        WriteResponse(client, Describe(cases, *current));
+        const Command command = static_cast<Command>(command_value);
+        switch (command) {
+            case Command::Targets:
+                InstallTargets(client, payload_size, train);
+                break;
+            case Command::Epoch:
+                ShareEpoch(client, payload_size, validation, train, sharing);
+                break;
+            case Command::PrimaryReductions:
+                ShareReductions(client, payload_size, false, train, sharing);
+                break;
+            case Command::HelperReductions:
+                assert(shape.model == serving::Model::kM1);
+                ShareReductions(client, payload_size, true, train, sharing);
+                break;
+            case Command::Initialize:
+                assert(false);
+                break;
+            default:
+                assert(false);
+        }
     }
 }

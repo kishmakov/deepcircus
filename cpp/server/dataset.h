@@ -14,9 +14,8 @@
 // enters the seed, so epoch 3 draws different points than epoch 2 for the same
 // pair, and asking for epoch 3 twice draws the same ones.
 //
-// Entries whose target is the unknown marker are skipped: bootstrapping them
-// through the lower-arity models is the training loop's job, not this one's,
-// and nothing here can score them.
+// Entries whose target is the unknown marker are sampled too, after the Python
+// client reconstructs their targets from the reductions exposed below.
 
 #include <stddef.h>
 #include <stdint.h>
@@ -73,20 +72,42 @@ public:
 
     uint16_t Bitness() const { return bitness_; }
     uint32_t Entries() const { return entries_; }
-    // Solved entries only, which is what Sample() walks.
-    uint32_t CaseCount() const { return static_cast<uint32_t>(solved_.size()); }
+    uint32_t KnownCases() const { return known_cases_; }
+    uint32_t UnknownCases() const { return static_cast<uint32_t>(unknown_.size()); }
 
-    // Every case at `epoch`'s inputs. Sampled across threads, which changes
+    // Rows are ordered parent, fixed bit, fixed value. Each is the entry with
+    // one primary input fixed, represented at bitness - 1 for M_1 or M_2.
+    Cases SamplePrimaryReductions(uint32_t first, uint32_t count) const;
+
+    // Two rows per parent, ordered by f's fixed value. They represent
+    // M_2[g | f^-1(0)] and M_2[g | f^-1(1)] at the original bitness.
+    Cases SampleHelperReductions(uint32_t first, uint32_t count) const;
+
+    // Scores reconstructed by Python, two per unknown entry in UnknownCases()
+    // order. Once installed, Sample() serves every file entry.
+    void SetUnknownTargets(const std::vector<float>& targets);
+
+    // Every entry at `epoch`'s inputs. Sampled across threads, which changes
     // nothing about the result: a case's inputs follow from its own index.
     Cases Sample(uint32_t epoch) const;
 
 private:
+    enum class Reduction {
+        kPrimary,
+        kHelper,
+    };
+
+    Cases SampleReductions(uint32_t first, uint32_t count, Reduction reduction) const;
+
     std::string path_;
     Split split_;
     SamplingShape shape_;
     uint16_t bitness_ = 0;
     uint32_t entries_ = 0;
-    std::vector<uint32_t> solved_;
+    uint32_t known_cases_ = 0;
+    std::vector<uint32_t> unknown_;
+    std::vector<float> targets_;
+    bool targets_ready_ = false;
 };
 
 }  // namespace serving

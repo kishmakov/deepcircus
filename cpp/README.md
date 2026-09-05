@@ -5,10 +5,8 @@ preparation, validation, and tests.
 
 | Directory | What is in it |
 | --- | --- |
-| [`common/`](common/README.md) | generator-independent code shared by the executables |
+| [`common/`](common/README.md) | function representations, exact solvers, randomness, and offline I/O |
 | [`tools/`](tools/README.md) | input sampling and bit utilities |
-| [`generator/`](generator/README.md) | synchronous generation of cases and tensors |
-| [`producer/`](producer/README.md) | parallel production and scheduling of generated data |
 | [`server/`](server/README.md) | the daemon that feeds Python its training data |
 | [`prep/`](prep/README.md) | offline training-data generation |
 | [`validation/`](validation/README.md) | reconstruction and validation |

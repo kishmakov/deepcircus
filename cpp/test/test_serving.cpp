@@ -50,14 +50,68 @@ bool RowBit(const serving::Cases& cases, uint32_t row, uint64_t bit) {
 
 }  // namespace
 
-TEST(ServingTest, SkipsEntriesWithoutTarget) {
+TEST(ServingTest, InstallsTargetsForEntriesWithoutOne) {
     const std::string path =
         WriteFile("deepcircus_serving_unsolved.bin", {TablePair(1, 2, 4, 11), Unsolved(3, 4), TablePair(5, 6, 2, 3)});
-    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    serving::Dataset dataset(path, serving::Split::kTrain, kShape);
 
     EXPECT_EQ(dataset.Entries(), 3u);
-    EXPECT_EQ(dataset.CaseCount(), 2u);
-    EXPECT_EQ(dataset.Sample(1).cases, 2u);
+    EXPECT_EQ(dataset.KnownCases(), 2u);
+    EXPECT_EQ(dataset.UnknownCases(), 1u);
+    dataset.SetUnknownTargets({1.25f, 2.5f});
+    const serving::Cases cases = dataset.Sample(1);
+    EXPECT_EQ(cases.cases, 3u);
+    EXPECT_FLOAT_EQ(cases.targets[2], 1.25f);
+    EXPECT_FLOAT_EQ(cases.targets[3], 2.5f);
+
+    std::filesystem::remove(path);
+}
+
+TEST(ServingTest, SamplesBootstrapReductions) {
+    const std::string path = WriteFile("deepcircus_serving_reductions.bin", {Unsolved(3, 4), Unsolved(5, 6)});
+    const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
+    const func::TableFunc g(kBitness, 3);
+    const func::TableFunc f(kBitness, 4);
+
+    const serving::Cases primary = dataset.SamplePrimaryReductions(0, 1);
+    const uint16_t child_bitness = kBitness - 1;
+    EXPECT_EQ(primary.cases, 2 * kBitness);
+    EXPECT_EQ(primary.columns, uint64_t{kShape.batches} * kShape.points_in_batch * serving::PointDim(child_bitness));
+    for (uint16_t fixed_bit = 0; fixed_bit < kBitness; ++fixed_bit) {
+        for (uint16_t fixed_value = 0; fixed_value <= 1; ++fixed_value) {
+            const uint32_t row = 2 * fixed_bit + fixed_value;
+            std::vector<bool> input(kBitness);
+            input[fixed_bit] = fixed_value != 0;
+            for (uint16_t free_bit = 0; free_bit < child_bitness; ++free_bit) {
+                const uint16_t full_bit = free_bit < fixed_bit ? free_bit : free_bit + 1;
+                input[full_bit] = RowBit(primary, row, free_bit);
+            }
+            EXPECT_EQ(RowBit(primary, row, child_bitness), g(input));
+            EXPECT_EQ(RowBit(primary, row, 2 * child_bitness + 1), f(input));
+            for (uint16_t free_bit = 0; free_bit < child_bitness; ++free_bit) {
+                const uint16_t full_bit = free_bit < fixed_bit ? free_bit : free_bit + 1;
+                input[full_bit] = !input[full_bit];
+                EXPECT_EQ(RowBit(primary, row, child_bitness + 1 + free_bit), g(input));
+                EXPECT_EQ(RowBit(primary, row, 2 * child_bitness + 2 + free_bit), f(input));
+                input[full_bit] = !input[full_bit];
+            }
+        }
+    }
+
+    const serving::Cases helper = dataset.SampleHelperReductions(0, 1);
+    EXPECT_EQ(helper.cases, 2u);
+    EXPECT_EQ(helper.columns, uint64_t{kShape.batches} * kShape.points_in_batch * serving::PointDim(kBitness));
+    for (uint16_t fixed_value = 0; fixed_value <= 1; ++fixed_value) {
+        std::vector<bool> input(kBitness);
+        for (uint16_t bit = 0; bit < kBitness; ++bit) input[bit] = RowBit(helper, fixed_value, bit);
+        EXPECT_EQ(RowBit(helper, fixed_value, kBitness), g(input));
+        EXPECT_EQ(RowBit(helper, fixed_value, 2 * kBitness + 1), f(input) == (fixed_value != 0));
+    }
+
+    const serving::Cases both = dataset.SamplePrimaryReductions(0, 2);
+    const serving::Cases second = dataset.SamplePrimaryReductions(1, 1);
+    const size_t second_offset = size_t{2 * kBitness} * both.RowBytes();
+    EXPECT_EQ(std::vector<uint8_t>(both.values.begin() + second_offset, both.values.end()), second.values);
 
     std::filesystem::remove(path);
 }
@@ -129,11 +183,11 @@ TEST(ServingTest, ServesTreeBackedFunctions) {
     // `M_2` above bitness 12 stores `g` as a tree rather than a table, and the
     // serving side has to rebuild it from the kind byte alone.
     const func::TreeFunc witness(kBitness, 71);
-    const std::string path = WriteFile("deepcircus_serving_tree.bin", {TreeOverSubset(witness, 72), Unsolved(73, 74)});
+    const std::string path = WriteFile("deepcircus_serving_tree.bin", {TreeOverSubset(witness, 72)});
     const serving::Dataset dataset(path, serving::Split::kTrain, kShape);
 
-    EXPECT_EQ(dataset.Entries(), 2u);
-    EXPECT_EQ(dataset.CaseCount(), 1u);
+    EXPECT_EQ(dataset.Entries(), 1u);
+    EXPECT_EQ(dataset.KnownCases(), 1u);
 
     const serving::Cases cases = dataset.Sample(1);
     ASSERT_EQ(cases.cases, 1u);

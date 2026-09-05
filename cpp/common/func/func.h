@@ -26,17 +26,6 @@ struct Func {
 
     virtual std::vector<uint8_t> serialize() const = 0;
 
-    std::vector<bool> operator()(const std::vector<FuncInput>& inputs) const {
-        std::vector<bool> values;
-        values.reserve(inputs.size());
-
-        for (const auto& input: inputs) {
-            values.emplace_back((*this)(input));
-        }
-
-        return values;
-    }
-
     // Every value, laid out by the input read as a little-endian index. Built
     // on the spot, so only ask a bitness whose table fits in memory.
     std::vector<bool> TruthTable() const {

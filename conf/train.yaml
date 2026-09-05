@@ -9,24 +9,21 @@ seed: 239               # the daemon's input-sampling seed, and nothing else's
 
 sampling:               # how the daemon expands one entry into one case
   batches: 8            # independent samplings of the input space per case
-  points_in_batch: 128  # points expanded out of each sampling; a power of two
+  points_in_batch: 128  # points expanded out of each sampling; a power of two greater than one
 
 training:
-  epochs: 100           # passes over the whole training file; the only duration knob
+  epochs: 1024           # passes over the whole training file; the only duration knob
   batch_size: 256
   rmse_threshold: 0.05  # stops the run early once a training epoch reaches it
 
 model:
-  name: deepset
   phi_hidden: 512
   phi_out: 256
   rho_hidden: 512
   dropout: 0.3
 
 optimizer:
-  name: adam
   lr: 0.001
   scheduler:
-    name: reduce_lr_on_plateau
     patience: 5
     factor: 0.5

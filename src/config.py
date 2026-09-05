@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from omegaconf import DictConfig, OmegaConf
+from yaml import safe_load
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -12,6 +12,8 @@ CONF_DIR = ROOT / "conf"
 CONFIG_NAME = "train.yaml"
 
 MODELS = ("m1", "m2")
+MIN_BITNESS = 8
+MAX_BITNESS = 255
 
 
 @dataclass(frozen=True)
@@ -33,7 +35,6 @@ class TrainingConfig:
 
 @dataclass(frozen=True)
 class ModelConfig:
-    name: str
     phi_hidden: int
     phi_out: int
     rho_hidden: int
@@ -42,7 +43,6 @@ class ModelConfig:
 
 @dataclass(frozen=True)
 class OptimizerConfig:
-    name: str
     lr: float
     scheduler_patience: int
     scheduler_factor: float
@@ -98,10 +98,11 @@ def load_train_config(
         path: Path | None = None,
 ) -> TrainConfig:
     assert model_name in MODELS, model_name
-    raw = OmegaConf.load(path or CONF_DIR / CONFIG_NAME)
-    assert isinstance(raw, DictConfig), path
-    container = OmegaConf.to_container(raw, resolve=True)
-    assert isinstance(container, dict), path
+    assert MIN_BITNESS <= bitness <= MAX_BITNESS, bitness
+    config_path = path or CONF_DIR / CONFIG_NAME
+    with open(config_path, encoding="utf-8") as f:
+        container = safe_load(f)
+    assert isinstance(container, dict), config_path
 
     config = TrainConfig(
         model_name=model_name,
@@ -114,6 +115,7 @@ def load_train_config(
         model=_model(container["model"]),
         optimizer=_optimizer(container["optimizer"]),
     )
+    assert 0 <= config.seed <= 0xFFFFFFFFFFFFFFFF, config.seed
     assert config.train_path().exists(), config.train_path()
     assert config.validation_path().exists(), config.validation_path()
     return config
@@ -131,11 +133,10 @@ def _sampling(raw: Any) -> SamplingConfig:
         batches=int(raw["batches"]),
         points_in_batch=int(raw["points_in_batch"]),
     )
-    # The daemon's own assertions, checked here so a typo fails before a server
-    # is spawned to fail on it.
-    assert sampling.batches > 1, sampling
+    # The daemon payload stores both dimensions as uint16_t.
+    assert 1 < sampling.batches <= 0xFFFF, sampling
+    assert 1 < sampling.points_in_batch <= 0xFFFF, sampling
     assert sampling.points_in_batch & (sampling.points_in_batch - 1) == 0, sampling
-    assert sampling.points_in_batch > 0, sampling
     return sampling
 
 
@@ -152,23 +153,27 @@ def _training(raw: Any) -> TrainingConfig:
 
 
 def _model(raw: Any) -> ModelConfig:
-    assert raw["name"] == "deepset", raw["name"]
-    return ModelConfig(
-        name=str(raw["name"]),
+    model = ModelConfig(
         phi_hidden=int(raw["phi_hidden"]),
         phi_out=int(raw["phi_out"]),
         rho_hidden=int(raw["rho_hidden"]),
         dropout=float(raw["dropout"]),
     )
+    assert model.phi_hidden > 0, model
+    assert model.phi_out > 0, model
+    assert model.rho_hidden > 0, model
+    assert 0.0 <= model.dropout < 1.0, model
+    return model
 
 
 def _optimizer(raw: Any) -> OptimizerConfig:
     scheduler = raw["scheduler"]
-    assert raw["name"] == "adam", raw["name"]
-    assert scheduler["name"] == "reduce_lr_on_plateau", scheduler["name"]
-    return OptimizerConfig(
-        name=str(raw["name"]),
+    optimizer = OptimizerConfig(
         lr=float(raw["lr"]),
         scheduler_patience=int(scheduler["patience"]),
         scheduler_factor=float(scheduler["factor"]),
     )
+    assert optimizer.lr > 0.0, optimizer
+    assert optimizer.scheduler_patience >= 0, optimizer
+    assert 0.0 < optimizer.scheduler_factor < 1.0, optimizer
+    return optimizer

@@ -13,7 +13,7 @@ namespace func {
 
 namespace {
 
-// The size score the model is trained against (`gen::SizeScore`):
+// The size score the model is trained against (`tools::SizeScore`):
 // log2(2^slots - size), where `size` counts internal nodes.
 double ScoreLogSize(size_t slots, size_t size) {
     const double max_size = std::exp2(static_cast<double>(slots));

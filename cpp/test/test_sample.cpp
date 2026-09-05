@@ -1,18 +1,21 @@
 #include <gtest/gtest.h>
 
-#include <cstdint>
+#include <cstddef>
+#include <string>
 #include <vector>
 
 #include "sample.h"
 
-// The bit-to-group mapping feeds deterministic input generation, so the
-// contiguous way-0 split and its rotation by way % bitness are pinned here.
-TEST(SampleTest, SplitBitsInGroups) {
-    const std::vector<uint16_t> way0 = {0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4};
-    const std::vector<uint16_t> way1 = {4, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4};
-    const std::vector<uint16_t> way2 = {4, 4, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4};
+TEST(SampleTest, DeterministicGoldenPoints) {
+    size_t draw = 0;
+    const std::vector<bool> points = tools::SampleInputs({3, 4}, 5, [&draw] { return draw++ % 3 == 0; });
+    const std::string expected = "100100001111011011110100100111110001011000100000111110011011";
+    ASSERT_EQ(points.size(), expected.size());
+    for (size_t bit = 0; bit < points.size(); ++bit) {
+        EXPECT_EQ(points[bit], expected[bit] == '1') << "bit " << bit;
+    }
+}
 
-    EXPECT_EQ(tools::SplitBitsInGroups(20, 5, 0), way0);
-    EXPECT_EQ(tools::SplitBitsInGroups(20, 5, 1), way1);
-    EXPECT_EQ(tools::SplitBitsInGroups(20, 5, 2), way2);
+TEST(SampleTest, RejectsOnePointBatch) {
+    EXPECT_DEATH(tools::SampleInputs({2, 1}, 5, [] { return false; }), "shape.batch_size > 1");
 }

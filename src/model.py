@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 
+from src.config import TrainConfig
+
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 # ── Model ─────────────────────────────────────────────────────────────────────
@@ -83,23 +85,32 @@ class DeepSetPredictor(nn.Module):
         return self.rho(h)  # (batch, 2): depth score, size score
 
 
+def make_predictor(config: TrainConfig, bitness: int | None = None) -> DeepSetPredictor:
+    model_bitness = config.bitness if bitness is None else bitness
+    return DeepSetPredictor(
+        point_dim=3 * model_bitness + 2,
+        batches=config.sampling.batches,
+        points_in_batch=config.sampling.points_in_batch,
+        phi_hidden=config.model.phi_hidden,
+        phi_out=config.model.phi_out,
+        rho_hidden=config.model.rho_hidden,
+        dropout=config.model.dropout,
+    )
+
+
 def predict_values(
     model: nn.Module,
     x: np.ndarray | torch.Tensor,
     predict_batch_size: int,
 ) -> np.ndarray:
-    model.to(DEVICE)
-    model.eval()
+    assert not model.training
 
     predictions = []
-    with torch.no_grad():
+    with torch.inference_mode():
         for start in range(0, len(x), predict_batch_size):
-            xb = torch.as_tensor(
-                x[start : start + predict_batch_size],
-                dtype=torch.float32,
-                device=DEVICE,
-            )
+            xb = torch.as_tensor(x[start : start + predict_batch_size], device=DEVICE)
             predictions.append(model(xb).cpu().numpy())
 
-    return np.concatenate(predictions).astype(np.float32)
-
+    result = np.concatenate(predictions)
+    assert result.dtype == np.float32, result.dtype
+    return result

@@ -14,7 +14,7 @@ from os import environ, makedirs
 from pathlib import Path
 from typing import Any
 
-from omegaconf import OmegaConf
+from yaml import safe_load
 
 environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 makedirs(environ["MPLCONFIGDIR"], exist_ok=True)
@@ -52,7 +52,9 @@ def main() -> None:
 
 
 def work_dir(config_path: Path) -> Path:
-    config = OmegaConf.load(config_path)
+    with open(config_path, encoding="utf-8") as f:
+        config = safe_load(f)
+    assert isinstance(config, dict), config_path
     # Relative to the repository, the same rule `src.config` reads it by.
     path = Path(str(config["work_dir"]))
     return path if path.is_absolute() else ROOT / path

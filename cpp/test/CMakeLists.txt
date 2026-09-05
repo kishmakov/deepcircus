@@ -9,19 +9,14 @@ include(GoogleTest)
 
 add_executable(deepcircus_tests
     test_binary_tree.cpp
-    test_bit_matrix.cpp
-    test_case.cpp
-    test_circuits.cpp
     test_offline_data.cpp
     test_random.cpp
     test_sample.cpp
     test_serving.cpp
     test_solver.cpp
     test_table.cpp
-    test_thread_pool.cpp
-    test_task_queue.cpp
     test_tree.cpp
 )
-target_link_libraries(deepcircus_tests PRIVATE common producer serving GTest::gtest_main)
+target_link_libraries(deepcircus_tests PRIVATE common tools serving GTest::gtest_main)
 
 gtest_discover_tests(deepcircus_tests)

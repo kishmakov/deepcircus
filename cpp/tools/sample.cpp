@@ -6,14 +6,7 @@
 
 namespace tools {
 
-std::vector<bool> BitsFromChars(std::string_view input) {
-    std::vector<bool> bits(input.size());
-    for (size_t i = 0; i < input.size(); ++i) {
-        assert(input[i] == '0' || input[i] == '1');
-        bits[i] = input[i] == '1';
-    }
-    return bits;
-}
+namespace {
 
 std::vector<uint16_t> SplitBitsInGroups(uint16_t bitness, uint16_t groups, uint16_t way) {
     assert(groups > 0);
@@ -66,6 +59,7 @@ std::vector<bool> GenerateSequence(uint16_t length, const BitSource& next_bit) {
 
 std::vector<bool> ExpandInputs(InputShape shape, const std::vector<std::vector<bool>>& sequences) {
     assert(shape.batches > 1);
+    assert(shape.batch_size > 1);
     assert(std::has_single_bit(shape.batch_size));
     assert(sequences.size() == shape.batches);
     const uint16_t dims = static_cast<uint16_t>(sequences[0].size());
@@ -109,6 +103,8 @@ std::vector<bool> ExpandInputs(InputShape shape, const std::vector<std::vector<b
 
     return result;
 }
+
+}  // namespace
 
 std::vector<bool> SampleInputs(InputShape shape, uint16_t dims, const BitSource& next_bit) {
     assert(dims > 0);

@@ -37,7 +37,16 @@ class TrainingData:
             batches=config.sampling.batches,
             points_in_batch=config.sampling.points_in_batch,
         )
-        assert self.sizes.point_dim == config.point_dim, (self.sizes.point_dim, config.point_dim)
+        try:
+            assert self.sizes.point_dim == config.point_dim, (self.sizes.point_dim, config.point_dim)
+            assert self.sizes.validation_entries == self.sizes.validation_known, self.sizes
+            if self.sizes.unknown_train:
+                from src.bootstrap import reconstruct_unknown_targets
+
+                self._client.set_unknown_targets(reconstruct_unknown_targets(config, self._client))
+        except BaseException:
+            self._client.close()
+            raise
 
     @property
     def sizes(self) -> DatasetSizes:

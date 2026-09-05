@@ -16,7 +16,6 @@ public:
 
     // Random binary trees, deterministic in `seed`: `size` internal nodes over
     // at most `max_depth` levels, each holding one of `ids` as its value.
-    static BinaryTree Sample(uint64_t seed, uint32_t max_depth, uint32_t size, const std::vector<uint32_t>& ids);
     static BinaryTree Sample(uint64_t seed, uint32_t max_depth, uint32_t size, uint32_t ids_num);
 
     struct Node {

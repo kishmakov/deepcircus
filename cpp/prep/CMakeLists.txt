@@ -2,7 +2,7 @@ add_executable(data_generator
     main.cpp
     sampler.cpp
 )
-target_link_libraries(data_generator PRIVATE gen)
+target_link_libraries(data_generator PRIVATE common)
 target_include_directories(data_generator PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # Error handling here is asserts only -- and in `sampler.cpp` an assert is also
