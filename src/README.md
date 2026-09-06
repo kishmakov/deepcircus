@@ -12,6 +12,7 @@ that knows how to ask for the result.
 | `bootstrap.py` | reconstructing unknown targets through prerequisite models |
 | `train.py` | the training loop of one run, and its weights and metrics |
 | `model.py` | `DeepSetPredictor` and the on-device unpacking |
+| `ordered.py` | the restriction recursion over a sampled, cubically bounded lattice |
 
 ## config.py
 
@@ -50,8 +51,10 @@ model of [`docs/data_m2.md`](../docs/data_m2.md); it is what
 [`scripts/train/train_model.sh`](../scripts/train/train_model.sh) runs. The two
 models differ only in the files the daemon opens -- one loop, one model class,
 one set of targets. One epoch is one pass over the whole training file, freshly
-sampled; `training.epochs` is the only duration knob, with the RMSE threshold
-able to end the run early.
+sampled; `training.epochs` is the maximum duration, and the RMSE threshold
+ends the run early once every score is below it on training and on validation.
+`training.gradient_clip` caps the gradient norm, and zero leaves it alone: the
+recursion is deep, and one spike in it undoes a run.
 
 `seed` initializes PyTorch as well as daemon sampling. The plateau scheduler's
 `min_lr` keeps optimization active after repeated reductions. Metrics include
@@ -103,3 +106,35 @@ model as a whole has neither property.
 `2*b - 1`) on the device. `forward` takes the packed uint8 rows the daemon
 serves and calls `unpacked` on them itself; `statistics` takes the expanded
 points, shaped `(batch, batches * points_in_batch, point_dim)`.
+
+## ordered.py
+
+`model.architecture: ordered` selects `OrderedRestrictionPredictor`, the
+default. It runs the decision-tree recursion -- combine the maximum and sum of
+two child states, minimum-pool over the choice of the next query, zero for a
+constant or empty restriction, one learned head for both scores -- over a
+restriction lattice built from the sampled points rather than from a truth
+table.
+
+Which restrictions it keeps is the whole idea. Fix `orders` random orderings of
+the query coordinates; a restriction is retained when its fixed set is a prefix
+of some ordering with at most a few coordinates postponed. One ordering admits
+`O(d^3)` such sets for `d` queryable coordinates, and a set holds at most one
+state per sampled cell, so the lattice is `O(orders * points * d^3)` states
+instead of `3^d`. `orders` is a constant, independent of the bitness.
+
+Topology is built from Python integer bitsets over the sampled cells: nothing
+of size `2^d` or `3^d` is ever allocated. Constant and duplicate or
+complemented sampled query columns describe the same query and are collapsed
+first; singleton groups end the recursion; only the most recent geometry is
+cached, so a run whose cases share one sampled input set builds it once. The
+CPU builds the indices and PyTorch runs the recurrence and its gradients on the
+GPU. The predictor reads the sampled `g(x)` and `f(x)` values only, not the
+neighbour columns, and the sample need not cover the cube.
+
+More orderings mean more coverage and more cost. **At bitness 8, 64 orderings
+retain the complete `3^9` lattice**, so the accuracy measured there is the
+exhaustive recursion's, reached through a construction that obeys a polynomial
+bound rather than through a sparse one; four orderings retain 76%, and accuracy
+falls away with them. [`docs/experiments_log.md`](../docs/experiments_log.md)
+has the measurements.

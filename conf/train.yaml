@@ -4,30 +4,30 @@
 # beyond those two.
 
 data_dir: data          # the offline files are read here; final best model copied there
-work_dir: /tmp/circus   # everything a run writes: the epoch's weights, the best epoch's, the metrics
+work_dir: /tmp/circus-ordered # everything a run writes: weights, best weights, metrics
 seed: 239               # daemon sampling and PyTorch initialization/shuffling
 
 sampling:               # how the daemon expands one entry into one case
-  batches: 8            # independent samplings of the input space per case
-  points_in_batch: 128  # points expanded out of each sampling; a power of two greater than one
+  batches: 2            # independent samplings of the input space per case
+  points_in_batch: 256  # points expanded out of each sampling; a power of two greater than one
 
 training:
-  epochs: 1024           # passes over the whole training file; the only duration knob
-  batch_size: 256
-  rmse_threshold: 0.05  # stops the run early once a training epoch reaches it
+  epochs: 8             # maximum passes over the whole training file
+  batch_size: 64
+  rmse_threshold: 0.08  # every score, on training and on validation, ends the run
+  gradient_clip: 1.0    # the recursion is deep, and one gradient spike undoes a run
 
 model:
-  phi_hidden: 256       # phi reads the raw points of one batch
-  phi_out: 128
-  psi_hidden: 64       # psi reads one input bit's pooled statistics
-  psi_out: 64
-  rho_hidden: 256
-  rho_out: 128
-  dropout: 0.1
+  architecture: ordered # sampled restrictions along a fixed number of orderings
+  hidden: 8             # width of a restriction's state
+  branch_hidden: 32     # the shared branch-combination network
+  head_hidden: 64
+  orders: 64            # orderings retained; fixed independently of the bitness
+  order_seed: 239
 
 optimizer:
   lr: 0.001
   scheduler:
-    patience: 20
+    patience: 4
     factor: 0.5
     min_lr: 0.0001      # keep updating weights when validation stalls

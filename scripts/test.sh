@@ -44,15 +44,18 @@ echo "== offline_server: serve the files above, driven by the Python client"
 cd "$ROOT"
 OFFLINE_SERVER="$BUILD_DIR/offline_server" "$ROOT/.venv/bin/python" - "$WORK_DIR" <<'PY'
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
 import torch
 
 from src.bootstrap import combine_helper_predictions, combine_primary_predictions
-from src.config import ModelConfig, OptimizerConfig, SamplingConfig, TrainConfig, TrainingConfig
+from src.config import (ModelConfig, OptimizerConfig, OrderedConfig, SamplingConfig,
+                        TrainConfig, TrainingConfig)
 from src.daemon.client import VALIDATION_EPOCH, Client
 from src.model import make_predictor, statistics_shape, unpack_bits
+from src.ordered import OrderedTopology
 from src.train import run_training
 
 client = Client("m1", 8, Path(sys.argv[1]), 239, 2, 4)
@@ -132,7 +135,52 @@ for model_name in ("m1", "m2"):
                                        block[:, rows][:, :, edges])
             offset += len(rows)
         assert offset == statistics.shape[1], (offset, statistics.shape)
-print("trained M1 and M2 for one epoch each; checked moment invariance")
+    ordered_config = replace(
+        config, work_dir=config.work_dir / "ordered",
+        sampling=SamplingConfig(batches=2, points_in_batch=256),
+        model=OrderedConfig(hidden=8, branch_hidden=32, head_hidden=64),
+    )
+    run_training(ordered_config)
+    client = Client(model_name, 8, config.data_dir, config.seed, 2, 256)
+    cases = client.fetch(VALIDATION_EPOCH)
+    client.close()
+    ordered = make_predictor(ordered_config).cuda()
+    packed = torch.as_tensor(cases.values, device="cuda")
+    bits = np.unpackbits(cases.values, axis=1, bitorder="little").reshape(-1, 512, 26)
+
+    def repack(points):
+        return torch.as_tensor(
+            np.packbits(points.reshape(len(points), -1), axis=1, bitorder="little"), device="cuda")
+
+    order = np.random.permutation(8)
+    renamed = np.concatenate((order, [8], 9 + order, [17], 18 + order))
+    complemented = bits.copy()
+    complemented[:, :, 5] ^= 1
+    predicted = ordered(packed)
+    predicted.square().mean().backward()
+    assert all(p.grad is None or p.grad.isfinite().all() for p in ordered.parameters()), model_name
+    with torch.no_grad():
+        # Points are a set, and the coordinates carry no order or polarity.
+        torch.testing.assert_close(ordered(repack(bits[:, ::-1])), predicted)
+        torch.testing.assert_close(ordered(repack(complemented)), predicted)
+    # Sparse coverage has no complete-table requirement, including duplicate points.
+    partial = make_predictor(replace(ordered_config, sampling=SamplingConfig(2, 16))).cuda()
+    partial.load_state_dict(ordered.state_dict())
+    with torch.no_grad():
+        sparse = partial(repack(bits[:, :32]))
+        torch.testing.assert_close(partial(repack(bits[:, :32][:, ::-1])), sparse)
+        assert partial(repack(np.repeat(bits[:, :1], 32, axis=1))).isfinite().all()
+
+# At bitness 8 this ordering budget happens to retain the whole lattice, which is
+# why its accuracy matches the exhaustive model; the bound it obeys is elsewhere.
+coordinates = ((np.arange(256)[:, None] >> np.arange(8)) & 1).astype(np.uint8)
+extended = np.concatenate((np.pad(coordinates, ((0, 0), (0, 1))),
+                           np.pad(coordinates, ((0, 0), (0, 1)), constant_values=1)), 0)
+full = OrderedTopology(extended, orders=64, seed=239, device=torch.device("cpu"))
+assert full.node_count == 3**9, full.node_count
+sparse = OrderedTopology(extended, orders=4, seed=239, device=torch.device("cpu"))
+assert sparse.node_count < 3**9, sparse.node_count
+print(f"trained M1 and M2; checked invariance, sparse coverage, and {full.node_count} lattice nodes")
 PY
 
 echo

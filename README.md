@@ -39,6 +39,14 @@ scripts/train/train_model.sh m2 8
 scripts/train/train_model.sh m1 8
 ```
 
+The default network runs the decision-tree recursion over a restriction
+lattice bounded by `O(orders * points * bitness^3)` states rather than the
+`3^(n+1)` of a complete one, and needs neither a truth table nor complete input
+coverage. What it reaches at `m1 8`, and every measurement behind the design,
+are in the [experiments log](docs/experiments_log.md). The earlier sampled
+network is kept in `conf/train_sampled.yaml`; pass it with `--config` to
+`src.train`, and train a model's prerequisites with the same one.
+
 Bitnesses through 12 have targets produced by the exact solvers. Above 12,
 train coordinates in increasing bitness: `m2 n` needs `m2 n-1`, then `m1 n`
 needs `m1 n-1` and `m2 n`. Training reads its offline data from `data/`;

@@ -1,0 +1,165 @@
+{
+  "model": "m1",
+  "bitness": 8,
+  "architecture": "ordered",
+  "orders": 64,
+  "order_seed": 239,
+  "points": 512,
+  "parameters": 1514,
+  "checkpoint": "/tmp/circus-ordered/m1_08.best.pt",
+  "gpu": "NVIDIA GeForce RTX 5070",
+  "evaluations": [
+    {
+      "split": "validation",
+      "seed": 239,
+      "cases": 1024,
+      "depth_rmse": 0.04176721349358559,
+      "size_rmse": 0.05252590402960777,
+      "seconds": 1.1373379530850798
+    },
+    {
+      "split": "train",
+      "seed": 239,
+      "cases": 65536,
+      "depth_rmse": 0.03819051757454872,
+      "size_rmse": 0.07813169807195663,
+      "seconds": 47.64471901394427,
+      "tree_over_table_rmse": [
+        0.042946070432662964,
+        0.05128345265984535
+      ],
+      "general_rmse": [
+        0.03275158628821373,
+        0.09787303954362869
+      ]
+    },
+    {
+      "split": "validation",
+      "seed": 240,
+      "cases": 1024,
+      "depth_rmse": 0.04176721349358559,
+      "size_rmse": 0.05252590402960777,
+      "seconds": 0.8044933850178495
+    },
+    {
+      "split": "validation",
+      "seed": 241,
+      "cases": 1024,
+      "depth_rmse": 0.04176721349358559,
+      "size_rmse": 0.05252590402960777,
+      "seconds": 0.8667132939444855
+    }
+  ],
+  "hashes": {
+    "/tmp/circus-ordered/m1_08.best.pt": "8a14651f6fc66a8963c6811e97e15f2c5a7ef701865a8fc60fb9ecf16681a874",
+    "data/m1_08.train": "baabf8ab46677abf95ad68057587bd95ba59e6eaab2173e92b90816a33e699f4",
+    "data/m1_08.val": "2739c9b131a2dbd4ebe0ad51a9c54334740b3df28111f82b87c563018ba78847",
+    "src/ordered.py": "edee5a95859b3e2f4eb1c94f43130327de8628f5ded53c047f562527834e29eb",
+    "conf/train_ordered.yaml": "8fe85b8009047b2a69ede8a5aab61ddef3751a246db4a7b1055d5b52f2c9d7e0"
+  },
+  "training": {
+    "model": "m1",
+    "bitness": 8,
+    "seed": 239,
+    "network": {
+      "hidden": 8,
+      "branch_hidden": 32,
+      "head_hidden": 64,
+      "architecture": "ordered",
+      "orders": 64,
+      "order_seed": 239
+    },
+    "optimizer": {
+      "lr": 0.001,
+      "scheduler_patience": 4,
+      "scheduler_factor": 0.5,
+      "scheduler_min_lr": 0.0001
+    },
+    "sampling": {
+      "batches": 2,
+      "points_in_batch": 256
+    },
+    "training": {
+      "epochs": 8,
+      "batch_size": 64,
+      "rmse_threshold": 0.08,
+      "size_weight": 1.0,
+      "gradient_clip": 1.0
+    },
+    "best_validation_rmse": 0.047452453460792396,
+    "epochs": [
+      {
+        "epoch": 1,
+        "train_rmse": 0.979186413781638,
+        "validation_rmse": 0.14195022177148295,
+        "train_depth_rmse": 1.372631152536214,
+        "train_size_rmse": 0.18301853719280706,
+        "validation_depth_rmse": 0.15887753867262047,
+        "validation_size_rmse": 0.12270965172828245,
+        "learning_rate": 0.001
+      },
+      {
+        "epoch": 2,
+        "train_rmse": 0.13782938899225639,
+        "validation_rmse": 0.1153755164072794,
+        "train_depth_rmse": 0.16013860721877524,
+        "train_size_rmse": 0.11112833760111902,
+        "validation_depth_rmse": 0.13956720006736112,
+        "validation_size_rmse": 0.084522282493139,
+        "learning_rate": 0.001
+      },
+      {
+        "epoch": 3,
+        "train_rmse": 0.0923072287754048,
+        "validation_rmse": 0.047452453460792396,
+        "train_depth_rmse": 0.1032214039907234,
+        "train_size_rmse": 0.07991614809644991,
+        "validation_depth_rmse": 0.04176721363039625,
+        "validation_size_rmse": 0.052525903556723125,
+        "learning_rate": 0.001
+      },
+      {
+        "epoch": 4,
+        "train_rmse": 0.071680683950283,
+        "validation_rmse": 0.05192598629016644,
+        "train_depth_rmse": 0.08368024854200333,
+        "train_size_rmse": 0.057217627590710786,
+        "validation_depth_rmse": 0.05991287514460398,
+        "validation_size_rmse": 0.04246249517303712,
+        "learning_rate": 0.001
+      },
+      {
+        "epoch": 5,
+        "train_rmse": 0.06521882583820257,
+        "validation_rmse": 0.061418913036884695,
+        "train_depth_rmse": 0.07733439524344854,
+        "train_size_rmse": 0.050263125646518254,
+        "validation_depth_rmse": 0.07050062884210034,
+        "validation_size_rmse": 0.050736841546683,
+        "learning_rate": 0.001
+      }
+    ]
+  },
+  "scalability": [
+    {
+      "model": "m1",
+      "bitness": 256,
+      "points": 512,
+      "orders": 1,
+      "seconds": 5.911995822913013,
+      "MiB": 769.27001953125,
+      "nodes": 966614,
+      "dimensions": 27
+    },
+    {
+      "model": "m2",
+      "bitness": 256,
+      "points": 512,
+      "orders": 1,
+      "seconds": 1.7751811569323763,
+      "MiB": 420.607421875,
+      "nodes": 404717,
+      "dimensions": 26
+    }
+  ]
+}
