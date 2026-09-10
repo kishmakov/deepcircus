@@ -107,7 +107,7 @@ def _helper_targets(config: TrainConfig, client: Client, unknown: int) -> np.nda
 def _load_model(config: TrainConfig, model_name: str, bitness: int) -> torch.nn.Module:
     path = config.work_dir / f"{model_name}_{bitness:02d}.best.pt"
     assert path.exists(), _missing_model_message(path, model_name, bitness)
-    model = make_predictor(config, bitness)
+    model = make_predictor(config, bitness, model_name)
     model.load_state_dict(torch.load(path, map_location=DEVICE, weights_only=True))
     model.to(DEVICE)
     model.eval()

@@ -31,6 +31,7 @@ class TrainingConfig:
     epochs: int
     batch_size: int
     rmse_threshold: float
+    gradient_clip: float = 0.0  # maximum gradient norm; 0 leaves gradients alone
 
 
 @dataclass(frozen=True)
@@ -42,6 +43,17 @@ class ModelConfig:
     rho_hidden: int
     rho_out: int
     dropout: float
+    architecture: str = "sampled"
+
+
+@dataclass(frozen=True)
+class OrderedConfig:
+    hidden: int         # width of a restriction's state
+    branch_hidden: int  # the shared branch-combination network
+    head_hidden: int
+    orders: int = 64      # variable orderings whose prefixes are retained
+    order_seed: int = 239
+    architecture: str = "ordered"
 
 
 @dataclass(frozen=True)
@@ -63,7 +75,7 @@ class TrainConfig:
     seed: int
     sampling: SamplingConfig
     training: TrainingConfig
-    model: ModelConfig
+    model: ModelConfig | OrderedConfig
     optimizer: OptimizerConfig
 
     @property
@@ -150,14 +162,33 @@ def _training(raw: Any) -> TrainingConfig:
         epochs=int(raw["epochs"]),
         batch_size=int(raw["batch_size"]),
         rmse_threshold=float(raw["rmse_threshold"]),
+        gradient_clip=float(raw.get("gradient_clip", 0.0)),
     )
     assert training.epochs > 0, training
     assert training.batch_size > 0, training
     assert training.rmse_threshold > 0.0, training
+    assert training.gradient_clip >= 0.0, training
     return training
 
 
-def _model(raw: Any) -> ModelConfig:
+def _model(raw: Any) -> ModelConfig | OrderedConfig:
+    architecture = str(raw.get("architecture", "sampled"))
+    assert architecture in ("sampled", "ordered"), architecture
+    if architecture == "ordered":
+        ordered = OrderedConfig(
+            hidden=int(raw["hidden"]),
+            branch_hidden=int(raw["branch_hidden"]),
+            head_hidden=int(raw["head_hidden"]),
+            orders=int(raw.get("orders", 64)),
+            order_seed=int(raw.get("order_seed", 239)),
+        )
+        assert ordered.hidden > 0, ordered
+        assert ordered.branch_hidden > 0, ordered
+        assert ordered.head_hidden > 0, ordered
+        assert ordered.orders > 0, ordered
+        assert ordered.order_seed >= 0, ordered
+        return ordered
+
     model = ModelConfig(
         phi_hidden=int(raw["phi_hidden"]),
         phi_out=int(raw["phi_out"]),

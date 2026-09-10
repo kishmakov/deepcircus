@@ -81,7 +81,8 @@ def run_training(config: TrainConfig) -> None:
         for epoch in progress:
             # Every epoch is the whole training file, sampled at inputs of its
             # own -- `epochs` is the only thing that decides how long this runs.
-            train_scores = train_epoch(model, optimizer, loader(config, *data.epoch(epoch), shuffle=True))
+            train_scores = train_epoch(config, model, optimizer,
+                                       loader(config, *data.epoch(epoch), shuffle=True))
             validation_scores = evaluate(model, validation_loader)
             train_rmse = combined_rmse(train_scores)
             validation_rmse = combined_rmse(validation_scores)
@@ -94,8 +95,8 @@ def run_training(config: TrainConfig) -> None:
             record_epoch(config, model, metrics, validation_rmse, best_rmse)
             best_rmse = min(best_rmse, validation_rmse)
 
-            if train_rmse < config.training.rmse_threshold:
-                report(f"train rmse {train_rmse:.6f} below threshold {config.training.rmse_threshold}")
+            if max(*train_scores, *validation_scores) < config.training.rmse_threshold:
+                report(f"both heads below threshold {config.training.rmse_threshold} on train and validation")
                 break
 
     report(f"best validation rmse {best_rmse:.6f}")
@@ -175,7 +176,7 @@ def previous_best(config: TrainConfig) -> float:
 
 
 def train_epoch(
-        model: nn.Module, optimizer: torch.optim.Optimizer, loader: DataLoader
+        config: TrainConfig, model: nn.Module, optimizer: torch.optim.Optimizer, loader: DataLoader
 ) -> tuple[float, float]:
     model.train()
     squared_error_sum = torch.zeros(2, dtype=torch.float64, device=DEVICE)
@@ -190,6 +191,10 @@ def train_epoch(
         squared_errors = (prediction - yb).square()
         loss = squared_errors.mean()
         loss.backward()
+        # The recursion is a deep unrolled recurrence, and one spike in it is
+        # enough to undo a run.
+        if config.training.gradient_clip:
+            nn.utils.clip_grad_norm_(model.parameters(), config.training.gradient_clip)
         optimizer.step()
 
         squared_error_sum += squared_errors.detach().sum(dim=0, dtype=torch.float64)
@@ -237,11 +242,7 @@ def save_metrics(config: TrainConfig, metrics: list[EpochMetrics], best_rmse: fl
             "batches": config.sampling.batches,
             "points_in_batch": config.sampling.points_in_batch,
         },
-        "training": {
-            "epochs": config.training.epochs,
-            "batch_size": config.training.batch_size,
-            "rmse_threshold": config.training.rmse_threshold,
-        },
+        "training": asdict(config.training),
         "best_validation_rmse": best_rmse,
         "epochs": [entry.as_dict() for entry in metrics],
     }

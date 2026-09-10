@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 
-from src.config import TrainConfig
+from src.config import ModelConfig, OrderedConfig, TrainConfig
 
 assert torch.cuda.is_available(), "CUDA is required for training"
 DEVICE = "cuda"
@@ -107,8 +107,16 @@ class DeepSetPredictor(nn.Module):
                                    psi_pooled.mean(1), psi_pooled.amax(1)), dim=-1))
 
 
-def make_predictor(config: TrainConfig, bitness: int | None = None) -> DeepSetPredictor:
+def make_predictor(
+    config: TrainConfig, bitness: int | None = None, model_name: str | None = None,
+) -> nn.Module:
     model_bitness = config.bitness if bitness is None else bitness
+    if isinstance(config.model, OrderedConfig):
+        from src.ordered import OrderedRestrictionPredictor
+
+        name = config.model_name if model_name is None else model_name
+        return OrderedRestrictionPredictor(model_bitness, config.sampling.points, name, config.model)
+    assert isinstance(config.model, ModelConfig), config.model
     return DeepSetPredictor(
         point_dim=3 * model_bitness + 2,
         batches=config.sampling.batches,
