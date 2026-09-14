@@ -1,5 +1,5 @@
-work_dir: /tmp/circus   # staging directory used by the generator
-seed: 239               # the generator's only randomness source
+work_dir: /tmp/circus   # staging directory
+seed: 239               # generator's only randomness source
 
 # tt: tree over a matching table; general: independent tables, exact through 12, bootstrapped above
 # Validation uses tt cases only.
@@ -8,14 +8,14 @@ m1:                     # pairs `(g, f)` for `M_1[g | f]`, format in `docs/data_
   "08": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
   "09": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
   "10": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
-  "11": {train: {tt: 16384, general:     0}, val: {tt: 1024}}
-  "12": {train: {tt: 16384, general:     0}, val: {tt: 1024}}
-  "13": {train: {tt:  8192, general:  8192}, val: {tt: 1024}}
+  "11": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
+  "12": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
+  "13": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
 
 m2:                     # pairs `(g, X)` for `M_2[g | X]`, a function and a subset
   "08": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
-  "09": {train: {tt: 16384, general:     0}, val: {tt: 1024}}
-  "10": {train: {tt: 16384, general:     0}, val: {tt: 1024}}
-  "11": {train: {tt: 16384, general:     0}, val: {tt: 1024}}
-  "12": {train: {tt: 16384, general:     0}, val: {tt: 1024}}
-  "13": {train: {tt:  8192, general:  8192}, val: {tt: 1024}}
+  "09": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
+  "10": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
+  "11": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
+  "12": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
+  "13": {train: {tt: 32768, general: 32768}, val: {tt: 1024}}
