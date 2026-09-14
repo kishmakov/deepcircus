@@ -301,7 +301,7 @@ at larger bitness remain empirical questions.
 
 ### 1. Where the pieces live
 
-[`src/ordered.py`](../src/ordered.py) separates graph construction and evaluation:
+[`src/model.py`](../src/model.py) separates graph construction and evaluation:
 
 - `OrderedTopology` produces graph indices through a temporary
   `_TopologyBuilder`, then discards the construction state.
@@ -309,7 +309,7 @@ at larger bitness remain empirical questions.
   evaluates learned states from the leaves to the root.
 - Its `combine` network implements `F`; its `head` implements `G`.
 
-Select it with `model.architecture: ordered` in
+It is the project's only model, configured by the `model` block of
 [`conf/train.yaml`](../conf/train.yaml). The widths are `hidden`,
 `branch_hidden`, and `head_hidden`; `orders` and `order_seed` control the
 ordering family. Target transforms live in

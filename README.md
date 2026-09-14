@@ -9,7 +9,7 @@ functions. The project trains two related predictors:
 
 The C++ side generates deterministic offline datasets, samples them into packed
 cases, and serves one freshly sampled epoch at a time. Python unpacks those
-cases on the training device and trains the shared DeepSet architecture. The
+cases on the training device and trains the shared predictor. The
 offline storage formats are specified in [`docs/data_m1.md`](docs/data_m1.md)
 and [`docs/data_m2.md`](docs/data_m2.md). Data preparation, target construction,
 and training-time processing are described in [`docs/train.md`](docs/train.md),
@@ -39,13 +39,12 @@ scripts/train/train_model.sh m2 8
 scripts/train/train_model.sh m1 8
 ```
 
-The default network runs the decision-tree recursion over a restriction
-lattice bounded by `O(orders * points * bitness^3)` states rather than the
-`3^(n+1)` of a complete one, and needs neither a truth table nor complete input
-coverage. What it reaches at `m1 8`, and every measurement behind the design,
-are in the [experiments log](docs/experiments_log.md). The earlier sampled
-network is kept in `conf/train_sampled.yaml`; pass it with `--config` to
-`src.train`, and train a model's prerequisites with the same one.
+The network runs the decision-tree recursion over a restriction lattice
+bounded by `O(orders * points * bitness^3)` states rather than the `3^(n+1)`
+of a complete one, and needs neither a truth table nor complete input
+coverage. It is described in [`docs/model.md`](docs/model.md); what it
+reaches at `m1 8`, and every measurement behind the design, are in the
+[experiments log](tmp/experiments_log.md).
 
 Bitnesses through 12 have targets produced by the exact solvers. Above 12,
 train coordinates in increasing bitness: `m2 n` needs `m2 n-1`, then `m1 n`

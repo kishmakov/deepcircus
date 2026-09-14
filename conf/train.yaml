@@ -1,11 +1,28 @@
+data_dir: data          # sampled functions and best model location
+work_dir: /tmp/circus   # everything a run writes: weights, best weights, metrics
+seed: 239               # training's only randomness source
+
+optimizer:
+  lr: 0.001
+  scheduler:
+    patience: 4
+    factor: 0.5
+    min_lr: 0.0001
+
+model:
+  hidden: 64            # width of a restriction's state
+  branch_hidden: 32     # the shared branch-combination network
+  head_hidden: 64
+  orders: 64            # orderings retained; fixed independently of the bitness
+  order_seed: 239
+
+
+
 # One training run trains one model at one bitness: `M_1` or `M_2`, named
 # together with the bitness on the command line of
 # `scripts/train/train_model.sh`. What is here is everything that run needs
 # beyond those two.
 
-data_dir: data          # the offline files are read here; final best model copied there
-work_dir: /tmp/circus   # everything a run writes: weights, best weights, metrics
-seed: 239               # daemon sampling and PyTorch initialization/shuffling
 
 sampling:               # how the daemon expands one entry into one case
   batches: 2            # independent samplings of the input space per case
@@ -17,17 +34,5 @@ training:
   rmse_threshold: 0.08  # every score, on training and on validation, ends the run
   gradient_clip: 1.0    # the recursion is deep, and one gradient spike undoes a run
 
-model:
-  architecture: ordered # sampled restrictions along a fixed number of orderings
-  hidden: 8             # width of a restriction's state
-  branch_hidden: 32     # the shared branch-combination network
-  head_hidden: 64
-  orders: 64            # orderings retained; fixed independently of the bitness
-  order_seed: 239
 
-optimizer:
-  lr: 0.001
-  scheduler:
-    patience: 4
-    factor: 0.5
-    min_lr: 0.0001      # keep updating weights when validation stalls
+

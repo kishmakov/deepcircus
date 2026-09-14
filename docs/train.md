@@ -121,8 +121,8 @@ Epoch 0 serves validation. Each positive epoch makes one pass over the training
 file with freshly sampled inputs. The epoch id enters the seed, so repeating
 an epoch id reproduces the same samples, independently of thread scheduling.
 
-[`model.unpack_bits`](../src/model.py) expands the packed input on the training
-device into float32 values in `{-1, +1}`, mapping each bit `b` to `2*b - 1`.
-The training loop fits the model to the two score targets. Run commands are
+The [model](../src/model.py) unpacks those bits itself and builds the
+restriction lattice of each case from them; the training loop fits it to the
+two score targets. Run commands are
 listed in the [project README](../README.md#run-the-pipeline), and training and
 sampling settings live in [`conf/train.yaml`](../conf/train.yaml).

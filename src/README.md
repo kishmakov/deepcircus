@@ -11,8 +11,7 @@ that knows how to ask for the result.
 | [`daemon/`](daemon/README.md) | everything about where the data comes from |
 | `bootstrap.py` | reconstructing unknown targets through prerequisite models |
 | `train.py` | the training loop of one run, and its weights and metrics |
-| `model.py` | `DeepSetPredictor` and the on-device unpacking |
-| `ordered.py` | the restriction recursion over a sampled, cubically bounded lattice |
+| `model.py` | the restriction recursion over a sampled, cubically bounded lattice |
 
 ## config.py
 
@@ -28,9 +27,8 @@ The one place that knows the data is sampled by a C++ process over a socket.
 `open_training_data(config)` hands back a `TrainingData`, which answers
 `validation()` once and `epoch(i)` as often as it is asked; both return
 `(values, targets)`. Values stay bit-packed as the daemon wrote them,
-`3 * n + 2` bits per point, and are expanded on the device by
-`model.unpack_bits`. Each epoch is copied out of shared memory before the next
-one is asked for.
+`3 * n + 2` bits per point, and the model expands them itself. Each epoch is
+copied out of shared memory before the next one is asked for.
 
 `client.py` holds the process, commands and shared-memory segment. `__init__.py`
 is what the rest of `src/` imports, and it says nothing about either. Before
@@ -78,46 +76,16 @@ immediately with the coordinate that must be trained first.
 
 ## model.py
 
-`DeepSetPredictor` reads the same points down two channels and concatenates both
-into `rho`, which returns the depth and size scores.
-
-`phi` is the raw channel: input `(batch, batches * points_in_batch, point_dim)`
-is split into `batches` groups, and one shared 2-layer MLP reads each group's
-points flattened, with mean and max pooling over the groups behind it.
-
-`psi` is the pooled channel. A point is three blocks -- the `n` inputs, the
-`n + 1` values of `g`, the `n + 1` values of `h` -- and `statistics` averages
-every product of two different blocks over the points: `x_i * h_j`, `x_i * g_j`,
-`h_i * g_j`, in that order. Each block is against `h` or `g`, so all of them are
-`n + 1` wide and they stack into one `statistics_shape(n) = (3n + 1, n + 1)`
-matrix. `psi` is shared over its `3n + 1` rows, and mean and max pooling over
-them follow it, so `rho` takes `2 * phi_out + 2 * psi_out` at its input.
-
-Products within a block are not taken, so nothing here is `g` against itself:
-the edge terms `g(x) * g(x^e_i)` that measure the influence of bit `i` are
-absent, and so are the plain block averages.
-
-The pooled channel is invariant to point order, and permuting the input bits
-permutes each of its blocks along both axes. Pooling makes `phi` blind to the
-order of the batches, but not to the order of the points inside one, so the
-model as a whole has neither property.
-
-`unpack_bits` expands packed rows into ±1 float32 (little-endian, bit `b` ->
-`2*b - 1`) on the device. `forward` takes the packed uint8 rows the daemon
-serves and calls `unpacked` on them itself; `statistics` takes the expanded
-points, shaped `(batch, batches * points_in_batch, point_dim)`.
-
-## ordered.py
-
-[`docs/ordered.md`](../docs/ordered.md) explains the inputs, topology construction,
+[`docs/model.md`](../docs/model.md) explains the inputs, topology construction,
 learned recurrence, score transforms, and memory behavior step by step.
 
-`model.architecture: ordered` selects `OrderedRestrictionPredictor`, the
-default. It runs the decision-tree recursion -- combine the maximum and sum of
-two child states, minimum-pool over the choice of the next query, zero for a
-constant or empty restriction, one learned head for both scores -- over a
-restriction lattice built from the sampled points rather than from a truth
-table.
+`OrderedRestrictionPredictor` runs the decision-tree recursion -- combine the
+maximum and sum of two child states, minimum-pool over the choice of the next
+query, zero for a constant or empty restriction, one learned head for both
+scores -- over a restriction lattice built from the sampled points rather than
+from a truth table. `make_predictor` builds it from a `TrainConfig`, and
+`predict_values` scores a packed array in batches, which is how `bootstrap.py`
+reaches prerequisite models.
 
 Which restrictions it keeps is the whole idea. Fix `orders` random orderings of
 the query coordinates; a restriction is retained when its fixed set is a prefix

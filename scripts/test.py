@@ -1,6 +1,6 @@
 """The Python half of `test.sh`, which runs it against the files that script
 generated: the offline server driven through its client, then tiny M1 and M2
-runs of both predictors. Takes the data directory as its only argument, and
+runs of the predictor. Takes the data directory as its only argument, and
 needs `OFFLINE_SERVER` pointing at the sanitized binary.
 """
 
@@ -13,11 +13,10 @@ import numpy as np
 import torch
 
 from src.bootstrap import combine_helper_predictions, combine_primary_predictions
-from src.config import (ModelConfig, OptimizerConfig, OrderedConfig, SamplingConfig,
+from src.config import (OptimizerConfig, OrderedConfig, SamplingConfig,
                         TrainConfig, TrainingConfig)
 from src.daemon.client import VALIDATION_EPOCH, Client
-from src.model import make_predictor, statistics_shape, unpack_bits
-from src.ordered import OrderedRestrictionPredictor, OrderedTopology
+from src.model import OrderedRestrictionPredictor, OrderedTopology, make_predictor
 from src.train import run_training
 
 
@@ -61,7 +60,7 @@ def check_ordered_checkpoint(model_name: str, device: str) -> None:
     assert all(grad.isfinite().all() for grad in gradients), model_name
     model.zero_grad(set_to_none=True)
     # Compare against the original update with all activations retained.
-    with patch("src.ordered.checkpoint", lambda function, *args, **kwargs: function(*args)):
+    with patch("src.model.checkpoint", lambda function, *args, **kwargs: function(*args)):
         expected = model(packed)
         expected.square().mean().backward()
     torch.testing.assert_close(predicted, expected)
@@ -111,11 +110,9 @@ for model_name in ("m1", "m2"):
         data_dir=Path(sys.argv[1]),
         work_dir=Path(sys.argv[1]) / "work",
         seed=239,
-        sampling=SamplingConfig(batches=2, points_in_batch=4),
+        sampling=SamplingConfig(batches=2, points_in_batch=256),
         training=TrainingConfig(epochs=1, batch_size=4, rmse_threshold=0.0001),
-        model=ModelConfig(
-            phi_hidden=8, phi_out=4, psi_hidden=8, psi_out=4, rho_hidden=8, rho_out=4, dropout=0.0
-        ),
+        model=OrderedConfig(hidden=8, branch_hidden=32, head_hidden=64),
         optimizer=OptimizerConfig(
             lr=0.001, scheduler_patience=1, scheduler_factor=0.5, scheduler_min_lr=0.0001
         ),
@@ -124,42 +121,10 @@ for model_name in ("m1", "m2"):
     assert config.checkpoint_path().is_file(), config.checkpoint_path()
     assert config.best_checkpoint_path().is_file(), config.best_checkpoint_path()
     assert config.metrics_path().is_file(), config.metrics_path()
-    model = make_predictor(config).cuda().eval()
-    packed = torch.randint(256, (3, 26), dtype=torch.uint8, device="cuda")
-    points = model.unpacked(packed)
-    torch.testing.assert_close(points, unpack_bits(packed, 8 * 26).reshape(3, 8, 26))
-    permutation = torch.randperm(8, device="cuda")
-    columns = torch.cat((permutation, torch.tensor([8], device="cuda"),
-                         9 + permutation, torch.tensor([17], device="cuda"), 18 + permutation))
-    with torch.inference_mode():
-        assert model(packed).shape == (3, 2), model(packed).shape
-        # The invariances below are psi's; phi still reads the points of a batch
-        # in the order they were sampled, so the whole model does not have them.
-        statistics = model.statistics(points)
-        assert statistics.shape == (3, *statistics_shape(8)), statistics.shape
-        torch.testing.assert_close(model.statistics(points[:, permutation]), statistics)
-        torch.testing.assert_close(model.statistics(torch.ones_like(points)),
-                                   torch.ones(3, *statistics_shape(8), device="cuda"))
-        # Permuting the input bits permutes each block along both of its axes.
-        permuted = model.statistics(points[:, :, columns])
-        edges = torch.cat((torch.tensor([0], device="cuda"), 1 + permutation))
-        offset = 0
-        for rows in (permutation, permutation, edges):
-            block = statistics[:, offset : offset + len(rows)]
-            torch.testing.assert_close(permuted[:, offset : offset + len(rows)],
-                                       block[:, rows][:, :, edges])
-            offset += len(rows)
-        assert offset == statistics.shape[1], (offset, statistics.shape)
-    ordered_config = replace(
-        config, work_dir=config.work_dir / "ordered",
-        sampling=SamplingConfig(batches=2, points_in_batch=256),
-        model=OrderedConfig(hidden=8, branch_hidden=32, head_hidden=64),
-    )
-    run_training(ordered_config)
     client = Client(model_name, 8, config.data_dir, config.seed, 2, 256)
     cases = client.fetch(VALIDATION_EPOCH)
     client.close()
-    ordered = make_predictor(ordered_config).cuda()
+    ordered = make_predictor(config).cuda()
     packed = torch.as_tensor(cases.values, device="cuda")
     bits = np.unpackbits(cases.values, axis=1, bitorder="little").reshape(-1, 512, 26)
 
@@ -167,8 +132,6 @@ for model_name in ("m1", "m2"):
         return torch.as_tensor(
             np.packbits(points.reshape(len(points), -1), axis=1, bitorder="little"), device="cuda")
 
-    order = np.random.permutation(8)
-    renamed = np.concatenate((order, [8], 9 + order, [17], 18 + order))
     complemented = bits.copy()
     complemented[:, :, 5] ^= 1
     predicted = ordered(packed)
@@ -179,7 +142,7 @@ for model_name in ("m1", "m2"):
         torch.testing.assert_close(ordered(repack(bits[:, ::-1])), predicted)
         torch.testing.assert_close(ordered(repack(complemented)), predicted)
     # Sparse coverage has no complete-table requirement, including duplicate points.
-    partial = make_predictor(replace(ordered_config, sampling=SamplingConfig(2, 16))).cuda()
+    partial = make_predictor(replace(config, sampling=SamplingConfig(2, 16))).cuda()
     partial.load_state_dict(ordered.state_dict())
     with torch.no_grad():
         sparse = partial(repack(bits[:, :32]))
