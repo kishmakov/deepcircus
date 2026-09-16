@@ -45,7 +45,6 @@ struct Func {
     virtual ~Func() = default;
 
 protected:
-
     const uint16_t bitness_;
 };
 

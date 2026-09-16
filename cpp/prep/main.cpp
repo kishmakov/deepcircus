@@ -67,9 +67,8 @@ void WriteFile(const std::string& path, prep::Model model, uint16_t bitness, uin
     }
 
     const prep::Parameters general_parameters{tools::DomainSeed(seed, kTrainGeneralDomain, bitness)};
-    for (const offline::Entry& entry : GenerateEntries(general, [&](uint32_t index) {
-             return prep::GeneralEntry(general_parameters, model, bitness, index);
-         })) {
+    for (const offline::Entry& entry : GenerateEntries(
+             general, [&](uint32_t index) { return prep::GeneralEntry(general_parameters, model, bitness, index); })) {
         writer.Write(entry);
     }
 }
@@ -77,8 +76,8 @@ void WriteFile(const std::string& path, prep::Model model, uint16_t bitness, uin
 void WriteValidation(const std::string& path, prep::Model model, uint16_t bitness, uint64_t seed, uint32_t entries) {
     offline::Writer writer(path, entries, bitness);
     const prep::Parameters parameters{tools::DomainSeed(seed, kValidationDomain, bitness)};
-    for (const offline::Entry& entry : GenerateEntries(
-             entries, [&](uint32_t index) { return prep::TTEntry(parameters, model, bitness, index); })) {
+    for (const offline::Entry& entry :
+         GenerateEntries(entries, [&](uint32_t index) { return prep::TTEntry(parameters, model, bitness, index); })) {
         writer.Write(entry);
     }
 }

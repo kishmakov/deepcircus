@@ -202,8 +202,7 @@ void ShareEpoch(int client, uint64_t payload_size, const Dataset& validation, co
     sharing.Publish(client, cases);
 }
 
-void ShareReductions(int client, uint64_t payload_size, bool helper, const Dataset& train,
-                     SharingState& sharing) {
+void ShareReductions(int client, uint64_t payload_size, bool helper, const Dataset& train, SharingState& sharing) {
     assert(payload_size == 2 * sizeof(uint32_t));
     const uint32_t first = ReadValue<uint32_t>(client);
     const uint32_t count = ReadValue<uint32_t>(client);

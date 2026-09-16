@@ -39,18 +39,17 @@ size_t BruteForce(Kind kind, uint16_t bitness, const std::vector<bool>& truth_ta
         std::vector<size_t> sides[2];
         for (size_t point : points) sides[(point >> bit_id) & 1].push_back(point);
         best = std::min(
-            best, Combine(kind,
-                          BruteForce(kind, bitness, truth_table, helper_table, sides[0], queried | bit, helper_queried),
-                          BruteForce(kind, bitness, truth_table, helper_table, sides[1], queried | bit,
-                                     helper_queried)));
+            best,
+            Combine(kind, BruteForce(kind, bitness, truth_table, helper_table, sides[0], queried | bit, helper_queried),
+                    BruteForce(kind, bitness, truth_table, helper_table, sides[1], queried | bit, helper_queried)));
     }
 
     if (helper_table != nullptr && !helper_queried) {
         std::vector<size_t> sides[2];
         for (size_t point : points) sides[(*helper_table)[point]].push_back(point);
-        best = std::min(best,
-                        Combine(kind, BruteForce(kind, bitness, truth_table, helper_table, sides[0], queried, true),
-                                BruteForce(kind, bitness, truth_table, helper_table, sides[1], queried, true)));
+        best =
+            std::min(best, Combine(kind, BruteForce(kind, bitness, truth_table, helper_table, sides[0], queried, true),
+                                   BruteForce(kind, bitness, truth_table, helper_table, sides[1], queried, true)));
     }
 
     return best;
@@ -140,8 +139,8 @@ struct SolverSeededGoldenCase {
 // The same targets at bitnesses too large to spell a table out for, over the
 // table pair `SeededPair` draws.
 constexpr SolverSeededGoldenCase kSolverSeededGoldenCases[] = {
-    {8, 1, {8, 106, 7, 98, 7, 54}},      {8, 42, {8, 101, 8, 95, 7, 48}},
-    {10, 1, {10, 426, 9, 385, 9, 200}},  {10, 42, {10, 420, 9, 376, 8, 190}},
+    {8, 1, {8, 106, 7, 98, 7, 54}},         {8, 42, {8, 101, 8, 95, 7, 48}},
+    {10, 1, {10, 426, 9, 385, 9, 200}},     {10, 42, {10, 420, 9, 376, 8, 190}},
     {12, 1, {12, 1673, 11, 1510, 11, 795}}, {12, 42, {12, 1682, 11, 1507, 11, 783}},
 };
 
@@ -163,7 +162,8 @@ void CheckAgainstReference(uint16_t bitness, const std::vector<bool>& truth_tabl
                            const std::vector<bool>& second_table) {
     EXPECT_EQ(tools::SolveForDepth(bitness, truth_table),
               Reference(Kind::kDepth, bitness, truth_table, nullptr, nullptr));
-    EXPECT_EQ(tools::SolveForSize(bitness, truth_table), Reference(Kind::kSize, bitness, truth_table, nullptr, nullptr));
+    EXPECT_EQ(tools::SolveForSize(bitness, truth_table),
+              Reference(Kind::kSize, bitness, truth_table, nullptr, nullptr));
     EXPECT_EQ(tools::SolveForDepthGiven(bitness, truth_table, second_table),
               Reference(Kind::kDepth, bitness, truth_table, &second_table, nullptr));
     EXPECT_EQ(tools::SolveForSizeGiven(bitness, truth_table, second_table),

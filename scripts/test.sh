@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds the whole C++ tree with ASan/UBSan and every assert alive -- Debug, so
-# no `NDEBUG` anywhere -- then runs the test suite and, after it, each
-# executable once on a small input of its own. The executables' error handling
-# is their asserts, and the suite does not reach those; a run does. Extra
-# arguments go to GoogleTest.
+# Checks the C++ sources against `.clang-format`, then builds the whole C++ tree
+# with ASan/UBSan and every assert alive -- Debug, so no `NDEBUG` anywhere --
+# then runs the test suite and, after it, each executable once on a small input
+# of its own. The executables' error handling is their asserts, and the suite
+# does not reach those; a run does. Extra arguments go to GoogleTest.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD_DIR="$ROOT/cpp/build-asan"
+
+echo "== clang-format"
+git -C "$ROOT" ls-files "cpp/*.cpp" "cpp/*.h" | xargs clang-format --dry-run --Werror
+echo
 
 cmake -S "$ROOT/cpp" -B "$BUILD_DIR" \
     -G Ninja \
@@ -37,7 +41,7 @@ ls "$WORK_DIR"
 
 echo
 echo "== graph_vis: export a small restriction graph"
-"$BUILD_DIR/train/graph_vis" 3 239 > "$WORK_DIR/graph.txt"
+"$BUILD_DIR/train/graph_vis" 3 239 64 > "$WORK_DIR/graph.txt"
 
 echo
 echo "== validation: reconstruct a random 10-input scheme"

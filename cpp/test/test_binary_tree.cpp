@@ -93,8 +93,7 @@ namespace {
 
 // Walks every root-to-leaf path, checking that no id repeats along it and that
 // each one came out of the requested id range.
-void CheckPath(const tools::BinaryTree& tree, uint32_t node, uint32_t ids_num,
-               std::vector<uint32_t>& path) {
+void CheckPath(const tools::BinaryTree& tree, uint32_t node, uint32_t ids_num, std::vector<uint32_t>& path) {
     if (tree[node].IsLeaf()) {
         EXPECT_LE(tree[node].value, 1u) << "a leaf holds an output, not an id";
         return;
@@ -118,8 +117,7 @@ TEST(BinaryTreeTest, SamplesIdsUnrepeatedAlongPaths) {
         for (uint32_t size = 0; size <= capacity; ++size) {
             for (uint64_t seed = 0; seed < 4; ++seed) {
                 const uint32_t ids_num = max_depth + 2;
-                const tools::BinaryTree tree =
-                    tools::BinaryTree::Sample(seed * 17 + size, max_depth, size, ids_num);
+                const tools::BinaryTree tree = tools::BinaryTree::Sample(seed * 17 + size, max_depth, size, ids_num);
                 std::vector<uint32_t> path;
                 CheckPath(tree, 0, ids_num, path);
             }

@@ -67,7 +67,8 @@ std::vector<uint16_t> FindPermutation(const server::Cases& cases, uint32_t row, 
                 if (RowBit(cases, row, offset) != tables[function][input]) return false;
                 for (uint16_t bit = 0; bit < kBitness; ++bit) {
                     if (RowBit(cases, row, offset + 1 + bit) !=
-                        tables[function][input ^ (size_t{1} << permutation[bit])]) return false;
+                        tables[function][input ^ (size_t{1} << permutation[bit])])
+                        return false;
                 }
             }
         }

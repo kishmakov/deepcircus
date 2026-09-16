@@ -15,7 +15,8 @@ constexpr size_t kSeparatorWidth = 60;
 // `#` rule carrying the number of axes the upcoming layer fixes.
 void LayerSeparator(std::ostream& output, size_t depth) {
     std::string block(30, '#');
-    output << block << " " << depth << " " << block << "\n";;
+    output << block << " " << depth << " " << block << "\n";
+    ;
 }
 
 void WriteGraph(std::ostream& output, const tools::Graph& graph) {

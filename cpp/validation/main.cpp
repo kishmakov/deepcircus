@@ -12,9 +12,9 @@
 #include "scheme.h"
 #include "tree_scorer.h"
 
+using func::op::kOperations;
 using func::op::Operation;
 using func::op::OperationInput;
-using func::op::kOperations;
 
 // Candidate generation walks combinations of unbound slots rather than
 // orderings, and drops a state whose residual ignores an unbound slot. Both

@@ -23,8 +23,7 @@ size_t SolveForSize(uint16_t bitness, const std::vector<bool>& truth_table);
 // S_1[g | f] scores. `truth_table` is g, `helper_table` is f.
 size_t SolveForDepthGiven(uint16_t bitness, const std::vector<bool>& truth_table,
                           const std::vector<bool>& helper_table);
-size_t SolveForSizeGiven(uint16_t bitness, const std::vector<bool>& truth_table,
-                         const std::vector<bool>& helper_table);
+size_t SolveForSizeGiven(uint16_t bitness, const std::vector<bool>& truth_table, const std::vector<bool>& helper_table);
 
 // The same targets for a tree that only has to compute `truth_table` on the
 // subset `subset_table` indicates, which is what the paper's S_2[g | X] scores.
