@@ -64,7 +64,7 @@ void AssignIds(BinaryTree& tree, Random& random, uint32_t node, std::vector<uint
 void AssignLeaves(BinaryTree& tree, Random& random) {
     const uint32_t nodes = 2 * tree.InternalNodes() + 1;
     for (uint32_t node = 0; node < nodes; ++node) {
-        if (tree[node].IsLeaf()) tree.Value(node) = random.Bool();
+        if (tree[node].IsLeaf()) tree.Value(node) = random.NextBool();
     }
     for (uint32_t node = 0; node < nodes; ++node) {
         if (tree[node].IsLeaf()) continue;

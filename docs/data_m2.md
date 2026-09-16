@@ -1,8 +1,8 @@
 # Offline storage format for `M_2`
 
 Each entry stores a pair `(g, X)` for `M_2[g | X]` and raw target fields or an
-unknown-target marker. Target definitions, preparation, and training-time
-processing are described in [`train.md`](train.md). One train/validation pair
+unknown-target marker. See the [paper](paper.tex) for target definitions and
+[`cpp/prep/`](../cpp/prep/README.md) for preparation. One train/validation pair
 exists per bitness:
 
 ```

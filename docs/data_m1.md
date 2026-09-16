@@ -1,8 +1,8 @@
 # Offline storage format for `M_1`
 
 Each entry stores a pair `(g, f)` for `M_1[g | f]` and raw target fields or an
-unknown-target marker. Target definitions, preparation, and training-time
-processing are described in [`train.md`](train.md). One pair of files per bitness,
+unknown-target marker. See the [paper](paper.tex) for target definitions and
+[`cpp/prep/`](../cpp/prep/README.md) for preparation. One pair of files per bitness,
 
 ```
 data/m1_<bitness>.train

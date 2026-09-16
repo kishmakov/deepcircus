@@ -72,7 +72,7 @@ std::vector<bool> SamplePair(const SampledPair& pair, const std::vector<uint16_t
     assert(permutation.size() == pair.bitness);
     const tools::InputShape input_shape{pair.shape.batches, pair.shape.points_in_batch};
     const std::vector<bool> inputs =
-        tools::SampleInputs(input_shape, pair.bitness, [&random] { return random.Bool(); });
+        tools::SampleInputs(input_shape, pair.bitness, [&random] { return random.NextBool(); });
     const size_t points = size_t{pair.shape.batches} * pair.shape.points_in_batch;
     assert(inputs.size() == points * pair.bitness);
 
@@ -109,7 +109,7 @@ std::vector<bool> SamplePrimaryReduction(const SampledPair& pair, uint16_t fixed
                                          tools::Random& random) {
     const uint16_t free_bits = pair.bitness - 1;
     const tools::InputShape input_shape{pair.shape.batches, pair.shape.points_in_batch};
-    const std::vector<bool> inputs = tools::SampleInputs(input_shape, free_bits, [&random] { return random.Bool(); });
+    const std::vector<bool> inputs = tools::SampleInputs(input_shape, free_bits, [&random] { return random.NextBool(); });
     const size_t points = size_t{pair.shape.batches} * pair.shape.points_in_batch;
     assert(inputs.size() == points * free_bits);
 

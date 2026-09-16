@@ -36,7 +36,7 @@ BinaryTree SampleTree(uint16_t bitness, uint64_t seed) {
     const uint32_t size = static_cast<uint32_t>(random.Below(size_bound + 1));
 
     // The tree draws on its own stream, so the choices above stay clear of it.
-    return BinaryTree::Sample(random.Next(), max_depth, size, bitness);
+    return BinaryTree::Sample(random.NextU64(), max_depth, size, bitness);
 }
 
 // Reads the subtree rooted at `node`, which is a leaf `Split` has yet to grow,

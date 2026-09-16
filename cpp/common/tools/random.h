@@ -19,12 +19,18 @@ class Random {
 public:
     explicit Random(uint64_t seed) : state_(seed) {}
 
-    uint64_t Next();
+    // Consume one shared bit stream, low bits first.
+    uint64_t NextU64();
+    uint8_t NextU8();
+    bool NextBool();
     uint64_t Below(uint64_t bound);
-    bool Bool();
 
 private:
+    uint64_t NextBits(unsigned count);
+
     uint64_t state_;
+    uint64_t word_ = 0;
+    unsigned used_ = 64;
 };
 
 // Seed of one offline entry, keyed off its coordinates alone, so it never depends on the draws entries before it

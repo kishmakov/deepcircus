@@ -21,7 +21,7 @@ offline::Function Serialize(offline::FunctionKind kind, const func::Func& functi
 
 func::TreeFunc StorableTree(uint16_t tree_bitness, uint16_t target_bitness, tools::Random& random) {
     while (true) {
-        func::TreeFunc tree(tree_bitness, random.Next());
+        func::TreeFunc tree(tree_bitness, random.NextU64());
         const bool size_fits_target =
             target_bitness >= std::numeric_limits<uint16_t>::digits || tree.Size() < (uint32_t{1} << target_bitness);
         if (tree.Depth() <= target_bitness && tree.Size() < offline::kUnknownSize && size_fits_target) return tree;
@@ -55,7 +55,7 @@ offline::Entry TTEntry(const Parameters& parameters, Model model, uint16_t bitne
     assert(model == Model::kM1 || model == Model::kM2);
     assert(bitness >= offline::kMinBitness && bitness <= offline::kMaxBitness);
     tools::Random random(tools::EntrySeed(parameters.seed, static_cast<uint16_t>(model), bitness, index));
-    const func::TableFunc condition(bitness, random.Next());
+    const func::TableFunc condition(bitness, random.NextU64());
     const func::TreeFunc witness = StorableTree(bitness + 1, bitness, random);
     const func::TTFunc target(bitness, condition, witness);
     // On M2's subset the attached table is one, so helper queries can be removed.
@@ -67,8 +67,8 @@ offline::Entry GeneralEntry(const Parameters& parameters, Model model, uint16_t 
     assert(model == Model::kM1 || model == Model::kM2);
     assert(bitness >= offline::kMinBitness && bitness <= offline::kMaxBitness);
     tools::Random random(tools::EntrySeed(parameters.seed, static_cast<uint16_t>(model), bitness, index));
-    const func::TableFunc target(bitness, random.Next());
-    const func::TableFunc condition(bitness, random.Next());
+    const func::TableFunc target(bitness, random.NextU64());
+    const func::TableFunc condition(bitness, random.NextU64());
     return WithTargets(model, bitness, offline::FunctionKind::kTable, target, condition, offline::kUnknownDepth,
                        offline::kUnknownSize);
 }

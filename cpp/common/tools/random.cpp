@@ -1,5 +1,6 @@
 #include "tools/random.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
@@ -24,18 +25,36 @@ uint64_t Mix(uint64_t value) { return Mix64(value + kSplitMixIncrement); }
 
 uint64_t SplitMix64(uint64_t& state) { return Mix64(state += kSplitMixIncrement); }
 
-uint64_t Random::Next() { return SplitMix64(state_); }
+uint64_t Random::NextBits(unsigned count) {
+    uint64_t result = 0;
+    for (unsigned written = 0; written < count;) {
+        if (used_ == 64) {
+            word_ = SplitMix64(state_);
+            used_ = 0;
+        }
+        const unsigned take = std::min(count - written, 64 - used_);
+        const uint64_t bits = (word_ >> used_) & (UINT64_MAX >> (64 - take));
+        result |= bits << written;
+        used_ += take;
+        written += take;
+    }
+    return result;
+}
+
+uint64_t Random::NextU64() { return NextBits(64); }
+
+uint8_t Random::NextU8() { return static_cast<uint8_t>(NextBits(8)); }
+
+bool Random::NextBool() { return NextBits(1) != 0; }
 
 uint64_t Random::Below(uint64_t bound) {
     assert(bound > 0);
     const uint64_t threshold = static_cast<uint64_t>(-bound) % bound;
     while (true) {
-        const uint64_t value = Next();
+        const uint64_t value = NextU64();
         if (value >= threshold) return value % bound;
     }
 }
-
-bool Random::Bool() { return (Next() & 1) != 0; }
 
 uint64_t EntrySeed(uint64_t seed, uint16_t series, uint16_t bitness, uint32_t index) {
     uint64_t state = Mix(seed);
