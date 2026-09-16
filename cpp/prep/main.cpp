@@ -11,6 +11,7 @@
 #include <thread>
 #include <vector>
 
+#include "cli.h"
 #include "offline/read_write.h"
 #include "sampler.h"
 #include "tools/random.h"
@@ -48,18 +49,6 @@ prep::Model ParseModel(const char* argument) {
     if (value == "m1") return prep::Model::kM1;
     assert(value == "m2");
     return prep::Model::kM2;
-}
-
-uint16_t ParseBitness(const char* argument) {
-    const unsigned long value = std::stoul(argument);
-    assert(value >= offline::kMinBitness && value <= offline::kMaxBitness);
-    return static_cast<uint16_t>(value);
-}
-
-uint32_t ParseEntries(const char* argument) {
-    const unsigned long value = std::stoul(argument);
-    assert(value <= std::numeric_limits<uint32_t>::max());
-    return static_cast<uint32_t>(value);
 }
 
 uint32_t TotalEntries(uint32_t tt, uint32_t general) {
@@ -102,11 +91,11 @@ int main(int argc, char** argv) {
     const std::string directory = argv[1];
     const std::string model_name = argv[2];
     const prep::Model model = ParseModel(argv[2]);
-    const uint16_t bitness = ParseBitness(argv[3]);
-    const uint64_t seed = std::stoull(argv[4]);
-    const uint32_t train_tt = ParseEntries(argv[5]);
-    const uint32_t train_general = ParseEntries(argv[6]);
-    const uint32_t val_tt = ParseEntries(argv[7]);
+    const uint16_t bitness = tools::Parse16(argv[3], offline::kMinBitness, offline::kMaxBitness);
+    const uint64_t seed = tools::Parse64(argv[4]);
+    const uint32_t train_tt = tools::Parse32(argv[5]);
+    const uint32_t train_general = tools::Parse32(argv[6]);
+    const uint32_t val_tt = tools::Parse32(argv[7]);
 
     const std::string prefix = directory + "/" + model_name + "_" + BitnessTag(bitness);
     WriteFile(prefix + ".train", model, bitness, seed, train_tt, train_general);

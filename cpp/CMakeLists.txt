@@ -43,10 +43,14 @@ set_source_files_properties(common/offline/read_write.cpp PROPERTIES COMPILE_OPT
 # Standalone input sampling. It knows nothing about function representations
 # or offline files and is shared by serving and its tests.
 add_library(tools
+    tools/cli.cpp
+    tools/cli.h
     tools/sample.cpp
     tools/sample.h
 )
 target_include_directories(tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tools")
+# CLI argument validation must remain active in Release builds.
+set_source_files_properties(tools/cli.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
 # Offline files as point clouds. Links `common` and `tools` only: reading a
 # prepared file has nothing to do with generating one.
