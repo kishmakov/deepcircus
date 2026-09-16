@@ -313,8 +313,8 @@ It is the project's only model, configured by the `model` block of
 [`conf/train.yaml`](../conf/train.yaml). The widths are `hidden`,
 `branch_hidden`, and `head_hidden`; `orders` and `order_seed` control the
 ordering family. Target transforms live in
-[`score.cpp`](../cpp/common/tools/score.cpp). Data preparation and the training
-loop are described in [train.md](train.md).
+[`score.cpp`](../cpp/common/tools/score.cpp). The shared C++ graph is described
+in [graph.md](graph.md).
 
 ### 2. From packed cases to the prepared input
 

@@ -11,9 +11,9 @@ The C++ side generates deterministic offline datasets, samples them into packed
 cases, and serves one freshly sampled epoch at a time. Python unpacks those
 cases on the training device and trains the shared predictor. The
 offline storage formats are specified in [`docs/data_m1.md`](docs/data_m1.md)
-and [`docs/data_m2.md`](docs/data_m2.md). Data preparation, target construction,
-and training-time processing are described in [`docs/train.md`](docs/train.md),
-with the mathematical definitions in the [paper](docs/paper.tex).
+and [`docs/data_m2.md`](docs/data_m2.md). The shared M1 graph is described in
+[`docs/graph.md`](docs/graph.md), with mathematical definitions in the
+[paper](docs/paper.tex).
 
 ## Run the pipeline
 
@@ -59,6 +59,6 @@ and each finished run keeps a copy of its best weights in `data/`.
 | [`conf/`](conf/README.md) | data-preparation and training configuration |
 | [`cpp/`](cpp/README.md) | generation, exact solvers, serving, and validation |
 | [`data/circuits/`](data/circuits/README.md) | benchmark circuits; generated offline datasets live beside this directory under `data/` |
-| `docs/` | paper, [storage formats](docs/data_m1.md), and [training data processing](docs/train.md) |
+| `docs/` | paper, [storage formats](docs/data_m1.md), and [shared M1 graph](docs/graph.md) |
 | [`scripts/`](scripts/README.md) | build, test, preparation, training, and plotting entry points |
 | [`src/`](src/README.md) | model, daemon client, bootstrap, and training loop |

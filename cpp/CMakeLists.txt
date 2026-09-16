@@ -45,12 +45,18 @@ set_source_files_properties(common/offline/read_write.cpp PROPERTIES COMPILE_OPT
 add_library(tools
     tools/cli.cpp
     tools/cli.h
+    tools/dense_graph.cpp
+    tools/dense_graph.h
+    tools/graph.cpp
+    tools/graph.h
     tools/sample.cpp
     tools/sample.h
 )
 target_include_directories(tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/tools")
-# CLI argument validation must remain active in Release builds.
-set_source_files_properties(tools/cli.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
+target_link_libraries(tools PUBLIC common)
+# CLI arguments, sampling parameters, and graph bounds are checked in Release.
+set_source_files_properties(tools/cli.cpp tools/dense_graph.cpp tools/graph.cpp tools/sample.cpp
+    PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
 # Offline files as point clouds. Links `common` and `tools` only: reading a
 # prepared file has nothing to do with generating one.
@@ -72,6 +78,7 @@ target_link_libraries(offline_server PRIVATE serving)
 set_source_files_properties(server/daemon.cpp PROPERTIES COMPILE_OPTIONS "-UNDEBUG")
 
 add_subdirectory(prep)
+add_subdirectory(train)
 add_subdirectory(validation)
 
 option(DEEPCIRCUS_BUILD_TESTS "Build the Google Test suite" OFF)

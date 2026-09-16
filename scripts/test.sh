@@ -36,6 +36,10 @@ echo "== data_generator: tt and general entries at bitness 8 and 13"
 ls "$WORK_DIR"
 
 echo
+echo "== graph_vis: export a small restriction graph"
+"$BUILD_DIR/train/graph_vis" 3 239 > "$WORK_DIR/graph.txt"
+
+echo
 echo "== validation: reconstruct a random 10-input scheme"
 "$BUILD_DIR/validation/validation" 10 122 | tail -2
 

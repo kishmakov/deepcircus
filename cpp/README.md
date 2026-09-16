@@ -9,6 +9,7 @@ preparation, validation, and tests.
 | [`tools/`](tools/README.md) | input sampling and bit utilities |
 | [`server/`](server/README.md) | the daemon that feeds Python its training data |
 | [`prep/`](prep/README.md) | offline training-data generation |
+| [`train/`](train/README.md) | training graph visualization |
 | [`validation/`](validation/README.md) | reconstruction and validation |
 | [`test/`](test/README.md) | the C++ test suite |
 
