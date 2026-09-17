@@ -13,8 +13,9 @@ compatible child pairs, as described in
 [`docs/graph.md`](../../docs/graph.md).
 
 `Graph` owns geometric restrictions and nodes with query axes.
-`SampleGraphInputs(graph, seed, points)` samples primary inputs covering the
-cells' primary projections, independently of construction.
+`SampleGraphInputs(graph, seed, points)` returns a `std::vector<BitsSet>` of primary
+inputs covering the cells' primary projections, independently of construction.
+`BitsSet` aliases `std::bitset<func::kMaxBitness>` in namespace `tools`.
 [`graph_vis`](../train/README.md) formats the regular graph in its own `main.cpp`.
 
 [`dense_graph.h`](dense_graph.h) and [`dense_graph.cpp`](dense_graph.cpp) provide

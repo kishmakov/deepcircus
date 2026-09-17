@@ -9,13 +9,13 @@
 
 namespace tools {
 
+using BitsSet = std::bitset<func::kMaxBitness>;
+
 // Layers own nodes; questions don't own.
 struct Graph {
-    using Bits = std::bitset<func::kMaxBitness>;
-
     struct Cell {
-        Bits fixed;   // Queried axes.
-        Bits values;  // Assignments; zero outside fixed.
+        BitsSet fixed;   // Queried axes.
+        BitsSet values;  // Assignments; zero outside fixed.
         bool operator==(const Cell&) const = default;
     };
 
@@ -34,7 +34,6 @@ struct Graph {
 
     using GraphNodeUPtr = std::unique_ptr<GraphNode>;
 
-    // Lays the cells out by the number of fixed axes and links every available split.
     Graph(uint16_t bitness, std::vector<Cell> cells);
 
     uint16_t bitness;
@@ -44,11 +43,13 @@ struct Graph {
     GraphNode* root = nullptr;
 };
 
-// Minimum vertex count, including the root; generation completes whole orders.
+/**
+ * Generates a graph with guaranteed cells_number.
+ */
 Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number);
 
-// Packed primary inputs covering every cell's primary projection, low bit first.
+// Primary-input bitsets covering every cell's primary projection.
 // Asserts if points cannot hold the covering sample; extra rows may repeat.
-std::vector<uint8_t> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points);
+std::vector<BitsSet> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points);
 
 }  // namespace tools

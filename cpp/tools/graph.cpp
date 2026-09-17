@@ -23,7 +23,7 @@ constexpr uint64_t kGraphValues = 0x67726170685f7661ull;
 
 struct CellHash {
     size_t operator()(const Graph::Cell& cell) const {
-        return Mix64(std::hash<Graph::Bits>{}(cell.fixed)) ^ std::hash<Graph::Bits>{}(cell.values);
+        return Mix64(std::hash<BitsSet>{}(cell.fixed)) ^ std::hash<BitsSet>{}(cell.values);
     }
 };
 
@@ -65,11 +65,11 @@ void InsertAllTwos(uint16_t bitness, CellSet& cells) {
 }
 
 // Singles, pairs, and prefixes with up to two holes.
-std::vector<Graph::Bits> GeneratePatterns(const Order& order) {
-    std::unordered_set<Graph::Bits> patterns{Graph::Bits{}};
+std::vector<BitsSet> GeneratePatterns(const Order& order) {
+    std::unordered_set<BitsSet> patterns{BitsSet{}};
 
     for (size_t first = 0; first < order.size(); ++first) {
-        Graph::Bits fixed;
+        BitsSet fixed;
         fixed.set(order[first]);
         patterns.insert(fixed);
         for (size_t second = first + 1; second < order.size(); ++second) {
@@ -79,7 +79,7 @@ std::vector<Graph::Bits> GeneratePatterns(const Order& order) {
         }
     }
 
-    Graph::Bits prefix;
+    BitsSet prefix;
     for (size_t end = 0; end < order.size(); ++end) {
         prefix.set(order[end]);
         patterns.insert(prefix);
@@ -99,7 +99,7 @@ std::vector<Graph::Bits> GeneratePatterns(const Order& order) {
 }
 
 // Build a path through selected axes, keeping both branches at each step.
-CellSet BuildAssignedCells(Random& random, const Graph::Bits& pattern, const Order& order) {
+CellSet BuildAssignedCells(Random& random, const BitsSet& pattern, const Order& order) {
     CellSet cells;
     Graph::Cell cell;
     for (uint16_t axis : order) {
@@ -127,8 +127,8 @@ uint64_t CellsPerOrder(uint16_t bitness) {
     return cells;
 }
 
-Graph::Bits RandomInput(Random& random, uint16_t bitness) {
-    Graph::Bits input;
+BitsSet RandomInput(Random& random, uint16_t bitness) {
+    BitsSet input;
     for (uint16_t axis = 0; axis < bitness; ++axis) input[axis] = random.NextBool();
     return input;
 }
@@ -137,6 +137,7 @@ Graph::Bits RandomInput(Random& random, uint16_t bitness) {
 
 Graph::Graph(uint16_t bitness, std::vector<Cell> cells) : bitness(bitness), cells(std::move(cells)) {
     layers.resize(this->bitness + 2);
+    // Keeps revers correspondence of cell to node.
     std::unordered_map<Cell, GraphNode*, CellHash> nodes;
     for (size_t index = 0; index < this->cells.size(); ++index) {
         const auto& cell = this->cells[index];
@@ -150,6 +151,8 @@ Graph::Graph(uint16_t bitness, std::vector<Cell> cells) : bitness(bitness), cell
     for (const auto& layer : layers) {
         for (const auto& node : layer) {
             const auto& parent = this->cells[node->cell_id];
+
+            // Inspecting potential children.
             for (uint16_t axis = 0; axis <= this->bitness; ++axis) {
                 if (parent.fixed[axis]) continue;
                 Cell child = parent;
@@ -179,8 +182,8 @@ Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number) {
     InsertAllTwos(bitness, cells);
 
     const uint64_t per_order = CellsPerOrder(bitness);
-    assert(per_order > 0);
     while (cells.size() < cells_number) {
+        assert(per_order > 0);
         Order order = GenerateOrder(bitness, orders_random);
         for (const auto& pattern : GeneratePatterns(order)) {
             cells.merge(BuildAssignedCells(values_random, pattern, order));
@@ -189,45 +192,46 @@ Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number) {
 
     assert(cells.size() < UINT32_MAX);
 
-    std::cerr << "Real size: " << cells.size() << "\n";
-
-    std::vector<size_t> counts(bitness + 2);
-    for (const auto& cell : cells) ++counts[cell.fixed.count()];
-    for (size_t bits_assigned = 0; bits_assigned < counts.size(); ++bits_assigned) {
-        std::cerr << bits_assigned << ": " << counts[bits_assigned] << '\n';
-    }
+    // std::vector<size_t> counts(bitness + 2);
+    // for (const auto& cell : cells) ++counts[cell.fixed.count()];
+    // for (size_t bits_assigned = 0; bits_assigned < counts.size(); ++bits_assigned) {
+    //     std::cerr << bits_assigned << ": " << counts[bits_assigned] << '\n';
+    // }
 
     return Graph(bitness, {cells.begin(), cells.end()});
 }
 
-std::vector<uint8_t> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points) {
+std::vector<BitsSet> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points) {
     assert(points > 0);
     Random random(DomainSeed(seed, kGraphInputs, graph.bitness));
-    std::vector<Graph::Bits> inputs;
+    std::vector<BitsSet> inputs;
     inputs.reserve(points);
+
+    auto NotCovered = [&](const BitsSet& fixed, const BitsSet& values) {
+        return std::none_of(inputs.begin(), inputs.end(), [&](const auto& input) { return (input & fixed) == values; });
+    };
+
     // Cover the most restricted cells first; each input may cover many others.
     for (size_t depth = graph.layers.size(); depth-- > 0;) {
         for (const auto& node : graph.layers[depth]) {
             const auto& cell = graph.cells[node->cell_id];
-            Graph::Bits fixed = cell.fixed;
+            BitsSet fixed = cell.fixed;
             fixed.reset(graph.bitness);
-            const Graph::Bits values = cell.values & fixed;
-            const bool covered =
-                std::any_of(inputs.begin(), inputs.end(), [&](const auto& input) { return (input & fixed) == values; });
-            if (covered) continue;
-            assert(inputs.size() < points && "points cannot cover the graph cells");
-            inputs.push_back((RandomInput(random, graph.bitness) & ~fixed) | values);
+            const BitsSet values = cell.values & fixed;
+
+            if (NotCovered(fixed, values)) {
+                assert(inputs.size() < points && "points is too small");
+                BitsSet input = RandomInput(random, graph.bitness);
+                inputs.push_back((input & ~fixed) | values);
+            }
         }
     }
-    while (inputs.size() < points) inputs.push_back(RandomInput(random, graph.bitness));
-    const size_t row_bytes = (graph.bitness + 7) / 8;
-    std::vector<uint8_t> packed(size_t{points} * row_bytes, 0);
-    for (size_t row = 0; row < inputs.size(); ++row) {
-        for (uint16_t axis = 0; axis < graph.bitness; ++axis) {
-            if (inputs[row][axis]) packed[row * row_bytes + axis / 8] |= 1u << (axis % 8);
-        }
+
+    while (inputs.size() < points) {
+        inputs.push_back(RandomInput(random, graph.bitness));
     }
-    return packed;
+
+    return inputs;
 }
 
 }  // namespace tools

@@ -23,15 +23,3 @@ layer `0`, node `1`.
 `offsets` bounds each node's questions; paired `zero`/`one` indices address the
 next layer. `cell` indexes the copied restrictions (`UINT32_MAX` for node `0`).
 
-`SampleGraphInputs(graph, seed, points)` covers the most restricted cells
-first, completing their free primary bits randomly. Existing points cover
-other compatible cells. It asserts if the requested count cannot hold this
-covering sample, then fills remaining rows randomly; repetitions are allowed.
-Rows occupy `ceil(n / 8)` bytes, low bit first, with zero padding.
-Coverage applies to primary-input projections: both potential helper values
-are represented geometrically, but actual presence still depends on `f(x)`.
-Sampling leaves the graph unchanged. Training integration is pending.
-
-[`graph_vis bitness seed cells_number`](../cpp/train/README.md) prints layers
-separated by 60 `#` characters, with `label:` vertices and `-axis-> label`
-children. Labels use `0`, `1`, and `*`; axes are zero-based.

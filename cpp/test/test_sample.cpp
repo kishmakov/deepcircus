@@ -134,27 +134,29 @@ TEST(SampleGraphTest, SamplingCoversAllCellsWithoutChangingTheGraph) {
         ASSERT_EQ(graph.cells.size(), 1 + 2 * (bitness + 1) * (bitness + 1));
         const auto cells = graph.cells;
         const uint32_t points = static_cast<uint32_t>(cells.size());
-        const auto inputs = tools::SampleGraphInputs(graph, 42, points);
+        const std::vector<tools::BitsSet> inputs = tools::SampleGraphInputs(graph, 42, points);
         EXPECT_EQ(inputs, tools::SampleGraphInputs(graph, 42, points));
         EXPECT_EQ(graph.cells, cells);
-        const size_t row_bytes = (bitness + 7) / 8;
-        ASSERT_EQ(inputs.size(), points * row_bytes);
-        std::vector<tools::Graph::Bits> rows(points);
-        for (size_t row = 0; row < points; ++row) {
-            for (uint16_t axis = 0; axis < bitness; ++axis) {
-                rows[row][axis] = (inputs[row * row_bytes + axis / 8] >> (axis % 8)) & 1;
-            }
-            if (bitness % 8) EXPECT_EQ(inputs[(row + 1) * row_bytes - 1] >> (bitness % 8), 0);
-        }
+        ASSERT_EQ(inputs.size(), points);
+        for (const auto& input : inputs) EXPECT_TRUE((input >> bitness).none());
         for (const auto& cell : cells) {
             auto fixed = cell.fixed;
             fixed.reset(bitness);
             bool covered = false;
-            for (const auto& row : rows) covered |= (row & fixed) == (cell.values & fixed);
+            for (const auto& input : inputs) covered |= (input & fixed) == (cell.values & fixed);
             EXPECT_TRUE(covered);
         }
         EXPECT_NE(inputs, tools::SampleGraphInputs(graph, 43, points));
     }
+}
+
+TEST(SampleGraphTest, SamplingCoversFullGraphWithExactlyEnoughPoints) {
+    const auto graph = tools::BuildGraph(2, 239, 27);
+    const std::vector<tools::BitsSet> inputs = tools::SampleGraphInputs(graph, 42, 4);
+    ASSERT_EQ(inputs.size(), 4);
+    std::set<unsigned long> values;
+    for (const auto& input : inputs) values.insert(input.to_ulong());
+    EXPECT_EQ(values, (std::set<unsigned long>{0, 1, 2, 3}));
 }
 
 TEST(SampleGraphTest, RejectsInvalidShapesAndInsufficientSamples) {
