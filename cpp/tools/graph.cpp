@@ -133,6 +133,51 @@ BitsSet RandomInput(Random& random, uint16_t bitness) {
     return input;
 }
 
+// The inputs of the cube that `inputs` does not already hold, in value order.
+std::vector<BitsSet> FreeInputs(uint64_t cube, const std::unordered_set<BitsSet>& inputs) {
+    std::vector<BitsSet> free;
+    free.reserve(cube - inputs.size());
+    for (uint64_t value = 0; value < cube; ++value) {
+        BitsSet input(value);
+        if (!inputs.contains(input)) free.push_back(input);
+    }
+    return free;
+}
+
+// Grows `inputs` to `points` distinct values, uniformly over the ones it lacks.
+//
+// Drawing until a miss lands costs `cube / (cube - taken)` draws, so rejection
+// is linear while half the cube is still free and unbounded as it fills. Past
+// that half the free inputs are enumerated instead and sampled without
+// replacement, which is linear in the cube -- itself below twice `points` there.
+void FillDistinctInputs(Random& random, uint16_t bitness, uint32_t points, std::unordered_set<BitsSet>& inputs) {
+    assert(inputs.size() <= points && "too few points suggested");
+
+    constexpr uint16_t kEnumerableBitness = 20;
+    const bool enumerable = bitness <= kEnumerableBitness;
+    const uint32_t cube = enumerable ? uint32_t{1} << bitness : 0;
+
+    // Check asked points number is possible to sample.
+    assert(!enumerable || points <= cube);
+
+    // High probability of choosing non-used input.
+    if (!enumerable || uint32_t{points} * 2 <= cube) {
+        while (inputs.size() < points) {
+            inputs.insert(RandomInput(random, bitness));
+        }
+        return;
+    }
+
+    std::vector<BitsSet> free = FreeInputs(cube, inputs);
+    const size_t needed = points - inputs.size();
+    assert(needed <= free.size());
+    // Partial Fisher-Yates: each round moves one uniform pick out of the tail.
+    for (size_t taken = 0; taken < needed; ++taken) {
+        std::swap(free[taken], free[taken + random.Below(free.size() - taken)]);
+        inputs.insert(free[taken]);
+    }
+}
+
 }  // namespace
 
 Graph::Graph(uint16_t bitness, std::vector<Cell> cells) : bitness(bitness), cells(std::move(cells)) {
@@ -204,7 +249,8 @@ Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number) {
 std::vector<BitsSet> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points) {
     assert(points > 0);
     Random random(DomainSeed(seed, kGraphInputs, graph.bitness));
-    std::vector<BitsSet> inputs;
+
+    std::unordered_set<BitsSet> inputs;
     inputs.reserve(points);
 
     auto NotCovered = [&](const BitsSet& fixed, const BitsSet& values) {
@@ -222,16 +268,14 @@ std::vector<BitsSet> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32
             if (NotCovered(fixed, values)) {
                 assert(inputs.size() < points && "points is too small");
                 BitsSet input = RandomInput(random, graph.bitness);
-                inputs.push_back((input & ~fixed) | values);
+                inputs.insert((input & ~fixed) | values);
             }
         }
     }
 
-    while (inputs.size() < points) {
-        inputs.push_back(RandomInput(random, graph.bitness));
-    }
+    FillDistinctInputs(random, graph.bitness, points, inputs);
 
-    return inputs;
+    return {inputs.begin(), inputs.end()};
 }
 
 }  // namespace tools

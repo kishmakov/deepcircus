@@ -133,7 +133,9 @@ TEST(SampleGraphTest, SamplingCoversAllCellsWithoutChangingTheGraph) {
         const auto graph = tools::BuildGraph(bitness, 239, 4 * (bitness + 1) + 1);
         ASSERT_EQ(graph.cells.size(), 1 + 2 * (bitness + 1) * (bitness + 1));
         const auto cells = graph.cells;
-        const uint32_t points = static_cast<uint32_t>(cells.size());
+        // Inputs are distinct, so the cube bounds how many of them there can be.
+        const uint32_t cube = uint32_t{1} << bitness;
+        const uint32_t points = std::min(static_cast<uint32_t>(cells.size()), cube);
         const std::vector<tools::BitsSet> inputs = tools::SampleGraphInputs(graph, 42, points);
         EXPECT_EQ(inputs, tools::SampleGraphInputs(graph, 42, points));
         EXPECT_EQ(graph.cells, cells);
@@ -146,7 +148,8 @@ TEST(SampleGraphTest, SamplingCoversAllCellsWithoutChangingTheGraph) {
             for (const auto& input : inputs) covered |= (input & fixed) == (cell.values & fixed);
             EXPECT_TRUE(covered);
         }
-        EXPECT_NE(inputs, tools::SampleGraphInputs(graph, 43, points));
+        // A sample that is the whole cube is the same whatever the seed.
+        if (points < cube) EXPECT_NE(inputs, tools::SampleGraphInputs(graph, 43, points));
     }
 }
 
@@ -168,4 +171,6 @@ TEST(SampleGraphTest, RejectsInvalidShapesAndInsufficientSamples) {
     const auto graph = tools::BuildGraph(1, 239, 9);
     EXPECT_DEATH(tools::SampleGraphInputs(graph, 239, 0), "points");
     EXPECT_DEATH(tools::SampleGraphInputs(graph, 239, 1), "points");
+    // Distinct inputs cannot outnumber the cube.
+    EXPECT_DEATH(tools::SampleGraphInputs(graph, 239, 3), "points");
 }

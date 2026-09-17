@@ -48,8 +48,8 @@ struct Graph {
  */
 Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number);
 
-// Primary-input bitsets covering every cell's primary projection.
-// Asserts if points cannot hold the covering sample; extra rows may repeat.
+// Distinct primary-input bitsets covering every cell's primary projection.
+// Asserts if points cannot hold the covering sample or exceeds the cube.
 std::vector<BitsSet> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points);
 
 }  // namespace tools

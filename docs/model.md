@@ -232,10 +232,10 @@ therefore where nonzero learned states can develop.
 ### 6. The learned recurrence
 
 For one allowed question, let `a` and `b` be its child vectors. A shared
-learned function `F` produces a candidate parent vector:
+learned function `combine` produces a candidate parent vector:
 
 $$
-v_i=F\bigl([\max(a,b),\ a+b]\bigr).
+v_i=\mathrm{combine}\bigl([\max(a,b),\ a+b]\bigr).
 $$
 
 Maximum and addition act componentwise; brackets denote concatenation.
@@ -254,18 +254,18 @@ h(R)_j=\min_i(v_i)_j,
 $$
 
 unless it is empty or constant, in which case its state is zero. The same
-function `F` is used everywhere as the graph is evaluated toward the root.
+function `combine` is used everywhere as the graph is evaluated toward the root.
 
 Different components can take their minimum from different questions. This
 produces a learned summary, not a certificate of one realizable decision tree.
 
 ### 7. From the root to a prediction
 
-A second learned function `G` maps the root state to two values. The model
+A second learned function `head` maps the root state to two values. The model
 predicts
 
 $$
-\widehat y=n-G(h(\text{root})).
+\widehat y=n-\mathrm{head}(h(\text{root})).
 $$
 
 The target scores are
@@ -278,8 +278,8 @@ where `D` and `S` are the optimal depth and internal-node count for the
 original problem. Larger scores mean simpler functions. Constants have both
 scores equal to `n`; maximal costs `D=n` and `S=2^n-1` give scores zero.
 
-Learning adjusts `F` and `G` to make root predictions close to these targets.
-The first component of `G` consequently approximates depth, while the second
+Learning adjusts `combine` and `head` to make root predictions close to these
+targets. The first component of `head` approximates depth, while the second
 approximates `n-log2(2^n-S)`, not raw size.
 
 ### 8. What the approximation assumes
@@ -293,7 +293,7 @@ useful question sequence. Even with full coverage, learned updates and the
 readout need not reproduce the exact answer.
 
 A constant restriction's zero state does not force an exact root prediction,
-because `G(0)` is learned. Predictions are also not constrained to the target
+because `head(0)` is learned. Predictions are also not constrained to the target
 score range. The structural bias is the intended advantage; accuracy and cost
 at larger bitness remain empirical questions.
 
@@ -307,7 +307,7 @@ at larger bitness remain empirical questions.
   `_TopologyBuilder`, then discards the construction state.
 - `OrderedRestrictionPredictor` prepares cases, obtains their topology, and
   evaluates learned states from the leaves to the root.
-- Its `combine` network implements `F`; its `head` implements `G`.
+- Its `combine` network and its `head` are those two learned functions.
 
 It is the project's only model, configured by the `model` block of
 [`conf/train.yaml`](../conf/train.yaml). The widths are `hidden`,
