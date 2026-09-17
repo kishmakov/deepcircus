@@ -7,8 +7,9 @@ and bit utilities.
 
 [`graph.h`](graph.h) declares the shared M1 restriction graph and
 `BuildGraph(bitness, seed, cells_number)`. [`graph.cpp`](graph.cpp)
-first generates cell masks using `common/tools/random.h`, then assembles layers
-and compatible child pairs from those cells, as described in
+generates complete axis-order passes until the minimum cell count is met,
+using `common/tools/random.h`, then assembles layers and
+compatible child pairs, as described in
 [`docs/graph.md`](../../docs/graph.md).
 
 `Graph` owns geometric restrictions and nodes with query axes.

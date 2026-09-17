@@ -20,7 +20,6 @@ namespace {
 constexpr uint64_t kGraphInputs = 0x67726170685f696eull;
 constexpr uint64_t kGraphOrders = 0x67726170685f6f72ull;
 constexpr uint64_t kGraphValues = 0x67726170685f7661ull;
-constexpr uint32_t kAssignmentsPerBitSquared = 4;
 
 struct CellHash {
     size_t operator()(const Graph::Cell& cell) const {
@@ -29,16 +28,46 @@ struct CellHash {
 };
 
 using CellSet = std::unordered_set<Graph::Cell, CellHash>;
+using Order = std::vector<uint16_t>;
 
-void PickRandomAxesOrder(Random& random, std::vector<uint16_t>& order) {
+Order GenerateOrder(uint16_t bitness, Random& random) {
+    Order order(bitness + 1);
     std::iota(order.begin(), order.end(), 0);
     for (size_t remaining = order.size(); remaining > 1; --remaining) {
         std::swap(order[remaining - 1], order[random.Below(remaining)]);
     }
+    return order;
 }
 
-std::vector<Graph::Bits> GeneratePatterns(const std::vector<uint16_t>& order) {
+void InsertAllOnes(uint16_t bitness, CellSet& cells) {
+    for (uint16_t axis = 0; axis <= bitness; ++axis) {
+        Graph::Cell cell;
+        cell.fixed.set(axis);
+        cells.insert(cell);
+        cell.values.set(axis);
+        cells.insert(cell);
+    }
+}
+
+void InsertAllTwos(uint16_t bitness, CellSet& cells) {
+    for (uint16_t first = 0; first <= bitness; ++first) {
+        for (uint16_t second = first + 1; second <= bitness; ++second) {
+            Graph::Cell cell;
+            cell.fixed.set(first);
+            cell.fixed.set(second);
+            for (unsigned values = 0; values < 4; ++values) {
+                cell.values.set(first, (values & 1) != 0);
+                cell.values.set(second, (values & 2) != 0);
+                cells.insert(cell);
+            }
+        }
+    }
+}
+
+// Singles, pairs, and prefixes with up to two holes.
+std::vector<Graph::Bits> GeneratePatterns(const Order& order) {
     std::unordered_set<Graph::Bits> patterns{Graph::Bits{}};
+
     for (size_t first = 0; first < order.size(); ++first) {
         Graph::Bits fixed;
         fixed.set(order[first]);
@@ -65,52 +94,37 @@ std::vector<Graph::Bits> GeneratePatterns(const std::vector<uint16_t>& order) {
             }
         }
     }
-    std::vector<Graph::Bits> result(patterns.begin(), patterns.end());
-    std::stable_partition(result.begin(), result.end(), [](const auto& fixed) { return fixed.count() <= 2; });
-    return result;
+
+    return {patterns.begin(), patterns.end()};
 }
 
-std::vector<Graph::Cell> GenerateCells(uint16_t bitness, uint64_t seed, uint32_t cells_number) {
-    Random orders_random(DomainSeed(seed, kGraphOrders, bitness));
-    Random values_random(DomainSeed(seed, kGraphValues, bitness));
-
+// Build a path through selected axes, keeping both branches at each step.
+CellSet BuildAssignedCells(Random& random, const Graph::Bits& pattern, const Order& order) {
     CellSet cells;
-
-    std::vector<uint16_t> order(bitness + 1);
-
-    while (cells.size() < cells_number) {
-        PickRandomAxesOrder(orders_random, order);
-        const auto patterns = GeneratePatterns(order);
-        for (const auto& fixed : patterns) {
-            const bool exhaustive = fixed.count() <= 2;
-            if (!exhaustive && cells.size() >= cells_number) break;
-            const uint32_t assignments =
-                exhaustive ? (1u << fixed.count()) : kAssignmentsPerBitSquared * bitness * bitness;
-            for (uint32_t draw = 0; draw < assignments; ++draw) {
-                if (!exhaustive && cells.size() >= cells_number) break;
-                Graph::Cell cell;
-                uint16_t assigned = 0;
-                for (uint16_t axis : order) {
-                    if (!fixed[axis]) continue;
-                    cell.fixed.set(axis);
-                    cells.insert(cell);
-                    cell.values.set(axis);
-                    cells.insert(cell);
-                    const bool value = exhaustive ? ((draw >> assigned) & 1u) != 0 : values_random.NextBool();
-                    cell.values.set(axis, value);
-                    ++assigned;
-                }
-                cells.insert(cell);
-            }
-        }
+    Graph::Cell cell;
+    for (uint16_t axis : order) {
+        if (!pattern[axis]) continue;
+        cell.fixed.set(axis);
+        cells.insert(cell);
+        cell.values.set(axis);
+        cells.insert(cell);
+        cell.values.set(axis, random.NextBool());
     }
-    assert(cells.size() < UINT32_MAX);
-    std::vector<size_t> counts(bitness + 2);
-    for (const auto& cell : cells) ++counts[cell.fixed.count()];
-    // for (size_t bits_assigned = 0; bits_assigned < counts.size(); ++bits_assigned) {
-    //     std::cerr << bits_assigned << ": " << counts[bits_assigned] << '\n';
-    // }
-    return {cells.begin(), cells.end()};
+    cells.insert(cell);  // The root, when nothing is fixed.
+    return cells;
+}
+
+// Estimate new cells from path prefixes, before deduplication.
+uint64_t CellsPerOrder(uint16_t bitness) {
+    const uint16_t axes = bitness + 1;
+    uint64_t cells = 0;
+    for (uint16_t fixed = 3; fixed <= axes; ++fixed) {
+        uint64_t patterns = 1;
+        if (fixed < axes) patterns += fixed;
+        if (fixed + 1 < axes) patterns += uint64_t{fixed} * (fixed + 1) / 2;
+        cells += 2 * (fixed - 2) * patterns;
+    }
+    return cells;
 }
 
 Graph::Bits RandomInput(Random& random, uint16_t bitness) {
@@ -153,12 +167,37 @@ Graph::Graph(uint16_t bitness, std::vector<Cell> cells) : bitness(bitness), cell
 Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number) {
     assert(bitness > 0 && bitness <= 255);
     assert(cells_number >= 1 + 2 * (uint32_t{bitness} + 1));
-    assert(cells_number <= UINT32_MAX - 2 * (uint32_t{bitness} + 1));
+    assert(cells_number < UINT32_MAX);
     uint64_t maximum = 1;
     for (uint16_t axis = 0; axis <= bitness && maximum < cells_number; ++axis) maximum *= 3;
-    assert(cells_number <= maximum); // is requested number of vertices possible?
+    assert(cells_number <= maximum);
+    Random orders_random(DomainSeed(seed, kGraphOrders, bitness));
+    Random values_random(DomainSeed(seed, kGraphValues, bitness));
 
-    return Graph(bitness, GenerateCells(bitness, seed, cells_number));
+    CellSet cells{Graph::Cell{}};
+    InsertAllOnes(bitness, cells);
+    InsertAllTwos(bitness, cells);
+
+    const uint64_t per_order = CellsPerOrder(bitness);
+    assert(per_order > 0);
+    while (cells.size() < cells_number) {
+        Order order = GenerateOrder(bitness, orders_random);
+        for (const auto& pattern : GeneratePatterns(order)) {
+            cells.merge(BuildAssignedCells(values_random, pattern, order));
+        }
+    }
+
+    assert(cells.size() < UINT32_MAX);
+
+    std::cerr << "Real size: " << cells.size() << "\n";
+
+    std::vector<size_t> counts(bitness + 2);
+    for (const auto& cell : cells) ++counts[cell.fixed.count()];
+    for (size_t bits_assigned = 0; bits_assigned < counts.size(); ++bits_assigned) {
+        std::cerr << bits_assigned << ": " << counts[bits_assigned] << '\n';
+    }
+
+    return Graph(bitness, {cells.begin(), cells.end()});
 }
 
 std::vector<uint8_t> SampleGraphInputs(const Graph& graph, uint64_t seed, uint32_t points) {

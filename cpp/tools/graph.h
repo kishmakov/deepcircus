@@ -44,7 +44,7 @@ struct Graph {
     GraphNode* root = nullptr;
 };
 
-// Minimum vertex count, including the root; complete the last random path.
+// Minimum vertex count, including the root; generation completes whole orders.
 Graph BuildGraph(uint16_t bitness, uint64_t seed, uint32_t cells_number);
 
 // Packed primary inputs covering every cell's primary projection, low bit first.

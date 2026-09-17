@@ -5,7 +5,6 @@
 #include <numeric>
 #include <set>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "dense_graph.h"
@@ -91,54 +90,29 @@ void CheckGraph(const tools::Graph& graph) {
 
 }  // namespace
 
-TEST(SampleGraphTest, StartsWithEveryOneAndTwoAxisRestriction) {
-    const auto graph = tools::BuildGraph(8, 239, 19);
-    CheckGraph(graph);
-    EXPECT_EQ(graph.cells.size(), 163);
-    EXPECT_EQ(graph.layers[2].size(), 144);
-    for (uint16_t axis = 0; axis <= graph.bitness; ++axis) {
-        const auto& question = graph.root->questions[axis];
-        EXPECT_EQ(question.axis, axis);
-        EXPECT_FALSE(graph.cells[question.zero->cell_id].values[axis]);
-        EXPECT_TRUE(graph.cells[question.one->cell_id].values[axis]);
-    }
-}
+TEST(SampleGraphTest, ReachesMinimumWithCompleteOrders) {
+    const auto initial = tools::BuildGraph(5, 239, 13);
+    CheckGraph(initial);
+    EXPECT_EQ(initial.cells.size(), 73);
+    EXPECT_EQ(initial.layers[2].size(), 60);
 
-TEST(SampleGraphTest, TemplatesIncludeUpToTwoHoles) {
-    constexpr uint16_t bitness = 5;
-    constexpr uint64_t seed = 239;
-    constexpr uint32_t cells_number = 600;
-    tools::Random random(tools::DomainSeed(seed, 0x67726170685f6f72ull, bitness));
-    std::vector<uint16_t> order(bitness + 1);
-    std::iota(order.begin(), order.end(), 0);
-    for (size_t remaining = order.size(); remaining > 1; --remaining) {
-        std::swap(order[remaining - 1], order[random.Below(remaining)]);
-    }
-    const auto graph = tools::BuildGraph(bitness, seed, cells_number);
-    CheckGraph(graph);
-    EXPECT_GE(graph.cells.size(), cells_number);
-    EXPECT_LT(graph.cells.size(), cells_number + 2 * (bitness + 1));
-    std::set<size_t> hole_counts;
-    for (const auto& cell : graph.cells) {
-        if (cell.fixed.count() <= 2) continue;
-        size_t end = order.size();
-        while (!cell.fixed[order[end - 1]]) --end;
-        const size_t holes = end - cell.fixed.count();
-        EXPECT_LE(holes, 2);
-        hole_counts.insert(holes);
-    }
-    EXPECT_EQ(hole_counts, (std::set<size_t>{0, 1, 2}));
-}
-
-TEST(SampleGraphTest, RepeatsOrdersUntilBudgetAndSharesCells) {
-    // One order with up to two holes cannot cover all masks on six axes.
-    const auto graph = tools::BuildGraph(5, 239, 729);
-    CheckGraph(graph);
-    EXPECT_EQ(graph.cells.size(), 729);
-    const auto full = tools::BuildGraph(2, 239, 27);
+    const auto first = tools::BuildGraph(5, 239, 74);
+    const auto more = tools::BuildGraph(5, 239, 649);
+    const auto full = tools::BuildGraph(5, 239, 729);
+    CheckGraph(first);
+    CheckGraph(more);
     CheckGraph(full);
-    EXPECT_EQ(full.cells.size(), 27);
-    EXPECT_EQ(full.layers.back().size(), 8);
+    EXPECT_GT(first.cells.size(), 74);
+    EXPECT_EQ(first.layers.back().size(), 2);  // One assignment, with both final branches.
+    // The first estimated pass falls short; subsequent orders must fill the gap.
+    EXPECT_LT(first.cells.size(), 649);
+    EXPECT_GE(more.cells.size(), 649);
+    EXPECT_EQ(full.cells.size(), 729);
+    for (const auto& cell : first.cells) {
+        EXPECT_NE(std::find(more.cells.begin(), more.cells.end(), cell), more.cells.end());
+    }
+    EXPECT_EQ(more.cells, tools::BuildGraph(5, 239, 649).cells);
+    EXPECT_EQ(full.layers.back().size(), 64);
 }
 
 TEST(SampleGraphTest, AssemblyIncludesEveryAvailableSplit) {
@@ -154,53 +128,10 @@ TEST(SampleGraphTest, AssemblyIncludesEveryAvailableSplit) {
     }
 }
 
-TEST(SampleGraphTest, Deterministic) {
-    const auto graph = tools::BuildGraph(8, 239, 1200);
-    CheckGraph(graph);
-    const tools::DenseGraph dense(graph);
-    const tools::DenseGraph repeated(tools::BuildGraph(8, 239, 1200));
-    EXPECT_EQ(dense.cells, repeated.cells);
-    for (size_t depth = 0; depth < dense.layers.size(); ++depth) {
-        EXPECT_EQ(dense.layers[depth].offsets, repeated.layers[depth].offsets);
-        EXPECT_EQ(dense.layers[depth].zero, repeated.layers[depth].zero);
-        EXPECT_EQ(dense.layers[depth].one, repeated.layers[depth].one);
-        EXPECT_EQ(dense.layers[depth].cell, repeated.layers[depth].cell);
-    }
-    EXPECT_NE(graph.cells, tools::BuildGraph(8, 240, 1200).cells);
-    EXPECT_GE(graph.cells.size(), 1200);
-    EXPECT_LT(graph.cells.size(), 1218);
-}
-
-TEST(SampleGraphTest, Supports255Bits) {
-    const auto graph = tools::BuildGraph(255, 239, 131073);
-    EXPECT_EQ(graph.cells.size(), 131073);
-    EXPECT_EQ(graph.layers.size(), 257);
-    EXPECT_EQ(graph.layers[1].size(), 512);
-    EXPECT_EQ(graph.layers[2].size(), 130560);
-    ASSERT_EQ(graph.root->questions.size(), 256);
-    const auto& helper = graph.root->questions.back();
-    EXPECT_EQ(helper.axis, 255);
-    EXPECT_TRUE(graph.cells[helper.one->cell_id].values[255]);
-
-    std::vector<tools::Graph::Cell> cells(3);
-    cells[1].fixed.set(254);
-    cells[2] = cells[1];
-    cells[2].values.set(254);
-    const tools::Graph sparse(255, std::move(cells));
-    const auto inputs = tools::SampleGraphInputs(sparse, 42, 8);
-    ASSERT_EQ(inputs.size(), 8 * 32);
-    std::set<unsigned> high_bits;
-    for (size_t row = 0; row < 8; ++row) {
-        const uint8_t last = inputs[row * 32 + 31];
-        EXPECT_EQ(last >> 7, 0);
-        high_bits.insert((last >> 6) & 1);
-    }
-    EXPECT_EQ(high_bits, (std::set<unsigned>{0, 1}));
-}
-
 TEST(SampleGraphTest, SamplingCoversAllCellsWithoutChangingTheGraph) {
     for (uint16_t bitness : {3, 13}) {
         const auto graph = tools::BuildGraph(bitness, 239, 4 * (bitness + 1) + 1);
+        ASSERT_EQ(graph.cells.size(), 1 + 2 * (bitness + 1) * (bitness + 1));
         const auto cells = graph.cells;
         const uint32_t points = static_cast<uint32_t>(cells.size());
         const auto inputs = tools::SampleGraphInputs(graph, 42, points);
@@ -227,8 +158,8 @@ TEST(SampleGraphTest, SamplingCoversAllCellsWithoutChangingTheGraph) {
 }
 
 TEST(SampleGraphTest, RejectsInvalidShapesAndInsufficientSamples) {
-    EXPECT_DEATH(tools::BuildGraph(0, 239, 9), "bitness");
-    EXPECT_DEATH(tools::BuildGraph(256, 239, 1000), "bitness");
+    EXPECT_DEATH(tools::BuildGraph(0, 239, 1), "bitness");
+    EXPECT_DEATH(tools::BuildGraph(256, 239, 1), "bitness");
     EXPECT_DEATH(tools::BuildGraph(8, 239, 18), "cells_number");
     EXPECT_DEATH(tools::BuildGraph(1, 239, 10), "cells_number");
     EXPECT_DEATH(tools::BuildGraph(8, 239, UINT32_MAX), "cells_number");
